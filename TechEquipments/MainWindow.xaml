@@ -1,9 +1,95 @@
-﻿<dx:ThemedWindow 
-    x:Class="TechEquipments.MainWindow"
+﻿<dx:ThemedWindow
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+    xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
+    xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+    x:Class="TechEquipments.MainWindow"
     Title="MainWindow" Height="800" Width="1000">
+
+    <dx:ThemedWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </dx:ThemedWindow.Resources>
+
     <Grid>
+        <!-- Кнопка -->
+        <dx:SimpleButton Content="SimpleButton" IsEnabled="{Binding IsNotLoading}" HorizontalAlignment="Left" Height="50" Margin="10,10,0,0" VerticalAlignment="Top" Width="110" Click="SimpleButton_Click"/>
+
+        <!-- Таблица -->
+        <dxg:GridControl
+                     Margin="0,84,0,0"
+                     ItemsSource="{Binding equipmentSOEDtos}"
+                     AutoGenerateColumns="None">
+            <dxg:GridControl.Columns>
+                <!--<dxg:GridColumn FieldName="TimeLocal" Header="Time" DisplayFormatString="dd.MM.yyyy HH:mm:ss.fff"/>-->
+                <dxg:GridColumn FieldName="TimeLocal" Header="Date" Width="80" MinWidth="80" MaxWidth="60">
+                    <dxg:GridColumn.EditSettings>
+                        <dxe:DateEditSettings Mask="dd.MM.yyyy"
+                              MaskUseAsDisplayFormat="True"/>
+                    </dxg:GridColumn.EditSettings>
+                </dxg:GridColumn>
+                <dxg:GridColumn FieldName="TimeLocal" Header="Time" Width="80" MinWidth="80" MaxWidth="60">
+                    <dxg:GridColumn.EditSettings>
+                        <dxe:DateEditSettings Mask="HH:mm:ss"
+                              MaskUseAsDisplayFormat="True"/>
+                    </dxg:GridColumn.EditSettings>
+                </dxg:GridColumn>
+                <dxg:GridColumn FieldName="Type" Header="Type" Width="100"/>
+                <dxg:GridColumn FieldName="Equipment" Header="Equipment" Width="100"/>
+                <dxg:GridColumn FieldName="Event" Header="Event" Width="100"/>
+                <dxg:GridColumn FieldName="BitCode" Header="BitCode" Width="30"/>
+                <dxg:GridColumn FieldName="TrnValue" Header="TrnValue" Width="30"/>
+                <dxg:GridColumn FieldName="ValueQuality" Header="ValueQuality" Width="30"/>
+            </dxg:GridControl.Columns>
+
+            <dxg:GridControl.View>
+                <dxg:TableView AutoWidth="True"
+                           ShowGroupPanel="False"
+                           AllowPerPixelScrolling="True"/>
+            </dxg:GridControl.View>
+        </dxg:GridControl>
+
+        <!-- DevExpress loading panel поверх всего -->
+        <Grid Grid.RowSpan="2"
+              Panel.ZIndex="999"
+              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
+            <Border Background="#66000000"/>
+
+            <Border Background="White" CornerRadius="10"
+                    Padding="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+ 
+                <StackPanel Width="460">
+                    <TextBlock FontSize="14"
+                        FontWeight="SemiBold"
+                        HorizontalAlignment="Center"
+                        Text="{Binding LoadingText}"/>
+
+                    <dxe:ProgressBarEdit Margin="0,8,0,0"
+                     Height="18"
+                     Minimum="0"
+                     Maximum="{Binding PerTrendMax}"
+                     EditValue="{Binding CurrentCount, Mode=OneWay}" />
+
+                    <dxe:ProgressBarEdit Margin="0,8,0,0"
+                     Height="18"
+                     Minimum="0"
+                     Maximum="{Binding TotalMax}"
+                     EditValue="{Binding LoadedCount, Mode=OneWay}" />
+
+                    <dx:SimpleButton Content="Cancel"
+                     Margin="0,12,0,0"
+                     Width="100"
+                     HorizontalAlignment="Center"
+                     IsEnabled="{Binding IsLoading}"
+                     Click="CancelButton_Click"/>
+
+                    <!-- Прозрачный прямоугольник, чтобы overlay точно "съедал" клики -->
+                    <Rectangle Fill="Transparent" />
+                </StackPanel>
+
+            </Border>
+        </Grid>
+
     </Grid>
 </dx:ThemedWindow>
