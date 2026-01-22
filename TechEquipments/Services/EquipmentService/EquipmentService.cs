@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using static TechEquipments.IEquipmentService;
 
 namespace TechEquipments
 {
@@ -21,13 +22,89 @@ namespace TechEquipments
             _ctApiService = ctApiService;
         }
 
+        // формируем EquipmentSOEDto с данными по Equipment для отображение в таблице
+        public async Task<List<EquipmentSOEDto>> GetDataFromEquipAsync(string equipName, IProgress<LoadingProgress>? progress = null, CancellationToken ct = default, int perTrendMax = 2000, int totalMax = 10000)
+        {
+            var model = await GetEquipModelWithRef(equipName);
+            if (model?.MainModel == null)
+                return new List<EquipmentSOEDto>();
+
+            ct.ThrowIfCancellationRequested();
+
+            var equipList = new List<EquipRefModel> { model.MainModel };
+            if (model.RefEquipments != null && model.RefEquipments.Count > 0)
+                equipList.AddRange(model.RefEquipments);
+
+            equipList = equipList
+                .Where(e => e != null && !string.IsNullOrWhiteSpace(e.TrnName))
+                .GroupBy(e => e.TrnName, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            int totalTrends = equipList.Count;
+
+            var allRows = new List<EquipmentSOEDto>(capacity: Math.Min(totalMax, 10000));
+
+            for (int i = 0; i < totalTrends; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (allRows.Count >= totalMax) break;
+
+                var equip = equipList[i];
+
+                int localCount = 0;
+                progress?.Report(new LoadingProgress(
+                    TotalTrends: totalTrends,
+                    CurrentTrendIndex: i + 1,
+                    CurrentTrendName: equip.TrnName,
+                    CurrentTrendCount: 0,
+                    TotalLoaded: allRows.Count));
+
+                var localProgress = new Progress<int>(c =>
+                {
+                    localCount = c;
+                    progress?.Report(new LoadingProgress(
+                        TotalTrends: totalTrends,
+                        CurrentTrendIndex: i + 1,
+                        CurrentTrendName: equip.TrnName,
+                        CurrentTrendCount: c,
+                        TotalLoaded: allRows.Count + c));
+                });
+
+                var rows = await GetTrnByEquipment(equip, localProgress, ct, maxRows: perTrendMax);
+
+                if (rows != null && rows.Count > 0)
+                {
+                    int remaining = totalMax - allRows.Count;
+                    if (rows.Count > remaining)
+                        allRows.AddRange(rows.Take(remaining));
+                    else
+                        allRows.AddRange(rows);
+                }
+
+                progress?.Report(new LoadingProgress(
+                    TotalTrends: totalTrends,
+                    CurrentTrendIndex: i + 1,
+                    CurrentTrendName: equip.TrnName,
+                    CurrentTrendCount: localCount,
+                    TotalLoaded: allRows.Count));
+            }
+
+            ct.ThrowIfCancellationRequested();
+
+            return allRows.OrderByDescending(r => r.TimeUtc).ToList();
+        }
+
         #region Equipment
 
         // возвращает данные эквипмента
         public async Task<EquipRefModel> GetEquipData(string sEquipName, string sEquipItem = "STW")
         {
             var sTagName = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.{sEquipItem}\", 0)");
-            var sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 1)");
+            var sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 3)");
+            //if (sEquipType == "Unknown")
+            //    sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 1)");
+
             var sEquipDescription = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Comment\", 1)");
             var sTrnName = await GetTrnName(sEquipName, sEquipItem);
 
@@ -106,6 +183,82 @@ namespace TechEquipments
             return listEquip;
         }
 
+        // проверка на существования тега
+        private async Task<bool> IsTagExistAsync(string tagName)
+        {
+            if (string.IsNullOrWhiteSpace(tagName))
+                return false;
+
+            var result = await _ctApiService.CicodeAsync($"TagCheckIfExists({tagName})");
+
+            return int.TryParse(result, out var exists) && exists == 1;
+        }
+
+        // Возвращает список названий всех Equipment
+        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            //var findHashTags = await _ctApiService.FindAsync("Tag","Tag=*_HASHCODE","","EQUIPMENT","TAG");
+            var findHashTags = await _ctApiService.FindAsync("Tag", "Tag=*STW", "", "EQUIPMENT", "TAG");
+
+            var items = findHashTags
+                .Where(d =>
+                    d.TryGetValue("EQUIPMENT", out var eq) && !string.IsNullOrWhiteSpace(eq) &&
+                    d.TryGetValue("TAG", out var tag) && !string.IsNullOrWhiteSpace(tag))
+                .Select(d => new EquipListBoxItem
+                                    {                                       
+                                        Equipment = d["EQUIPMENT"].Trim(),
+                                        Tag = d["TAG"].Trim()
+                })
+                // уникальность по имени оборудования
+                .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+
+            //// 2) Добираем Type (ограничим параллелизм, иначе будет очень долго/тяжело)
+            //const int parallelism = 8;
+            //using var sem = new SemaphoreSlim(parallelism);
+
+            //var tasks = items.Select(async x =>
+            //{
+            //    ct.ThrowIfCancellationRequested();
+            //    await sem.WaitAsync(ct);
+            //    try
+            //    {
+            //        // если вдруг в имени будут кавычки — экранируем
+            //        var equipNameEsc = x.Equipment.Replace("\"", "\\\"");
+
+            //        var type = await _ctApiService.CicodeAsync(
+            //            $"EquipGetProperty(\"{equipNameEsc}\",\"Type\", 1)");
+
+            //        type = (type ?? "").Trim();
+            //        if (string.Equals(type, "Unknown", StringComparison.OrdinalIgnoreCase))
+            //            type = "";
+
+            //        return new EquipListBoxItem
+            //        {
+            //            Equipment = x.Equipment,
+            //            Tag = x.Tag,
+            //            Type = type
+            //        };
+            //    }
+            //    finally
+            //    {
+            //        sem.Release();
+            //    }
+            //});
+
+            //var itemss = (await Task.WhenAll(tasks))
+            //    .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+            //    .ToList();
+
+
+
+            return items;
+        }
 
         #endregion
 

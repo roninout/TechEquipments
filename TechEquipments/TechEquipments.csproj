@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="DevExpress.Wpf.Core" Version="21.2.*-*" />
     <PackageReference Include="devexpress.wpf.grid.core" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.layoutcontrol" Version="21.2.3" />
     <PackageReference Include="DevExpress.Wpf.Themes.All" Version="21.2.*-*" />
     <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="10.0.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.1" />

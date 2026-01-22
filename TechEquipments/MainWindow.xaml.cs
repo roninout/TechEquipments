@@ -20,6 +20,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using static TechEquipments.IEquipmentService;
 
 namespace TechEquipments
 {
@@ -32,6 +33,21 @@ namespace TechEquipments
         private readonly IEquipmentService _equipmentService;
 
         public ObservableCollection<EquipmentSOEDto> equipmentSOEDtos { get; } = new();
+        public ObservableCollection<EquipListBoxItem> Equipments { get; } = new();
+
+        private readonly SemaphoreSlim _loadGate = new(1, 1);
+
+        private string _equipName = "S17.D02.VGA03_EL";
+        public string EquipName
+        {
+            get => _equipName;
+            set
+            {
+                if (_equipName == value) return;
+                _equipName = value;
+                OnPropertyChanged();
+            }
+        }
 
         private bool _isLoading;
         public bool IsLoading
@@ -103,6 +119,26 @@ namespace TechEquipments
 
         private CancellationTokenSource? _loadCts;
 
+
+        //private EquipRefModel? _selectedEquipment;
+        //public EquipRefModel? SelectedEquipment
+        //{
+        //    get => _selectedEquipment;
+        //    set { _selectedEquipment = value; OnPropertyChanged(); }
+        //}
+
+        private bool _layoutReady;
+        private GridLength _leftSavedWidth = new GridLength(260);
+
+        private EquipListBoxItem? _selectedListBoxEquipment;
+        public EquipListBoxItem? SelectedListBoxEquipment
+        {
+            get => _selectedListBoxEquipment;
+            set { _selectedListBoxEquipment = value; OnPropertyChanged(); }
+        }
+
+        private CancellationTokenSource? _equipListCts;
+
         #endregion
 
         public MainWindow(IEquipmentService equipmentService)
@@ -111,24 +147,98 @@ namespace TechEquipments
 
             DataContext = this; // чтобы биндинг equipmentSOEDtos работал
             _equipmentService = equipmentService;
+
+            Loaded += (_, __) =>
+            {
+                _layoutReady = true;
+
+                // не await — чтобы окно НЕ зависало
+                _ = LoadEquipmentsListAsync();
+
+                // стартовое состояние: показываем левую панель
+                LeftPaneToggle.IsChecked = false;
+                ApplyLeftPane(false);
+            };
         }
+
+        #region ListBox
+
+        private async Task LoadEquipmentsListAsync()
+        {
+            // гасим прошлую загрузку списка
+            _equipListCts?.Cancel();
+            _equipListCts?.Dispose();
+            _equipListCts = new CancellationTokenSource();
+            var ct = _equipListCts.Token;
+
+            try
+            {
+                // дать окну отрисоваться
+                await Dispatcher.Yield(DispatcherPriority.Background);
+
+                var items = await _equipmentService.GetAllEquipmentsAsync(ct);
+
+                // мы уже на UI-потоке (await вернёт сюда), можно обновлять ObservableCollection
+                Equipments.Clear();
+                foreach (var it in items)
+                    Equipments.Add(it);
+            }
+            catch (OperationCanceledException)
+            {
+                // ок
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(this, ex.ToString(), "Equip list error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void Equipments_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
+                EquipName = eq; // просто подставили в поиск
+        }
+
+        private async void Equipments_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (IsLoading) return;
+
+            if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
+            {
+                EquipName = eq;                 // подставили
+                await LoadAndShowEquipDataAsync(eq); // и загрузили
+            }
+        }
+
+        #endregion
 
         #region Grid
 
         // заполнения таблицы данными с отображением индикаторов загрузки
         private async Task LoadAndShowEquipDataAsync(string equipName)
         {
-            if (IsLoading) return;
+            var name = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            // отменяем предыдущую загрузку (если была)
+            try { _loadCts?.Cancel(); } catch { }
+
+            await _loadGate.WaitAsync();
+
+            CancellationTokenSource? myCts = null;
 
             try
             {
-                IsLoading = true;
-
-                // гасим предыдущий CTS
-                _loadCts?.Cancel();
+                // создаём новый CTS (и сохраняем ссылку именно на "свою" загрузку)
                 _loadCts?.Dispose();
-                _loadCts = new CancellationTokenSource();
-                var ct = _loadCts.Token;
+                myCts = new CancellationTokenSource();
+                _loadCts = myCts;
+                var ct = myCts.Token;
+
+                // включаем индикацию (даже если до этого IsLoading уже был true — ок)
+                IsLoading = true;
 
                 LoadedCount = 0;
                 CurrentCount = 0;
@@ -138,12 +248,22 @@ namespace TechEquipments
 
                 await Dispatcher.Yield(DispatcherPriority.Render);
 
-                var allRows = await GetDataFromEquipAsync(equipName, ct);
+                var progress = new Progress<LoadingProgress>(p =>
+                {
+                    TotalTrends = p.TotalTrends;
+                    CurrentTrendIndex = p.CurrentTrendIndex;
+                    CurrentTrendName = p.CurrentTrendName;
+                    CurrentCount = p.CurrentTrendCount;
+                    LoadedCount = p.TotalLoaded;
+                });
+
+                var rows = await _equipmentService.GetDataFromEquipAsync(
+                    name, progress, ct, perTrendMax: PerTrendMax, totalMax: TotalMax);
 
                 ct.ThrowIfCancellationRequested();
 
                 equipmentSOEDtos.Clear();
-                foreach (var r in allRows)
+                foreach (var r in rows)
                     equipmentSOEDtos.Add(r);
             }
             catch (OperationCanceledException)
@@ -156,88 +276,21 @@ namespace TechEquipments
             }
             finally
             {
-                IsLoading = false;
-                _loadCts?.Dispose();
-                _loadCts = null;
-            }
-        }
-
-        private async Task<List<EquipmentSOEDto>> GetDataFromEquipAsync(string equipName, CancellationToken ct)
-        {
-            var model = await _equipmentService.GetEquipModelWithRef(equipName);
-            if (model?.MainModel == null)
-                return new List<EquipmentSOEDto>();
-
-            ct.ThrowIfCancellationRequested();
-
-            // общий список: main + refs
-            var equipList = new List<EquipRefModel> { model.MainModel };
-
-            if (model.RefEquipments != null && model.RefEquipments.Count > 0)
-                equipList.AddRange(model.RefEquipments);
-
-            // фильтр мусора + уникальность по TrnName
-            equipList = equipList
-                .Where(e => e != null && !string.IsNullOrWhiteSpace(e.TrnName))
-                .GroupBy(e => e.TrnName, StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
-                .ToList();
-
-            TotalTrends = equipList.Count;
-
-            var allRows = new List<EquipmentSOEDto>(capacity: TotalMax);
-
-            for (int i = 0; i < equipList.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                if (allRows.Count >= TotalMax) break;
-
-                var equip = equipList[i];
-
-                CurrentTrendIndex = i + 1;
-                CurrentTrendName = equip.TrnName;
-                CurrentCount = 0;
-
-                // прогресс по одному тренду + общий
-                var progress = new Progress<int>(c =>
+                // ВАЖНО: выключаем IsLoading только если это всё ещё "наша" актуальная загрузка
+                if (ReferenceEquals(_loadCts, myCts))
                 {
-                    CurrentCount = c;
-                    LoadedCount = allRows.Count + c;
-                });
-
-                var rows = await _equipmentService.GetTrnByEquipment(
-                    equip,
-                    progress,
-                    ct,
-                    maxRows: PerTrendMax);
-
-                if (rows != null && rows.Count > 0)
-                {
-                    int remaining = TotalMax - allRows.Count;
-                    if (rows.Count > remaining)
-                        allRows.AddRange(rows.Take(remaining));
-                    else
-                        allRows.AddRange(rows);
+                    IsLoading = false;
+                    _loadCts?.Dispose();
+                    _loadCts = null;
                 }
 
-                LoadedCount = allRows.Count;
+                _loadGate.Release();
             }
-
-            ct.ThrowIfCancellationRequested();
-
-            // сортировка по времени (новые сверху)
-            allRows = allRows.OrderByDescending(r => r.TimeUtc).ToList();
-
-            return allRows;
         }
 
         #endregion
 
         #region Buttons
-        private async void SimpleButton_Click(object sender, RoutedEventArgs e)
-        {
-            await LoadAndShowEquipDataAsync("S17.D02.VGA03_EL");
-        }
 
         // кнопка отмены загрузку данных
         private void CancelButton_Click(object sender, RoutedEventArgs e)
@@ -245,6 +298,52 @@ namespace TechEquipments
             _loadCts?.Cancel();
             CurrentTrendName = "Cancelling...";
         }
+
+        private async void Load_Click(object sender, RoutedEventArgs e)
+        {
+            // если хочешь грузить выбранный элемент из ListBox:
+            var equipName = (EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            await LoadAndShowEquipDataAsync(equipName);
+        }
+
+        private void Cancel_Click(object sender, RoutedEventArgs e)
+        {
+            _loadCts?.Cancel();
+        }
+
+        private void LeftPaneToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_layoutReady) return;
+
+            bool show = LeftPaneToggle.IsChecked == true;
+            ApplyLeftPane(show);
+        }
+
+        private void ApplyLeftPane(bool show)
+        {
+            if (LeftCol == null || SepCol == null) return;
+
+            if (show)
+            {
+                if (_leftSavedWidth.Value <= 0)
+                    _leftSavedWidth = new GridLength(260);
+
+                LeftCol.Width = _leftSavedWidth;
+                SepCol.Width = new GridLength(1);
+            }
+            else
+            {
+                if (LeftCol.Width.Value > 0)
+                    _leftSavedWidth = LeftCol.Width;
+
+                LeftCol.Width = new GridLength(0);
+                SepCol.Width = new GridLength(0);
+            }
+        }
+
         #endregion
 
         #region PropertyChangedEvent

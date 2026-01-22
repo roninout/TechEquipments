@@ -5,91 +5,240 @@
     xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
     xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
     x:Class="TechEquipments.MainWindow"
-    Title="MainWindow" Height="800" Width="1000">
+    Title="MainWindow" Height="800" Width="1200">
 
     <dx:ThemedWindow.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </dx:ThemedWindow.Resources>
 
     <Grid>
-        <!-- Кнопка -->
-        <dx:SimpleButton Content="SimpleButton" IsEnabled="{Binding IsNotLoading}" HorizontalAlignment="Left" Height="50" Margin="10,10,0,0" VerticalAlignment="Top" Width="110" Click="SimpleButton_Click"/>
+        <!-- MAIN AREA -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <!-- LEFT -->
+                <ColumnDefinition x:Name="LeftCol" Width="260" MinWidth="0"/>
+                <!-- SEPARATOR -->
+                <ColumnDefinition x:Name="SepCol" Width="1"/>
+                <!-- RIGHT -->
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- Таблица -->
-        <dxg:GridControl
-                     Margin="0,84,0,0"
-                     ItemsSource="{Binding equipmentSOEDtos}"
-                     AutoGenerateColumns="None">
-            <dxg:GridControl.Columns>
-                <!--<dxg:GridColumn FieldName="TimeLocal" Header="Time" DisplayFormatString="dd.MM.yyyy HH:mm:ss.fff"/>-->
-                <dxg:GridColumn FieldName="TimeLocal" Header="Date" Width="80" MinWidth="80" MaxWidth="60">
-                    <dxg:GridColumn.EditSettings>
-                        <dxe:DateEditSettings Mask="dd.MM.yyyy"
-                              MaskUseAsDisplayFormat="True"/>
-                    </dxg:GridColumn.EditSettings>
-                </dxg:GridColumn>
-                <dxg:GridColumn FieldName="TimeLocal" Header="Time" Width="80" MinWidth="80" MaxWidth="60">
-                    <dxg:GridColumn.EditSettings>
-                        <dxe:DateEditSettings Mask="HH:mm:ss"
-                              MaskUseAsDisplayFormat="True"/>
-                    </dxg:GridColumn.EditSettings>
-                </dxg:GridColumn>
-                <dxg:GridColumn FieldName="Type" Header="Type" Width="100"/>
-                <dxg:GridColumn FieldName="Equipment" Header="Equipment" Width="100"/>
-                <dxg:GridColumn FieldName="Event" Header="Event" Width="100"/>
-                <dxg:GridColumn FieldName="BitCode" Header="BitCode" Width="30"/>
-                <dxg:GridColumn FieldName="TrnValue" Header="TrnValue" Width="30"/>
-                <dxg:GridColumn FieldName="ValueQuality" Header="ValueQuality" Width="30"/>
-            </dxg:GridControl.Columns>
+            <!-- LEFT PANEL -->
+            <Border Grid.Column="0" Padding="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-            <dxg:GridControl.View>
-                <dxg:TableView AutoWidth="True"
-                           ShowGroupPanel="False"
-                           AllowPerPixelScrolling="True"/>
-            </dxg:GridControl.View>
-        </dxg:GridControl>
+                    <!-- Stations -->
+                    <dxe:ComboBoxEdit Grid.Row="0"
+                                      Height="26"
+                                      Margin="0,0,0,8"
+                                      NullText="Stations"
+                                      IsTextEditable="False"/>
 
-        <!-- DevExpress loading panel поверх всего -->
-        <Grid Grid.RowSpan="2"
-              Panel.ZIndex="999"
-              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
-            <Border Background="#66000000"/>
+                    <!-- Types -->
+                    <dxe:ComboBoxEdit Grid.Row="1"
+                                      Height="26"
+                                      Margin="0,0,0,8"
+                                      NullText="Types"
+                                      IsTextEditable="False"/>
 
-            <Border Background="White" CornerRadius="10"
-                    Padding="20"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
- 
-                <StackPanel Width="460">
-                    <TextBlock FontSize="14"
-                        FontWeight="SemiBold"
-                        HorizontalAlignment="Center"
-                        Text="{Binding LoadingText}"/>
+                    <!-- ListBox -->
+                    <ListBox Grid.Row="2"
+                             ItemsSource="{Binding Equipments}"
+                             DisplayMemberPath="Equipment"
+                             SelectedItem="{Binding SelectedListBoxEquipment}"
+                             SelectionChanged="Equipments_SelectionChanged"
+                             MouseDoubleClick="Equipments_MouseDoubleClick"/>
+                </Grid>
+            </Border>
 
-                    <dxe:ProgressBarEdit Margin="0,8,0,0"
-                     Height="18"
-                     Minimum="0"
-                     Maximum="{Binding PerTrendMax}"
-                     EditValue="{Binding CurrentCount, Mode=OneWay}" />
+            <!-- SEPARATOR -->
+            <!--<Border Grid.Column="1" Background="#D0D0D0"/>-->
 
-                    <dxe:ProgressBarEdit Margin="0,8,0,0"
-                     Height="18"
-                     Minimum="0"
-                     Maximum="{Binding TotalMax}"
-                     EditValue="{Binding LoadedCount, Mode=OneWay}" />
+            <!-- RIGHT PANEL -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
 
-                    <dx:SimpleButton Content="Cancel"
-                     Margin="0,12,0,0"
-                     Width="100"
-                     HorizontalAlignment="Center"
-                     IsEnabled="{Binding IsLoading}"
-                     Click="CancelButton_Click"/>
+                <!-- TOP TOOLBAR (перенесён сюда) -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,8,8,8">
 
-                    <!-- Прозрачный прямоугольник, чтобы overlay точно "съедал" клики -->
-                    <Rectangle Fill="Transparent" />
+                    <!-- Toggle с "картинкой" стрелки (без визуального Checked/Unchecked) -->
+                    <ToggleButton x:Name="LeftPaneToggle"
+                                  Width="32" Height="28"
+                                  Margin="0,0,8,0"
+                                  Click="LeftPaneToggle_Click">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border Padding="0"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="#C8C8C8"
+                                        BorderThickness="1">
+                                    <Grid Width="16" Height="16">
+                                        <!-- arrow LEFT (когда панель видима) -->
+                                        <Path x:Name="ArrowLeft"
+                                              Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                              StrokeThickness="2"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Data="M 11,3 L 5,8 L 11,13"
+                                              Visibility="Collapsed"/>
+
+                                        <!-- arrow RIGHT (когда панель скрыта) -->
+                                        <Path x:Name="ArrowRight"
+                                              Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                              StrokeThickness="2"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Data="M 5,3 L 11,8 L 5,13"
+                                              Visibility="Visible"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- ВАЖНО: никаких триггеров на Background для IsChecked -->
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#10FFFFFF"/>
+                                    </Trigger>
+
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter Property="Background" Value="#1A000000"/>
+                                    </Trigger>
+
+                                    <!-- IsChecked=true => панель ВИДИМА => стрелка влево (свернуть) -->
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="ArrowLeft" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="ArrowRight" Property="Visibility" Value="Collapsed"/>
+                                    </Trigger>
+
+                                    <!-- IsChecked=false => панель СКРЫТА => стрелка вправо (развернуть) -->
+                                    <Trigger Property="IsChecked" Value="False">
+                                        <Setter TargetName="ArrowLeft" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="ArrowRight" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+
+                    <!-- поле поиска перед Load -->
+                    <dxe:TextEdit Width="240" Height="26"
+                                 NullText="Equipment name..."
+                                 EditValue="{Binding EquipName, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <dx:SimpleButton Content="Load" Width="90" Margin="8,0,0,0"
+                                     IsEnabled="{Binding IsNotLoading}"
+                                     Click="Load_Click"/>
                 </StackPanel>
 
+                <!-- TABS -->
+                <dx:DXTabControl Grid.Row="1">
+                    <dx:DXTabItem Header="SOE">
+                        <dxg:GridControl ItemsSource="{Binding equipmentSOEDtos}"
+                                         AutoGenerateColumns="None">
+                            <dxg:GridControl.Columns>
+                                <dxg:GridColumn FieldName="TimeLocal" Header="Date" Width="90">
+                                    <dxg:GridColumn.EditSettings>
+                                        <dxe:DateEditSettings Mask="dd.MM.yyyy"
+                                                              MaskUseAsDisplayFormat="True"/>
+                                    </dxg:GridColumn.EditSettings>
+                                </dxg:GridColumn>
+
+                                <dxg:GridColumn FieldName="TimeLocal" Header="Time" Width="90">
+                                    <dxg:GridColumn.EditSettings>
+                                        <dxe:DateEditSettings Mask="HH:mm:ss"
+                                                              MaskUseAsDisplayFormat="True"/>
+                                    </dxg:GridColumn.EditSettings>
+                                </dxg:GridColumn>
+
+                                <dxg:GridColumn FieldName="Type" Header="Type" Width="110"/>
+                                <dxg:GridColumn FieldName="Equipment" Header="Equipment" Width="160"/>
+                                <dxg:GridColumn FieldName="Event" Header="Event" Width="220"/>
+                                <dxg:GridColumn FieldName="BitCode" Header="BitCode" Width="60"/>
+                                <dxg:GridColumn FieldName="TrnValue" Header="TrnValue" Width="80"/>
+                                <dxg:GridColumn FieldName="ValueQuality" Header="ValueQuality" Width="100"/>
+                            </dxg:GridControl.Columns>
+
+                            <dxg:GridControl.View>
+                                <dxg:TableView AutoWidth="True"
+                                               ShowGroupPanel="False"
+                                               AllowPerPixelScrolling="True"/>
+                            </dxg:GridControl.View>
+                        </dxg:GridControl>
+                    </dx:DXTabItem>
+
+                    <dx:DXTabItem Header="Tab2">
+                        <TextBlock Margin="10" Text="..." />
+                    </dx:DXTabItem>
+                </dx:DXTabControl>
+            </Grid>
+        </Grid>
+
+        <!-- LOADING OVERLAY -->
+        <Grid Panel.ZIndex="999" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
+
+            <Border Background="#66000000"/>
+
+            <Border Background="White"
+            CornerRadius="10"
+            Padding="16"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+
+                <Grid Width="420">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Top row: текст слева + Cancel справа -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Text="{Binding LoadingText}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,12,0"/>
+
+                        <dx:SimpleButton Grid.Column="1"
+                                 Content="Cancel"
+                                 Width="90"
+                                 Height="28"
+                                 Click="Cancel_Click"/>
+                    </Grid>
+
+                    <!-- Progress 1 -->
+                    <dxe:ProgressBarEdit Grid.Row="1"
+                                 Margin="0,10,0,0"
+                                 Height="18"
+                                 Minimum="0"
+                                 Maximum="{Binding PerTrendMax}"
+                                 EditValue="{Binding CurrentCount, Mode=OneWay}"/>
+
+                    <!-- Progress 2 -->
+                    <dxe:ProgressBarEdit Grid.Row="2"
+                                 Margin="0,8,0,0"
+                                 Height="18"
+                                 Minimum="0"
+                                 Maximum="{Binding TotalMax}"
+                                 EditValue="{Binding LoadedCount, Mode=OneWay}"/>
+                </Grid>
             </Border>
         </Grid>
 
+ 
     </Grid>
 </dx:ThemedWindow>
