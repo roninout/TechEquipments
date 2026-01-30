@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using CtApi;
+using Microsoft.EntityFrameworkCore;
 
 namespace TechEquipments
 {
@@ -30,6 +31,11 @@ namespace TechEquipments
                 .ConfigureLogging(logging => logging.ClearProviders())
                 .ConfigureServices((context, services) =>
                 {
+                    // EF Core DbContextFactory
+                    string connStr = context.Configuration.GetConnectionString("Postgres");                    
+                    services.AddDbContextFactory<PgDbContext>(options => options.UseNpgsql(connStr));
+                    services.AddSingleton<IDbService, PgDbService>();
+
                     services.AddSingleton<CtApiService>();
                     services.AddSingleton<ICtApiService>(sp => sp.GetRequiredService<CtApiService>());
                     services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<CtApiService>());
@@ -45,6 +51,13 @@ namespace TechEquipments
             base.OnStartup(e);
             await AppHost.StartAsync();
             AppHost.Services.GetRequiredService<MainWindow>().Show();
+
+            // Быстрый тест подключения
+            using var scope = AppHost.Services.CreateScope();
+            var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<PgDbContext>>();
+            await using var db = await factory.CreateDbContextAsync();
+            var ok = await db.Database.CanConnectAsync();
+            if (!ok) throw new Exception("Postgres: cannot connect.");
         }
 
         protected override async void OnExit(ExitEventArgs e)

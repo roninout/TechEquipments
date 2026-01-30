@@ -10,7 +10,8 @@ namespace TechEquipments
     {
         public string Equipment { get; init; } = "";
         public string Tag { get; init; } = "";
-        public string Type { get; init; } = "";
+        public string Type { get; set; } = "";
+        public string Station { get; set; } = "";
         public override string ToString() => Equipment;
     }
 }

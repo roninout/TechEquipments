@@ -20,6 +20,8 @@ namespace TechEquipments
         Task<EquipModel> GetEquipModelWithRef(string sEquipName, string sEquipItem = "STW");
 
         Task<List<EquipmentSOEDto>> GetDataFromEquipAsync(string equipName, IProgress<LoadingProgress>? progress = null, CancellationToken ct = default, int perTrendMax = 2000, int totalMax = 10000);
-        Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(CancellationToken ct = default);
+        Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null, CancellationToken ct = default);
+
+        Task<string> GetExternalTagAsync(CancellationToken ct = default);
     }
 }

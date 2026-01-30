@@ -2,6 +2,7 @@
 using DevExpress.Pdf;
 using DevExpress.Text.Fonts;
 using DevExpress.XtraEditors.Filtering;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,11 +16,13 @@ namespace TechEquipments
     public sealed class EquipmentService : IEquipmentService
     {
         private readonly ICtApiService _ctApiService;
+        private readonly IConfiguration _config;
         private const int windowMinutes = 60;
 
-        public EquipmentService(ICtApiService ctApiService)
+        public EquipmentService(ICtApiService ctApiService, IConfiguration config)
         {
             _ctApiService = ctApiService;
+            _config = config;
         }
 
         // формируем EquipmentSOEDto с данными по Equipment для отображение в таблице
@@ -195,12 +198,11 @@ namespace TechEquipments
         }
 
         // Возвращает список названий всех Equipment
-        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(CancellationToken ct = default)
+        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null, CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
-
-            //var findHashTags = await _ctApiService.FindAsync("Tag","Tag=*_HASHCODE","","EQUIPMENT","TAG");
-            var findHashTags = await _ctApiService.FindAsync("Tag", "Tag=*STW", "", "EQUIPMENT", "TAG");
+            var findHashTags = await _ctApiService.FindAsync("Tag","Tag=*_HASHCODE","","EQUIPMENT","TAG");
+            ct.ThrowIfCancellationRequested();
 
             var items = findHashTags
                 .Where(d =>
@@ -217,47 +219,34 @@ namespace TechEquipments
                 .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            int total = items.Count;
+            int done = 0;
+            progress?.Report((done, total));
 
-            //// 2) Добираем Type (ограничим параллелизм, иначе будет очень долго/тяжело)
-            //const int parallelism = 8;
-            //using var sem = new SemaphoreSlim(parallelism);
+            foreach (var item in items)
+            {
+                ct.ThrowIfCancellationRequested();
+                item.Type = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{item.Equipment}\",\"Type\", 3)");
+                int dot = item.Equipment.IndexOf('.');
+                item.Station = dot > 0 ? item.Equipment.Substring(0, dot) : "";
+                done++;
 
-            //var tasks = items.Select(async x =>
-            //{
-            //    ct.ThrowIfCancellationRequested();
-            //    await sem.WaitAsync(ct);
-            //    try
-            //    {
-            //        // если вдруг в имени будут кавычки — экранируем
-            //        var equipNameEsc = x.Equipment.Replace("\"", "\\\"");
-
-            //        var type = await _ctApiService.CicodeAsync(
-            //            $"EquipGetProperty(\"{equipNameEsc}\",\"Type\", 1)");
-
-            //        type = (type ?? "").Trim();
-            //        if (string.Equals(type, "Unknown", StringComparison.OrdinalIgnoreCase))
-            //            type = "";
-
-            //        return new EquipListBoxItem
-            //        {
-            //            Equipment = x.Equipment,
-            //            Tag = x.Tag,
-            //            Type = type
-            //        };
-            //    }
-            //    finally
-            //    {
-            //        sem.Release();
-            //    }
-            //});
-
-            //var itemss = (await Task.WhenAll(tasks))
-            //    .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
-            //    .ToList();
-
-
-
+                progress?.Report((done, total));
+            }
             return items;
+        }
+
+        // читаем внешний тег для поиска
+        public async Task<string> GetExternalTagAsync(CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tagName = (_config["CtApi:ExternalTag"] ?? "").Trim();
+            var v = await _ctApiService.TagReadAsync(tagName);
+
+            ct.ThrowIfCancellationRequested();
+
+            return (v ?? "").Trim();
         }
 
         #endregion
@@ -344,9 +333,11 @@ namespace TechEquipments
             return new EquipmentSOEDto
             {
                 TimeUtc = x.DateTime,
-                Type = equipment.Type ?? "",
+                TypeGroup = EquipTypeRegistry.GetGroup(equipment.Type ?? ""),
+                //Type = equipment.Type ?? "",
                 Equipment = equipment.Name ?? "",
                 Event = SoeEventMapper.GetEventText(equipment.Type, (int)bitCode),
+                EventKey = SoeEventMapper.GetEventKey(equipment.Type, (int)bitCode),
                 BitCode = bitCode,
                 TrnValue = x.Value,
 

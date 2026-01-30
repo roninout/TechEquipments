@@ -25,42 +25,32 @@ namespace TechEquipments
             return ((Enum)(object)(TEnum)Enum.ToObject(typeof(TEnum), code)).GetDescription();
         }
 
-        public static string GetEventText(string equipType, int bitCode)
+        public static string GetEventText(string equipType, int bitCode) => EquipTypeRegistry.GetEventText(equipType, bitCode);
+
+        private static string GetNameOrEmpty<TEnum>(int code) where TEnum : struct, Enum
+        {
+            if (!Enum.IsDefined(typeof(TEnum), code)) return "";
+            return Enum.GetName(typeof(TEnum), code) ?? "";
+        }
+
+        public static string GetEventKey(string equipType, int bitCode)
         {
             if (bitCode <= 0) return "";
 
             var t = (equipType ?? "").Trim();
 
-            switch (t)
+            return t switch
             {
-                case "DigitalIn":
-                    return GetDescriptionOrEmpty<DiSoeCode>(bitCode);
-
-                case "DigitalOut":
-                    return GetDescriptionOrEmpty<DoSoeCode>(bitCode);
-
-                case "Atv":
-                    return GetDescriptionOrEmpty<AtvSoeCode>(bitCode);
-
-                case "Motor":
-                    return GetDescriptionOrEmpty<MotorSoeCode>(bitCode);
-
-                case "AnalogIn":
-                case "AnalogInCalc":
-                    return GetDescriptionOrEmpty<AiSoeCode>(bitCode);
-
-                case "ValveA":
-                    return GetDescriptionOrEmpty<AoSoeCode>(bitCode);
-
-                case "ValveA_EL":
-                    return GetDescriptionOrEmpty<VgaElSoeCode>(bitCode);
-
-                case "ValveD":
-                    return GetDescriptionOrEmpty<VgdSoeCode>(bitCode);
-
-                default:
-                    return "";
-            }
+                "DigitalIn" => GetNameOrEmpty<DiSoeCode>(bitCode),
+                "DigitalOut" => GetNameOrEmpty<DoSoeCode>(bitCode),
+                "Atv" => GetNameOrEmpty<AtvSoeCode>(bitCode),
+                "Motor" => GetNameOrEmpty<MotorSoeCode>(bitCode),
+                "AnalogIn" or "AnalogInCalc" => GetNameOrEmpty<AiSoeCode>(bitCode),
+                "ValveA" => GetNameOrEmpty<AoSoeCode>(bitCode),
+                "ValveA_EL" => GetNameOrEmpty<VgaElSoeCode>(bitCode),
+                "ValveD" => GetNameOrEmpty<VgdSoeCode>(bitCode),
+                _ => ""
+            };
         }
     }
 
@@ -144,39 +134,39 @@ namespace TechEquipments
     // ---------------- DI (32) ----------------
     public enum DiSoeCode : int
     {
-        [Description("VALUE - On")] VALUE_On = 1,
-        [Description("VALUE TRUE - On")] VALUE_TRUE_On = 2,
-        [Description("VALUE FORCED - On")] VALUE_FORCED_On = 3,
-        [Description("FORCE CMD - On")] FORCE_CMD_On = 4,
-        [Description("AL HEALTH - Up")] AL_HEALTH_Up = 5,
-        [Description("Reserve - On")] Reserve_On_06 = 6,
-        [Description("Reserve - On")] Reserve_On_07 = 7,
-        [Description("Reserve - On")] Reserve_On_08 = 8,
-        [Description("Reserve - On")] Reserve_On_09 = 9,
-        [Description("Reserve - On")] Reserve_On_10 = 10,
-        [Description("Reserve - On")] Reserve_On_11 = 11,
-        [Description("Reserve - On")] Reserve_On_12 = 12,
-        [Description("Reserve - On")] Reserve_On_13 = 13,
-        [Description("Reserve - On")] Reserve_On_14 = 14,
-        [Description("Reserve - On")] Reserve_On_15 = 15,
-        [Description("Reserve - On")] Reserve_On_16 = 16,
+        [Description("VALUE - Off")] VALUE_Off = 1,
+        [Description("VALUE TRUE - Off")] VALUE_TRUE_Off = 2,
+        [Description("VALUE FORCED - Off")] VALUE_FORCED_Off = 3,
+        [Description("FORCE CMD - Off")] FORCE_CMD_Off = 4,
+        [Description("AL HEALTH - Down")] AL_HEALTH_Down = 5,
+        [Description("Reserve - Off")] Reserve_Off_22 = 6,
+        [Description("Reserve - Off")] Reserve_Off_23 = 7,
+        [Description("Reserve - Off")] Reserve_Off_24 = 8,
+        [Description("Reserve - Off")] Reserve_Off_25 = 9,
+        [Description("Reserve - Off")] Reserve_Off_26 = 10,
+        [Description("Reserve - Off")] Reserve_Off_27 = 11,
+        [Description("Reserve - Off")] Reserve_Off_28 = 12,
+        [Description("Reserve - Off")] Reserve_Off_29 = 13,
+        [Description("Reserve - Off")] Reserve_Off_30 = 14,
+        [Description("Reserve - Off")] Reserve_Off_31 = 15,
+        [Description("Reserve - Off")] Reserve_Off_32 = 16,
 
-        [Description("VALUE - Off")] VALUE_Off = 17,
-        [Description("VALUE TRUE - Off")] VALUE_TRUE_Off = 18,
-        [Description("VALUE FORCED - Off")] VALUE_FORCED_Off = 19,
-        [Description("FORCE CMD - Off")] FORCE_CMD_Off = 20,
-        [Description("AL HEALTH - Down")] AL_HEALTH_Down = 21,
-        [Description("Reserve - Off")] Reserve_Off_22 = 22,
-        [Description("Reserve - Off")] Reserve_Off_23 = 23,
-        [Description("Reserve - Off")] Reserve_Off_24 = 24,
-        [Description("Reserve - Off")] Reserve_Off_25 = 25,
-        [Description("Reserve - Off")] Reserve_Off_26 = 26,
-        [Description("Reserve - Off")] Reserve_Off_27 = 27,
-        [Description("Reserve - Off")] Reserve_Off_28 = 28,
-        [Description("Reserve - Off")] Reserve_Off_29 = 29,
-        [Description("Reserve - Off")] Reserve_Off_30 = 30,
-        [Description("Reserve - Off")] Reserve_Off_31 = 31,
-        [Description("Reserve - Off")] Reserve_Off_32 = 32,
+        [Description("VALUE - On")] VALUE_On = 17,
+        [Description("VALUE TRUE - On")] VALUE_TRUE_On = 18,
+        [Description("VALUE FORCED - On")] VALUE_FORCED_On = 19,
+        [Description("FORCE CMD - On")] FORCE_CMD_On = 20,
+        [Description("AL HEALTH - Up")] AL_HEALTH_Up = 21,
+        [Description("Reserve - On")] Reserve_On_06 = 22,
+        [Description("Reserve - On")] Reserve_On_07 = 23,
+        [Description("Reserve - On")] Reserve_On_08 = 24,
+        [Description("Reserve - On")] Reserve_On_09 = 25,
+        [Description("Reserve - On")] Reserve_On_10 = 26,
+        [Description("Reserve - On")] Reserve_On_11 = 27,
+        [Description("Reserve - On")] Reserve_On_12 = 28,
+        [Description("Reserve - On")] Reserve_On_13 = 29,
+        [Description("Reserve - On")] Reserve_On_14 = 30,
+        [Description("Reserve - On")] Reserve_On_15 = 31,
+        [Description("Reserve - On")] Reserve_On_16 = 32,
     }
 
     // ---------------- DO (32) ----------------
