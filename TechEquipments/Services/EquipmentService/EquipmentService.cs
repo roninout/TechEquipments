@@ -5,7 +5,9 @@ using DevExpress.XtraEditors.Filtering;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -375,6 +377,127 @@ namespace TechEquipments
             // если тренд возвращает целое в double (2313.0), то округление норм
             return Convert.ToInt64(Math.Round(value, MidpointRounding.AwayFromZero));
         }
+        #endregion
+
+        #region Params
+
+        /// <summary>
+        /// Читаем данные модели Param
+        /// </summary>
+        public async Task<T> ReadEquipParamsAsync<T>(string equipName, CancellationToken ct = default) where T : new()
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var name = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return default;
+
+            var props = typeof(T)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(p => p.CanRead && p.CanWrite)
+                .OrderBy(p => p.MetadataToken)
+                .ToList();
+
+            if (props.Count == 0)
+                return new T();
+
+            // Проверяем существование тега по первому параметру
+            var firstItem = props[0].Name;
+
+            var firstTagName = await _ctApiService.CicodeAsync($"TagInfo(\"{name}.{firstItem}\", 0)");
+            firstTagName = (firstTagName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(firstTagName) || firstTagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                return default;
+
+            if (!await IsTagExistAsync(firstTagName))
+                return default;
+
+            // Читаем все свойства
+            var model = new T();
+
+            foreach (var p in props)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var equipItem = p.Name;
+
+                var tagName = await _ctApiService.CicodeAsync($"TagInfo(\"{name}.{equipItem}\", 0)");
+                tagName = (tagName ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var raw = await _ctApiService.TagReadAsync(tagName);
+                if (raw == null)
+                    continue;
+
+                if (TryConvert(raw, p.PropertyType, out var converted))
+                    p.SetValue(model, converted);
+            }
+
+            return model;
+        }
+
+        /// <summary>
+        /// Конвертация значения тега в нужный тип свойства модели
+        /// </summary>
+        private static bool TryConvert(string raw, Type targetType, out object? value)
+        {
+            value = null;
+            raw = (raw ?? "").Trim();
+
+            // Nullable<T>
+            var t = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+            try
+            {
+                if (t == typeof(string))
+                {
+                    value = raw;
+                    return true;
+                }
+
+                if (t == typeof(bool))
+                {
+                    // CtApi часто отдаёт "0"/"1"
+                    if (raw == "1") { value = true; return true; }
+                    if (raw == "0") { value = false; return true; }
+                    if (bool.TryParse(raw, out var b)) { value = b; return true; }
+                    return false;
+                }
+
+                if (t == typeof(int))
+                {
+                    if (int.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var i)) { value = i; return true; }
+                    if (int.TryParse(raw, out i)) { value = i; return true; }
+                    return false;
+                }
+
+                if (t == typeof(uint))
+                {
+                    if (uint.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var u)) { value = u; return true; }
+                    if (uint.TryParse(raw, out u)) { value = u; return true; }
+                    return false;
+                }
+
+                if (t == typeof(double))
+                {
+                    if (double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)) { value = d; return true; }
+                    if (double.TryParse(raw, out d)) { value = d; return true; }
+                    return false;
+                }
+
+                // fallback для простых типов
+                value = Convert.ChangeType(raw, t, CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         #endregion
     }
 

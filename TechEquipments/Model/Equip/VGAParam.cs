@@ -2,22 +2,19 @@
 
 namespace TechEquipments
 {
-    public class AIParam // AnalogInCalc
+    public class VGAParam
     {
+        public bool Mode { get; set; }
         public bool AlarmLAEn { get; set; }
         public bool AlarmLWEn { get; set; }
         public bool AlarmHWEn { get; set; }
         public bool AlarmHAEn { get; set; }
         public bool ForceCmd { get; set; }
-        public bool NotTripLow { get; set; }
-        public bool NotTripHigh { get; set; }
-        public bool RealVar { get; set; }
         public bool AlarmLA { get; set; }
         public bool AlarmLW { get; set; }
         public bool AlarmHW { get; set; }
         public bool AlarmHA { get; set; }
         public bool AlarmA { get; set; }
-        public bool Shunt { get; set; }
         public bool AlarmW { get; set; }
         public bool AlarmHealth { get; set; }
 
@@ -26,12 +23,12 @@ namespace TechEquipments
         public int Max { get; set; }
         public int MinR { get; set; }
         public int MaxR { get; set; }
-        public int Flt { get; set; }
-        public int Coef { get; set; }
+        public int OutMin { get; set; }
+        public int OutMax { get; set; }
         public int Value { get; set; }
-        public int Hmi { get; set; }
-        public int HmiTrue { get; set; }
-        public int HmiForced { get; set; }
+        public int Man { get; set; }
+        public int ManTrue { get; set; }
+        public int ManForced { get; set; }
         public int SetLA { get; set; }
         public int SetLW { get; set; }
         public int SetHW { get; set; }

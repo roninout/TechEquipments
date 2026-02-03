@@ -41,6 +41,8 @@ namespace TechEquipments
                     services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<CtApiService>());
                     services.AddSingleton<IEquipmentService, EquipmentService>();
 
+                    services.AddSingleton<IUserStateService, JsonUserStateService>();
+
                     services.AddTransient<MainWindow>();
                 })
                 .Build();

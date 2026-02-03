@@ -12,9 +12,9 @@ namespace TechEquipments
     /// </summary>
     public enum MainTabKind
     {
-        SOE = 0,
+        Param = 0,
         OperationActions = 1,
         AlarmHistory = 2,
-        // FutureTab = 3,
+        SOE = 3
     }
 }

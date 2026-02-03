@@ -89,8 +89,7 @@
                              DisplayMemberPath="Equipment"
                              ItemContainerStyle="{StaticResource AppListBoxItemStyle}"
                              SelectedItem="{Binding SelectedListBoxEquipment}"
-                             SelectionChanged="Equipments_SelectionChanged"
-                             MouseDoubleClick="Equipments_MouseDoubleClick"/>
+                             SelectionChanged="Equipments_SelectionChanged"/>
                 </Grid>
             </Border>
 
@@ -158,19 +157,6 @@
                         </ToggleButton.Template>
                     </ToggleButton>
 
-                    <!-- Поиск оборудования --><!--
-                    <dxe:TextEdit x:Name="SearchTextEdit"
-                                  Width="240"
-                                  Style="{StaticResource AppBaseEditStyle}"
-                                  NullText="Equipment name..."
-                                  EditValue="{Binding EquipName, UpdateSourceTrigger=PropertyChanged}"/>
-
-                    --><!-- Загрузка SOE --><!--
-                    <dx:SimpleButton Content="Load" Width="90" Margin="8,0,0,0"
-                                     Style="{StaticResource AppButtonStyle}"
-                                     IsEnabled="{Binding IsNotLoading}"
-                                     Click="Load_Click"/>-->
-
                     <!-- ===== DB Date (видимо только на DB вкладках) ===== -->
                     <TextBlock Text="Date:"
                                Margin="0,0,8,0"
@@ -208,44 +194,47 @@
                                  ItemContainerStyle="{StaticResource AppTabItemStyle}"
                                  SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
 
-                    <!-- ============ SOE TAB ============ -->
-                    <dx:DXTabItem Header="SOE">
-                        <dxg:GridControl ItemsSource="{Binding equipmentSOEDtos}" AutoGenerateColumns="None">
-                            <dxg:GridControl.Columns>
-                                <dxg:GridColumn FieldName="TimeLocal" Header="Date" Width="90" MinWidth="90" MaxWidth="90" ReadOnly="True">
-                                    <dxg:GridColumn.EditSettings>
-                                        <dxe:DateEditSettings Mask="dd.MM.yyyy" MaskUseAsDisplayFormat="True"/>
-                                    </dxg:GridColumn.EditSettings>
-                                </dxg:GridColumn>
+                    <!-- ============ PARAM TAB ============ -->
+                    <dx:DXTabItem Header="Param">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                                <dxg:GridColumn FieldName="TimeLocal" Header="Time" Width="90" MinWidth="90" MaxWidth="90" ReadOnly="True">
-                                    <dxg:GridColumn.EditSettings>
-                                        <dxe:DateEditSettings Mask="HH:mm:ss" MaskUseAsDisplayFormat="True"/>
-                                    </dxg:GridColumn.EditSettings>
-                                </dxg:GridColumn>
+                            <!-- Строка состояния именно для Param -->
+                            <TextBlock Grid.Row="0" Grid.Column="1"
+                                       Text="{Binding ParamStatusText}"
+                                       Style="{StaticResource AppTextStyle}"
+                                       Margin="0,0,0,8"/>
 
-                                <dxg:GridColumn FieldName="TypeGroup" Header="Type" Width="110" MinWidth="110" MaxWidth="110" ReadOnly="True"/>
-                                <dxg:GridColumn FieldName="Equipment" Header="Equipment" Width="160" MinWidth="160" MaxWidth="360" ReadOnly="True"/>
+                            <!-- Вывод параметров: слева имя, справа значение -->
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding ParamItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="220"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
 
-                                <!-- Подсветка Event по ключу -->
-                                <dxg:GridColumn FieldName="Event" Header="Event" Width="220" ReadOnly="True">
-                                    <dxg:GridColumn.CellStyle>
-                                        <Style TargetType="dxg:LightweightCellEditor">
-                                            <Setter Property="Background" Value="{Binding RowData.Row.EventKey, Converter={StaticResource EventKeyToBrush}}"/>
-                                            <Setter Property="Padding" Value="4,0"/>
-                                        </Style>
-                                    </dxg:GridColumn.CellStyle>
-                                </dxg:GridColumn>
-                            </dxg:GridControl.Columns>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Name}"
+                                                           VerticalAlignment="Center"
+                                                           Style="{StaticResource AppTextBlockStyle}"/>
 
-                            <dxg:GridControl.View>
-                                <dxg:TableView Style="{StaticResource AppTableViewStyle}"
-                                               AutoWidth="True"
-                                               ShowGroupPanel="False"
-                                               AllowPerPixelScrolling="True"
-                                               ColumnHeaderStyle="{StaticResource AppGridColumnHeaderStyle}"/>
-                            </dxg:GridControl.View>
-                        </dxg:GridControl>
+                                                <dxe:TextEdit Grid.Column="1"
+                                                              Style="{StaticResource AppBaseEditStyle}"
+                                                              IsReadOnly="True"
+                                                              EditValue="{Binding Value}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                        </Grid>
                     </dx:DXTabItem>
 
                     <!-- ============ OPERATION ACTIONS TAB ============ -->
@@ -304,6 +293,46 @@
                                 </dxg:GridControl.Columns>
                             </dxg:GridControl>
                         </Grid>
+                    </dx:DXTabItem>
+
+                    <!-- ============ SOE TAB ============ -->
+                    <dx:DXTabItem Header="SOE">
+                        <dxg:GridControl ItemsSource="{Binding equipmentSOEDtos}" AutoGenerateColumns="None">
+                            <dxg:GridControl.Columns>
+                                <dxg:GridColumn FieldName="TimeLocal" Header="Date" Width="90" MinWidth="90" MaxWidth="90" ReadOnly="True">
+                                    <dxg:GridColumn.EditSettings>
+                                        <dxe:DateEditSettings Mask="dd.MM.yyyy" MaskUseAsDisplayFormat="True"/>
+                                    </dxg:GridColumn.EditSettings>
+                                </dxg:GridColumn>
+
+                                <dxg:GridColumn FieldName="TimeLocal" Header="Time" Width="90" MinWidth="90" MaxWidth="90" ReadOnly="True">
+                                    <dxg:GridColumn.EditSettings>
+                                        <dxe:DateEditSettings Mask="HH:mm:ss" MaskUseAsDisplayFormat="True"/>
+                                    </dxg:GridColumn.EditSettings>
+                                </dxg:GridColumn>
+
+                                <dxg:GridColumn FieldName="TypeGroup" Header="Type" Width="110" MinWidth="110" MaxWidth="110" ReadOnly="True"/>
+                                <dxg:GridColumn FieldName="Equipment" Header="Equipment" Width="160" MinWidth="160" MaxWidth="360" ReadOnly="True"/>
+
+                                <!-- Подсветка Event по ключу -->
+                                <dxg:GridColumn FieldName="Event" Header="Event" Width="220" ReadOnly="True">
+                                    <dxg:GridColumn.CellStyle>
+                                        <Style TargetType="dxg:LightweightCellEditor">
+                                            <Setter Property="Background" Value="{Binding RowData.Row.EventKey, Converter={StaticResource EventKeyToBrush}}"/>
+                                            <Setter Property="Padding" Value="4,0"/>
+                                        </Style>
+                                    </dxg:GridColumn.CellStyle>
+                                </dxg:GridColumn>
+                            </dxg:GridControl.Columns>
+
+                            <dxg:GridControl.View>
+                                <dxg:TableView Style="{StaticResource AppTableViewStyle}"
+                                               AutoWidth="True"
+                                               ShowGroupPanel="False"
+                                               AllowPerPixelScrolling="True"
+                                               ColumnHeaderStyle="{StaticResource AppGridColumnHeaderStyle}"/>
+                            </dxg:GridControl.View>
+                        </dxg:GridControl>
                     </dx:DXTabItem>
 
                 </dx:DXTabControl>

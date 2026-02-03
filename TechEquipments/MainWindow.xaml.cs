@@ -1,14 +1,15 @@
 ﻿using CtApi;
 using DevExpress.Xpf.Core;
 using System;
-using System.Globalization;
-using System.IO;
-using System.Text.Json;
-using System.Text.Json.Nodes;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -69,6 +70,9 @@ namespace TechEquipments
         /// Данные вкладки "Alarm history".
         /// </summary>
         public ObservableCollection<AlarmHistoryDTO> AlarmHistoryRows { get; } = new();
+
+        /// <summary>Параметры AIParam для вкладки Param (TextBox -> Name)</summary>
+        public ObservableCollection<ParamItem> ParamItems { get; } = new();
 
         #endregion
 
@@ -204,11 +208,8 @@ namespace TechEquipments
                 _equipName = value;
                 OnPropertyChanged();
 
-                if (!_restoringUiState)
-                {
-                    ScheduleSearch(_equipName);   // твой debounce поиска
-                    ScheduleUiStateSave();        // debounce сохранения состояния
-                }
+                ScheduleSearch(_equipName);   // твой debounce поиска
+                ScheduleStateSave();        // debounce сохранения состояния
             }
         }
 
@@ -243,8 +244,7 @@ namespace TechEquipments
                 OnPropertyChanged();
                 ApplyFilters();
 
-                if (!_restoringUiState)
-                    ScheduleUiStateSave();
+                ScheduleStateSave();
             }
         }
 
@@ -261,8 +261,7 @@ namespace TechEquipments
                 OnPropertyChanged();
                 ApplyFilters();
 
-                if (!_restoringUiState)
-                    ScheduleUiStateSave();
+                ScheduleStateSave();
             }
         }
 
@@ -431,14 +430,20 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(IsDbTabSelected));
                 OnPropertyChanged(nameof(MainActionButtonText));
                 OnPropertyChanged(nameof(CanMainAction));
+                OnPropertyChanged(nameof(IsBottomLoading));
+
+                // ВАЖНО: во время восстановления состояния никаких автодействий
+                if (_isRestoringState)
+                    return;
 
                 _dbCts?.Cancel(); // отменяем предыдущую DB-загрузку при смене вкладки
 
-                // авто-загрузка при переходе на DB вкладки
-                _ = LoadCurrentDbTabAsync(force: false);
+                ScheduleStateSave(); // сохраняем состояние (debounce)
 
-                if (!_restoringUiState)
-                    ScheduleUiStateSave();
+                // при переходе на DB-вкладки — делаем "как будто нажали Search"
+                //if (IsDbTabSelected)
+                    _ = OnTabActivatedLikeSearchAsync(force: true); //_ = LoadCurrentDbTabAsync(force: true);              
+
             }
         }
 
@@ -455,8 +460,7 @@ namespace TechEquipments
                 // Если мы на DB вкладке и есть коннект — планируем авто-загрузку (debounce)
                 ScheduleDbReload();
 
-                if (!_restoringUiState)
-                    ScheduleUiStateSave();
+                ScheduleStateSave();
             }
         }
 
@@ -531,83 +535,74 @@ namespace TechEquipments
 
         #endregion
 
-        #region UI state persistence (appsettings.json)
+        #region UI state persistence
 
-        private const string UiStateSectionName = "UiState";
+        private readonly IUserStateService _stateService;
 
-        // Путь к appsettings.json в папке запуска (обычно bin\Debug\net6.0-windows\)
-        private string _appSettingsPath = "";
-
-        // Защита от параллельных записей файла
-        private readonly SemaphoreSlim _uiStateGate = new(1, 1);
-
-        // Debounce, чтобы не писать файл на каждый символ
-        private DispatcherTimer _uiStateSaveTimer = null!;
-
-        // Флаг, чтобы во время восстановления состояния не триггерить автопоиск/автозагрузку/автосохранение
-        private bool _restoringUiState;
+        // debounce для сохранения состояния
+        private DispatcherTimer _stateSaveTimer = null!;
+        private bool _isRestoringState;
 
         #endregion
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService)
+        #region Params
+
+        // Строка состояния на вкладке Param
+        private string _paramStatusText = "";
+        
+        public string ParamStatusText
+        {
+            get => _paramStatusText;
+            private set { _paramStatusText = value; OnPropertyChanged(); }
+        }
+
+        // Что сейчас отображаем (чтобы понимать: перестраивать список или только обновить значения)
+        private Type _currentParamModelType;
+
+        // polling
+        private CancellationTokenSource _paramPollCts;
+        private int _paramReadCycles;
+
+        #endregion
+
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService)
         {
             InitializeComponent();
 
             _equipmentService = equipmentService;
             _dbService = dbService;
+            _stateService = stateService;
+            
+            DataContext = this; // DataContext на себя: используется во всём XAML (binding)
 
-            // DataContext на себя: используется во всём XAML (binding)
-            DataContext = this;
+            InitEquipmentsView();
+            InitSearchTimer();
+            InitDbReloadTimer();
+            InitStateSaveTimer();
 
             Loaded += async (_, __) =>
             {
                 _layoutReady = true;
                 InitLeftPaneState();
 
-                // Параллельный старт:
-                _ = StartupLoadFromExternalTagAsync(); // SOE - сразу
-                _ = LoadEquipmentsListAsync();         // список слева - параллельно
+                // 1) Сначала восстановим сохранённое состояние (включая вкладку/дату/поиск)
+                await RestoreStateAsync();
 
-                await CheckDbAsync();                  // проверка подключения к DB
+                // 2) Потом пытаемся взять ExternalTag.
+                //    Если ExternalTag пустой/Unknown — остаёмся на восстановленном.
+                await ApplyExternalTagIfAnyAsync();
+
+                // 3) Параллельные загрузки
+                _ = LoadEquipmentsListAsync();
+                await CheckDbAsync();
+
+                // 4) И как будто нажали “поиск/лоад” на текущей вкладке
+                await OnTabActivatedLikeSearchAsync(force: true);
             };
 
-            InitEquipmentsView();
-            InitSearchTimer();
-            InitDbReloadTimer();
-            InitUiStatePersistence();
         }
 
         #region Startup loading
-
-        /// <summary>
-        /// Старт: читает внешний тег (имя оборудования), подставляет в поиск
-        /// и загружает SOE.
-        /// </summary>
-        private async Task StartupLoadFromExternalTagAsync()
-        {
-            try
-            {
-                var eqFromTag = await _equipmentService.GetExternalTagAsync(CancellationToken.None);
-
-                if (string.IsNullOrWhiteSpace(eqFromTag) ||
-                    eqFromTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                EquipName = eqFromTag;
-
-                // Пытаемся выделить в списке (если список ещё не загружен - выделим позже)
-                DoIncrementalSearch(EquipName);
-
-                // Загружаем SOE сразу
-                await LoadAndShowEquipDataAsync(EquipName);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                DXMessageBox.Show(this, ex.ToString(), "Startup tag error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
 
         /// <summary>
         /// Загружает список оборудования для левой панели + станции.
@@ -685,141 +680,7 @@ namespace TechEquipments
                 if (!string.IsNullOrWhiteSpace(EquipName))
                     DoIncrementalSearch(EquipName);
             }
-        }
-
-        /// <summary>
-        /// Включает восстановление/сохранение UI-состояния в appsettings.json
-        /// </summary>
-        private void InitUiStatePersistence()
-        {
-            _appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-
-            // Debounce сохранения
-            _uiStateSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
-            _uiStateSaveTimer.Tick += async (_, __) =>
-            {
-                _uiStateSaveTimer.Stop();
-                await SaveUiStateToAppSettingsAsync();
-            };
-
-            // Восстанавливаем значения (EquipName/Station/Type/Date/Tab)
-            RestoreUiStateFromAppSettings();
-
-            // На закрытии — финальное сохранение (на всякий)
-            Closing += async (_, __) => await SaveUiStateToAppSettingsAsync();
-        }
-
-        /// <summary>
-        /// Восстановление состояния (если ExternalTag пустой — оно уже будет подставлено)
-        /// </summary>
-        private void RestoreUiStateFromAppSettings()
-        {
-            try
-            {
-                if (!File.Exists(_appSettingsPath))
-                    return;
-
-                var root = JsonNode.Parse(File.ReadAllText(_appSettingsPath)) as JsonObject;
-                var ui = root?[UiStateSectionName] as JsonObject;
-                if (ui == null) return;
-
-                _restoringUiState = true;
-                try
-                {
-                    // EquipName
-                    var equip = ui["EquipName"]?.GetValue<string>()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(equip))
-                        EquipName = equip;
-
-                    // Station
-                    var station = ui["SelectedStation"]?.GetValue<string>()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(station))
-                        SelectedStation = station;
-
-                    // Type
-                    var typeStr = ui["SelectedTypeFilter"]?.GetValue<string>()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(typeStr) &&
-                        Enum.TryParse(typeStr, ignoreCase: true, out EquipTypeGroup tg))
-                    {
-                        SelectedTypeFilter = tg;
-                    }
-
-                    // DbDate (yyyy-MM-dd)
-                    var dateStr = ui["DbDate"]?.GetValue<string>()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(dateStr) &&
-                        DateTime.TryParseExact(dateStr, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                            DateTimeStyles.None, out var dt))
-                    {
-                        DbDate = dt.Date;
-                    }
-
-                    // Tab index
-                    if (ui["SelectedMainTabIndex"] is JsonValue v && v.TryGetValue<int>(out var tabIndex))
-                    {
-                        if (tabIndex >= 0 && tabIndex <= 10) // на будущее вкладки
-                            SelectedMainTabIndex = tabIndex;
-                    }
-                }
-                finally
-                {
-                    _restoringUiState = false;
-                }
-            }
-            catch
-            {
-                // сознательно молча: состояние не критично
-            }
-        }
-
-        private void ScheduleUiStateSave()
-        {
-            if (_restoringUiState) return;
-            if (_uiStateSaveTimer == null) return;
-
-            _uiStateSaveTimer.Stop();
-            _uiStateSaveTimer.Start();
-        }
-
-        private async Task SaveUiStateToAppSettingsAsync()
-        {
-            if (_restoringUiState) return;
-
-            await _uiStateGate.WaitAsync();
-            try
-            {
-                JsonObject root;
-
-                if (File.Exists(_appSettingsPath))
-                {
-                    root = (JsonNode.Parse(await File.ReadAllTextAsync(_appSettingsPath)) as JsonObject) ?? new JsonObject();
-                }
-                else
-                {
-                    root = new JsonObject();
-                }
-
-                var ui = (root[UiStateSectionName] as JsonObject) ?? new JsonObject();
-
-                ui["EquipName"] = (EquipName ?? "").Trim();
-                ui["SelectedStation"] = (SelectedStation ?? "All").Trim();
-                ui["SelectedTypeFilter"] = SelectedTypeFilter.ToString();
-                ui["DbDate"] = DbDate.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-                ui["SelectedMainTabIndex"] = SelectedMainTabIndex;
-
-                root[UiStateSectionName] = ui;
-
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                await File.WriteAllTextAsync(_appSettingsPath, root.ToJsonString(options));
-            }
-            catch
-            {
-                // если нет прав на запись — просто игнорируем
-            }
-            finally
-            {
-                _uiStateGate.Release();
-            }
-        }
+        }   
 
         #endregion
 
@@ -845,6 +706,8 @@ namespace TechEquipments
             EquipmentsView.SortDescriptions.Clear();
             EquipmentsView.SortDescriptions.Add(
                 new SortDescription(nameof(EquipListBoxItem.Equipment), ListSortDirection.Ascending));
+
+            OnPropertyChanged(nameof(EquipmentsView)); // ✅ важно, если метод вызвали после того как UI уже связан
         }
 
         /// <summary>
@@ -954,29 +817,46 @@ namespace TechEquipments
         /// </summary>
         private void Equipments_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            // Защита от “программного” выделения при поиске/скролле
             if (_suppressEquipNameFromSelection)
                 return;
 
+            // Если фокус в поиске — значит печатаем, не трогаем выбор/вкладки
             if (SearchTextEdit?.IsKeyboardFocusWithin == true)
                 return;
 
+            // Во время восстановления состояния — не запускаем автодействия
+            if (_isRestoringState)
+                return;
+
+            // Подставляем выбранное оборудование в строку поиска (EquipName)
             if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
                 EquipName = eq;
+
+            // Переключаемся на Param
+            if (SelectedMainTab != MainTabKind.Param)
+            {
+                SelectedMainTabIndex = (int)MainTabKind.Param;
+                return;
+            }
+
+            // Если Param уже открыт — делаем "мгновенное обновление"
+            StartParamPolling();
         }
 
         /// <summary>
         /// Двойной клик по списку: сразу загружает SOE.
         /// </summary>
-        private async void Equipments_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            if (IsLoading) return;
+        //private async void Equipments_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        //{
+        //    if (IsLoading) return;
 
-            if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
-            {
-                EquipName = eq;
-                await LoadAndShowEquipDataAsync(eq);
-            }
-        }
+        //    if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
+        //    {
+        //        EquipName = eq;
+        //        await LoadAndShowEquipDataAsync(eq);
+        //    }
+        //}
 
         #endregion
 
@@ -1166,6 +1046,43 @@ namespace TechEquipments
 
         #endregion
 
+        #region Tab
+
+        /// <summary>
+        /// При активации вкладки делаем действие как по кнопке:
+        /// SOE -> Load SOE,
+        /// DB вкладки -> Search/Load DB.
+        /// </summary>
+        private async Task OnTabActivatedLikeSearchAsync(bool force)
+        {
+            // стопаем Param чтение, если уходим
+            if ((MainTabKind)SelectedMainTabIndex != MainTabKind.Param)
+                StopParamPolling();
+
+            switch ((MainTabKind)SelectedMainTabIndex)
+            {
+                case MainTabKind.Param:
+                    StartParamPolling();
+                    break;
+
+                case MainTabKind.OperationActions:
+                case MainTabKind.AlarmHistory:
+                    await LoadCurrentDbTabAsync(force);
+                    break;
+
+                case MainTabKind.SOE:
+                    // Обычно SOE не надо автoload при каждом клике по вкладке
+                    // но если хочешь — можно включить:
+                    await LoadSoeFromUiAsync();
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        #endregion
+
         #region DB
 
         /// <summary>
@@ -1352,6 +1269,257 @@ namespace TechEquipments
             if (!IsDbTabSelected) return;
 
             _dbReloadTimer.Start();
+        }
+
+        #endregion
+
+        #region Param polling
+
+        private void StartParamPolling()
+        {
+            StopParamPolling();
+
+            _paramReadCycles = 0;
+            ParamStatusText = "Param: starting...";
+
+            _paramPollCts = new CancellationTokenSource();
+            var ct = _paramPollCts.Token;
+
+            // 1-й цикл сразу, потом каждые 5 секунд
+            _ = Task.Run(async () =>
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    await PollParamOnceSafeAsync(ct);
+
+                    await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                }
+            }, ct);
+        }
+
+        private void StopParamPolling()
+        {
+            try { _paramPollCts?.Cancel(); } catch { }
+            _paramPollCts?.Dispose();
+            _paramPollCts = null;
+        }
+
+        private async Task PollParamOnceSafeAsync(CancellationToken ct)
+        {
+            try
+            {
+                await PollParamOnceAsync(ct);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    ParamStatusText = $"Param error: {ex.Message}";
+                });
+            }
+        }
+
+        private (string equipName, string equipType) ResolveSelectedEquipForParam()
+        {
+            // Приоритет: выбранный элемент списка
+            if (SelectedListBoxEquipment != null && !string.IsNullOrWhiteSpace(SelectedListBoxEquipment.Equipment))
+            {
+                return (SelectedListBoxEquipment.Equipment.Trim(), (SelectedListBoxEquipment.Type ?? "").Trim());
+            }
+
+            // Фолбэк: то, что в строке поиска
+            return ((EquipName ?? "").Trim(), "");
+        }
+
+        private async Task PollParamOnceAsync(CancellationToken ct)
+        {
+            var (equipName, equipType) = ResolveSelectedEquipForParam();
+
+            if (string.IsNullOrWhiteSpace(equipName))
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    ParamStatusText = "Param: select equipment";
+                    ParamItems.Clear();
+                    _currentParamModelType = null;
+                });
+                return;
+            }
+
+            var TypeGroup = EquipTypeRegistry.GetGroup(equipType ?? "");
+
+            object model = TypeGroup switch
+            {
+                EquipTypeGroup.AI => await _equipmentService.ReadEquipParamsAsync<AIParam>(equipName, ct),
+                EquipTypeGroup.DI => await _equipmentService.ReadEquipParamsAsync<DIParam>(equipName, ct),
+                EquipTypeGroup.DO => await _equipmentService.ReadEquipParamsAsync<DOParam>(equipName, ct),
+                EquipTypeGroup.Atv => await _equipmentService.ReadEquipParamsAsync<AtvParam>(equipName, ct),
+                EquipTypeGroup.Motor => await _equipmentService.ReadEquipParamsAsync<MotorParam>(equipName, ct),
+                EquipTypeGroup.VGA_EL => await _equipmentService.ReadEquipParamsAsync<VGA_ElParam>(equipName, ct),
+                EquipTypeGroup.VGA => await _equipmentService.ReadEquipParamsAsync<VGAParam>(equipName, ct),
+                EquipTypeGroup.VGD => await _equipmentService.ReadEquipParamsAsync<VGDParam>(equipName, ct),
+                _ => null
+            };
+
+            ct.ThrowIfCancellationRequested();
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (model == null)
+                {
+                    ParamStatusText = $"Param: no model for type '{equipType}'";
+                    ParamItems.Clear();
+                    _currentParamModelType = null;
+                    return;
+                }
+
+                ApplyParamModelToUi(model);
+
+                _paramReadCycles++;
+                ParamStatusText = $"Param: {_paramReadCycles} cycles | {DateTime.Now:HH:mm:ss} | {equipName} | {equipType}";
+            });
+        }
+
+        private void ApplyParamModelToUi(object model)
+        {
+            var modelType = model.GetType();
+
+            // Если модель поменялась (например AI -> DI), пересоздаём строки
+            if (_currentParamModelType != modelType)
+            {
+                ParamItems.Clear();
+
+                var props = modelType
+                    .GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
+                    .Where(p => p.CanRead)
+                    .OrderBy(p => p.MetadataToken) // обычно сохраняет порядок объявления в классе
+                    .ToList();
+
+                foreach (var p in props)
+                {
+                    ParamItems.Add(new ParamItem
+                    {
+                        Name = p.Name,
+                        Value = p.GetValue(model)
+                    });
+                }
+
+                _currentParamModelType = modelType;
+                return;
+            }
+
+            // Та же модель — просто обновляем значения
+            var map = modelType
+                .GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
+                .Where(p => p.CanRead)
+                .ToDictionary(p => p.Name, p => p, StringComparer.Ordinal);
+
+            foreach (var row in ParamItems)
+            {
+                if (map.TryGetValue(row.Name, out var prop))
+                    row.Value = prop.GetValue(model);
+            }
+        }
+
+
+        #endregion
+
+        #region UiStatePersistence
+
+        /// <summary>
+        /// Восстанавливает UI-состояние из user-state.json.
+        /// Важно: защищаемся флагом _isRestoringState, чтобы не запускать автосейв во время восстановления.
+        /// </summary>
+        private async Task RestoreStateAsync()
+        {
+            _isRestoringState = true;
+            try
+            {
+                var state = await _stateService.LoadAsync();
+                if (state == null) return;
+
+                EquipName = state.LastEquipName ?? "";
+                DbDate = state.DbDate.Date;
+
+                SelectedStation = state.SelectedStation ?? "All";
+                SelectedTypeFilter = state.SelectedTypeFilter;
+
+                SelectedMainTabIndex = (int)state.SelectedTab;
+            }
+            finally
+            {
+                _isRestoringState = false;
+            }
+        }
+
+        /// <summary>
+        /// Если внешний тег (ExternalTag) содержит оборудование — он имеет приоритет.
+        /// Если пустой/Unknown — оставляем восстановленное состояние.
+        /// </summary>
+        private async Task ApplyExternalTagIfAnyAsync()
+        {
+            try
+            {
+                var ext = await _equipmentService.GetExternalTagAsync(CancellationToken.None);
+
+                if (string.IsNullOrWhiteSpace(ext) ||
+                    ext.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                // ExternalTag найден -> используем его
+                EquipName = ext.Trim();
+
+                // Обычно логично на первую вкладку, но можно оставить как есть:
+                //SelectedMainTabIndex = (int)MainTabKind.SOE;
+            }
+            catch
+            {
+                // ExternalTag не критичен
+            }
+        }
+
+        /// <summary>
+        /// Сохранение состояния (debounce)
+        /// </summary>
+        private void InitStateSaveTimer()
+        {
+            _stateSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            _stateSaveTimer.Tick += async (_, __) =>
+            {
+                _stateSaveTimer.Stop();
+                await SaveStateAsync();
+            };
+        }
+
+        /// <summary>
+        /// Планирование сохранения (вызов из setter’ов или централизованно)
+        /// </summary>
+        private void ScheduleStateSave()
+        {
+            if (_isRestoringState) return;
+
+            _stateSaveTimer.Stop();
+            _stateSaveTimer.Start();
+        }
+
+        /// <summary>
+        /// Само сохранение
+        /// </summary>
+        private async Task SaveStateAsync()
+        {
+            if (_isRestoringState) return;
+
+            var state = new UserState
+            {
+                LastEquipName = (EquipName ?? "").Trim(),
+                DbDate = DbDate.Date,
+                SelectedTab = (MainTabKind)SelectedMainTabIndex,
+                SelectedStation = (SelectedStation ?? "All").Trim(),
+                SelectedTypeFilter = SelectedTypeFilter
+            };
+
+            await _stateService.SaveAsync(state);
         }
 
         #endregion

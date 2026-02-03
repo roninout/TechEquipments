@@ -23,5 +23,7 @@ namespace TechEquipments
         Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null, CancellationToken ct = default);
 
         Task<string> GetExternalTagAsync(CancellationToken ct = default);
+
+        Task<T> ReadEquipParamsAsync<T>(string equipName, CancellationToken ct = default) where T : new();
     }
 }

@@ -10,7 +10,8 @@ namespace TechEquipments
     public enum EquipTypeGroup
     {
         All = 0,
-        VGA,    // ValveA, ValveA_EL
+        VGA,    // ValveA
+        VGA_EL, // ValveA_EL
         VGD,    // ValveD
         Motor,  // Motor
         AI,     // AnalogIn, AnalogInCalc
@@ -32,11 +33,8 @@ namespace TechEquipments
             ["Motor"] = new(EquipTypeGroup.Motor, c => SoeEventMapper.GetDescriptionOrEmpty<MotorSoeCode>(c)),
             ["AnalogIn"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
             ["AnalogInCalc"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
-
-            // VGA group
             ["ValveA"] = new(EquipTypeGroup.VGA, c => SoeEventMapper.GetDescriptionOrEmpty<AoSoeCode>(c)),
-            ["ValveA_EL"] = new(EquipTypeGroup.VGA, c => SoeEventMapper.GetDescriptionOrEmpty<VgaElSoeCode>(c)),
-
+            ["ValveA_EL"] = new(EquipTypeGroup.VGA_EL, c => SoeEventMapper.GetDescriptionOrEmpty<VgaElSoeCode>(c)),
             ["ValveD"] = new(EquipTypeGroup.VGD, c => SoeEventMapper.GetDescriptionOrEmpty<VgdSoeCode>(c)),
             ["Atv"] = new(EquipTypeGroup.Atv, c => SoeEventMapper.GetDescriptionOrEmpty<AtvSoeCode>(c)),
         };
