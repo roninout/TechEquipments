@@ -12,6 +12,7 @@ namespace TechEquipments
         public string Tag { get; init; } = "";
         public string Type { get; set; } = "";
         public string Station { get; set; } = "";
+        public string Description { get; set; } = "";
         public override string ToString() => Equipment;
     }
 }

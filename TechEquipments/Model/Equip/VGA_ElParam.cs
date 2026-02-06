@@ -17,15 +17,15 @@ namespace TechEquipments
         public bool CloseAl { get; set; }
 
         public int State { get; set; }
-        public int Man { get; set; }
-        public int CurrPos { get; set; }
-        public int TimeOpening { get; set; }
-        public int OutMin { get; set; }
-        public int OutMax { get; set; }
-        
-        public long STW { get; set; }
 
+        public double Man { get; set; }
+        public double CurrPos { get; set; }
+        public double TimeOpening { get; set; }
+        public double OutMin { get; set; }
+        public double OutMax { get; set; }
         public double R { get; set; }
+
+        public long STW { get; set; }
 
         public uint HashCode { get; set; }
 

@@ -5,6 +5,7 @@
     xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
     xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
     xmlns:local="clr-namespace:TechEquipments"
+    xmlns:views="clr-namespace:TechEquipments.Views.Param"
     x:Class="TechEquipments.MainWindow"
     Title="MainWindow" Height="800" Width="1200">
 
@@ -195,20 +196,26 @@
                                  SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
 
                     <!-- ============ PARAM TAB ============ -->
+
                     <dx:DXTabItem Header="Param">
+                        <!-- Вынесенный UI вкладки Param -->
+                        <views:ParamTabHost />
+                    </dx:DXTabItem>
+
+                    <!--<dx:DXTabItem Header="Param">
                         <Grid Margin="8">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Строка состояния именно для Param -->
+                            --><!-- Строка состояния именно для Param --><!--
                             <TextBlock Grid.Row="0" Grid.Column="1"
                                        Text="{Binding ParamStatusText}"
                                        Style="{StaticResource AppTextStyle}"
                                        Margin="0,0,0,8"/>
 
-                            <!-- Вывод параметров: слева имя, справа значение -->
+                            --><!-- Вывод параметров: слева имя, справа значение --><!--
                             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl ItemsSource="{Binding ParamItems}">
                                     <ItemsControl.ItemTemplate>
@@ -235,7 +242,7 @@
                             </ScrollViewer>
                             
                         </Grid>
-                    </dx:DXTabItem>
+                    </dx:DXTabItem>-->
 
                     <!-- ============ OPERATION ACTIONS TAB ============ -->
                     <dx:DXTabItem Header="Operation actions" IsEnabled="{Binding IsDbConnected}">

@@ -1,14 +1,11 @@
 ﻿using CtApi;
-using DevExpress.Pdf;
-using DevExpress.Text.Fonts;
-using DevExpress.XtraEditors.Filtering;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using static TechEquipments.IEquipmentService;
@@ -20,6 +17,9 @@ namespace TechEquipments
         private readonly ICtApiService _ctApiService;
         private readonly IConfiguration _config;
         private const int windowMinutes = 60;
+
+        // Кешируем “реальное” имя тега, которое возвращает TagInfo(...,0), чтобы не дергать Cicode каждый раз.
+        private readonly ConcurrentDictionary<string, string> _tagNameCache = new(StringComparer.OrdinalIgnoreCase);
 
         public EquipmentService(ICtApiService ctApiService, IConfiguration config)
         {
@@ -107,9 +107,6 @@ namespace TechEquipments
         {
             var sTagName = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.{sEquipItem}\", 0)");
             var sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 3)");
-            //if (sEquipType == "Unknown")
-            //    sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 1)");
-
             var sEquipDescription = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Comment\", 1)");
             var sTrnName = await GetTrnName(sEquipName, sEquipItem);
 
@@ -203,17 +200,16 @@ namespace TechEquipments
         public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null, CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
-            var findHashTags = await _ctApiService.FindAsync("Tag","Tag=*_HASHCODE","","EQUIPMENT","TAG");
+            var findHashTags = await _ctApiService.FindAsync("Tag","Tag=*_HASHCODE","","EQUIPMENT","TAG","COMMENT");
             ct.ThrowIfCancellationRequested();
 
             var items = findHashTags
-                .Where(d =>
-                    d.TryGetValue("EQUIPMENT", out var eq) && !string.IsNullOrWhiteSpace(eq) &&
-                    d.TryGetValue("TAG", out var tag) && !string.IsNullOrWhiteSpace(tag))
+                .Where(d => d.TryGetValue("EQUIPMENT", out var eq) && !string.IsNullOrWhiteSpace(eq) && d.TryGetValue("TAG", out var tag) && !string.IsNullOrWhiteSpace(tag))
                 .Select(d => new EquipListBoxItem
-                                    {                                       
-                                        Equipment = d["EQUIPMENT"].Trim(),
-                                        Tag = d["TAG"].Trim()
+                {                                       
+                    Equipment = d["EQUIPMENT"].Trim(),
+                    Tag = d["TAG"].Trim(),
+                    Description = d["COMMENT"].Trim()
                 })
                 // уникальность по имени оборудования
                 .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
@@ -228,9 +224,12 @@ namespace TechEquipments
             foreach (var item in items)
             {
                 ct.ThrowIfCancellationRequested();
+
                 item.Type = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{item.Equipment}\",\"Type\", 3)");
+
                 int dot = item.Equipment.IndexOf('.');
                 item.Station = dot > 0 ? item.Equipment.Substring(0, dot) : "";
+
                 done++;
 
                 progress?.Report((done, total));
@@ -379,7 +378,7 @@ namespace TechEquipments
         }
         #endregion
 
-        #region Params
+        #region Read Params
 
         /// <summary>
         /// Читаем данные модели Param
@@ -424,6 +423,12 @@ namespace TechEquipments
 
                 var tagName = await _ctApiService.CicodeAsync($"TagInfo(\"{name}.{equipItem}\", 0)");
                 tagName = (tagName ?? "").Trim();
+
+                if (model is AIParam && equipItem == "R")
+                {
+                    var tagUnit = await _ctApiService.CicodeAsync($"TagInfo(\"{tagName}\", 1)");
+                    (model as AIParam).Unit = tagUnit;
+                }
 
                 if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -496,6 +501,78 @@ namespace TechEquipments
             {
                 return false;
             }
+        }
+
+        #endregion
+
+        #region Write Params
+
+        /// <summary>
+        /// Универсальная запись значения в параметр оборудования:
+        /// equipName.EquipItem -> TagInfo(...) -> TagWriteAsync(...)
+        /// </summary>
+        public async Task WriteEquipItemAsync<T>(string equipName, string equipItem, T value, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(equipName))
+                throw new ArgumentException("equipName is empty", nameof(equipName));
+
+            if (string.IsNullOrWhiteSpace(equipItem))
+                throw new ArgumentException("equipItem is empty", nameof(equipItem));
+
+            // 1) Получаем имя тега (через TagInfo), с кешем
+            var tagName = await GetTagNameAsync(equipName.Trim(), equipItem.Trim(), ct);
+            if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"TagInfo returned empty/Unknown for {equipName}.{equipItem}");
+
+            // 2) Конвертация в строку для записи (важно для double -> точка)
+            var strValue = ToTagWriteString(value);
+
+            // 3) Пишем
+            await _ctApiService.TagWriteAsync(tagName, strValue);
+
+            ct.ThrowIfCancellationRequested();
+        }
+
+        /// <summary>
+        /// Возвращает имя тега через TagInfo("Equip.Item",0). Использует кеш.
+        /// </summary>
+        private async Task<string> GetTagNameAsync(string equipName, string equipItem, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var cacheKey = $"{equipName}.{equipItem}";
+            if (_tagNameCache.TryGetValue(cacheKey, out var cached) && !string.IsNullOrWhiteSpace(cached))
+                return cached;
+
+            var tagName = await _ctApiService.CicodeAsync($"TagInfo(\"{equipName}.{equipItem}\", 0)");
+            tagName = (tagName ?? "").Trim();
+
+            // Кешируем даже Unknown, чтобы не спамить Cicode (можно не кешировать Unknown — на твой вкус)
+            _tagNameCache[cacheKey] = tagName;
+
+            return tagName;
+        }
+
+        /// <summary>
+        /// Приведение значения к строке для TagWriteAsync.
+        /// Важно: double -> InvariantCulture (точка).
+        /// bool обычно пишут как 1/0 (если у тебя True/False — поменяй).
+        /// </summary>
+        private static string ToTagWriteString<T>(T value)
+        {
+            if (value is null) return "";
+
+            return value switch
+            {
+                bool b => b ? "1" : "0",
+                double d => d.ToString(CultureInfo.InvariantCulture),
+                float f => f.ToString(CultureInfo.InvariantCulture),
+                decimal m => m.ToString(CultureInfo.InvariantCulture),
+                IFormattable fmt => fmt.ToString(null, CultureInfo.InvariantCulture),
+                _ => value.ToString() ?? ""
+            };
         }
 
         #endregion

@@ -25,5 +25,7 @@ namespace TechEquipments
         Task<string> GetExternalTagAsync(CancellationToken ct = default);
 
         Task<T> ReadEquipParamsAsync<T>(string equipName, CancellationToken ct = default) where T : new();
+
+        Task WriteEquipItemAsync<T>(string equipName, string equipItem, T value, CancellationToken ct = default);
     }
 }

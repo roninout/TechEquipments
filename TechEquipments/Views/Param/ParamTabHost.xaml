@@ -1,0 +1,57 @@
+﻿<UserControl x:Class="TechEquipments.Views.Param.ParamTabHost"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+                    xmlns:local="clr-namespace:TechEquipments.Views.Param"
+                    xmlns:views="clr-namespace:TechEquipments.Views.Param"
+                    xmlns:models="clr-namespace:TechEquipments"
+                    mc:Ignorable="d"
+                    d:DesignHeight="400" d:DesignWidth="700">
+
+    <UserControl.Resources>
+
+        <!-- ✅ Автовыбор разметки по типу модели (CurrentParamModel) -->
+
+        <DataTemplate DataType="{x:Type models:AIParam}">
+            <views:AIParamView />
+        </DataTemplate>
+
+        <!--<DataTemplate DataType="{x:Type models:DIParam}">
+            <local:DIParamView />
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type models:DOParam}">
+            <local:DOParamView />
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type models:MotorParam}">
+            <local:MotorParamView />
+        </DataTemplate>-->
+
+        <!-- 🧯 Фолбэк, если тип пока не поддержан -->
+        <DataTemplate DataType="{x:Type sys:Object}">
+            <TextBlock Text="No Param layout for this equipment type."
+                       Margin="8"/>
+        </DataTemplate>
+
+    </UserControl.Resources>
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ✅ Строка состояния именно для Param -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding ParamStatusText}"
+                   Style="{StaticResource AppTextStyle}"
+                   Margin="0,0,0,8" HorizontalAlignment="Right"/>
+
+        <!-- ✅ В зависимости от CurrentParamModel подставится нужный *ParamView.xaml -->
+        <ContentControl Grid.Row="1"
+                        Content="{Binding CurrentParamModel}" />
+    </Grid>
+</UserControl>

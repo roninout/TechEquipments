@@ -22,25 +22,25 @@ namespace TechEquipments
         public bool AlarmHealth { get; set; }
 
         public int STW { get; set; }
-        public int Min { get; set; }
-        public int Max { get; set; }
-        public int MinR { get; set; }
-        public int MaxR { get; set; }
-        public int Flt { get; set; }
-        public int Coef { get; set; }
-        public int Value { get; set; }
-        public int Hmi { get; set; }
-        public int HmiTrue { get; set; }
-        public int HmiForced { get; set; }
-        public int SetLA { get; set; }
-        public int SetLW { get; set; }
-        public int SetHW { get; set; }
-        public int SetHA { get; set; }
-        public int SetHyst { get; set; }
-
+        public double Min { get; set; }
+        public double Max { get; set; }
+        public double MinR { get; set; }
+        public double MaxR { get; set; }
+        public double Flt { get; set; }
+        public double Coef { get; set; }
+        public double Value { get; set; }
+        public double Hmi { get; set; }
+        public double HmiTrue { get; set; }
+        public double HmiForced { get; set; }
+        public double SetLA { get; set; }
+        public double SetLW { get; set; }
+        public double SetHW { get; set; }
+        public double SetHA { get; set; }
+        public double SetHyst { get; set; }
         public double R { get; set; }
 
         public uint HashCode { get; set; }
 
+        public string Unit { get; set; }
     }
 }

@@ -18,8 +18,9 @@ namespace TechEquipments
 
         public int STW { get; set; }
         public int State { get; set; }
-        public int TOpen { get; set; }
-        public int TClose { get; set; }
+
+        public double TOpen { get; set; }
+        public double TClose { get; set; }
 
         public uint HashCode { get; set; }
 

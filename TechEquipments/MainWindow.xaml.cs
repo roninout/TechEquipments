@@ -559,9 +559,26 @@ namespace TechEquipments
         // Что сейчас отображаем (чтобы понимать: перестраивать список или только обновить значения)
         private Type _currentParamModelType;
 
+        // Текущая модель параметров (AIParam / DIParam / MotorParam / ...)
+        private object _currentParamModel;
+        public object CurrentParamModel
+        {
+            get => _currentParamModel;
+            set { _currentParamModel = value; OnPropertyChanged(); }
+        }
+
         // polling
         private CancellationTokenSource _paramPollCts;
         private int _paramReadCycles;
+
+        // 1) Общий “замок” на чтение/запись Param (чтение и запись не пересекаются)
+        private readonly SemaphoreSlim _paramRwGate = new(1, 1);
+
+        // 2) Флаг: когда мы обновляем модель из polling-чтения — запрещаем триггерить запись из EditValueChanged
+        private bool _suppressParamWritesFromPolling;
+
+        // 3) Небольшая “пауза” чтения после записи (чтобы не словить мгновенный старый read)
+        private DateTime _paramReadResumeAtUtc = DateTime.MinValue;
 
         #endregion
 
@@ -1306,17 +1323,51 @@ namespace TechEquipments
 
         private async Task PollParamOnceSafeAsync(CancellationToken ct)
         {
+            //try
+            //{
+            //    await PollParamOnceAsync(ct);
+            //}
+            //catch (OperationCanceledException) { }
+            //catch (Exception ex)
+            //{
+            //    await Dispatcher.InvokeAsync(() =>
+            //    {
+            //        ParamStatusText = $"Param error: {ex.Message}";
+            //    });
+            //}
+
             try
             {
-                await PollParamOnceAsync(ct);
+                // Если недавно писали — подождем чуть-чуть
+                if (DateTime.UtcNow < _paramReadResumeAtUtc)
+                    return;
+
+                await _paramRwGate.WaitAsync(ct);
+                try
+                {
+                    // --- ЧТЕНИЕ ---
+                    await PollParamOnceAsync(ct);
+                    // result = await _equipmentService.ReadEquipModelAsync<AIParam>(...);
+
+                    // ВАЖНО: пока мы применяем значения в модель/биндинги — не запускать запись
+                    _suppressParamWritesFromPolling = true;
+
+                    // apply result -> VM/Model
+                    // CurrentParam = result; или заполняешь свойства
+
+                    // Статус
+                    // ParamStatusText = $"Read: {count} at {DateTime.Now:HH:mm:ss}";
+                }
+                finally
+                {
+                    _suppressParamWritesFromPolling = false;
+                    _paramRwGate.Release();
+                }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    ParamStatusText = $"Param error: {ex.Message}";
-                });
+                BottomText = $"Param read error: {ex.Message}";
             }
         }
 
@@ -1377,12 +1428,13 @@ namespace TechEquipments
                 ApplyParamModelToUi(model);
 
                 _paramReadCycles++;
-                ParamStatusText = $"Param: {_paramReadCycles} cycles | {DateTime.Now:HH:mm:ss} | {equipName} | {equipType}";
+                ParamStatusText = $"Param: {_paramReadCycles} cycles | {DateTime.Now:HH:mm:ss} | {equipName} | {equipType} | {_selectedListBoxEquipment.Description} | {(model as AIParam)?.Unit}";
             });
         }
 
         private void ApplyParamModelToUi(object model)
         {
+            CurrentParamModel = model;
             var modelType = model.GetType();
 
             // Если модель поменялась (например AI -> DI), пересоздаём строки
@@ -1425,12 +1477,114 @@ namespace TechEquipments
 
         #endregion
 
-        #region UiStatePersistence
+        #region Param Write
 
-        /// <summary>
-        /// Восстанавливает UI-состояние из user-state.json.
-        /// Важно: защищаемся флагом _isRestoringState, чтобы не запускать автосейв во время восстановления.
-        /// </summary>
+        public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        {
+            // 1) Не пишем, если это обновление прилетело из polling-READ
+            if (_suppressParamWritesFromPolling)
+                return;
+
+            // 2) Пишем только на вкладке Param
+            if (SelectedMainTab != MainTabKind.Param)
+                return;
+
+            // 3) Нужно имя оборудования
+            var equip = (EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equip))
+                return;
+
+            // 4) Определяем EquipItem из Tag
+            if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
+                return;
+
+            // 5) Пытаемся нормализовать значение (у тебя эти поля int)
+            //    e.NewValue может быть string/null в процессе набора — аккуратно.
+            if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
+                return;
+
+            await WriteParamAsync(equip, equipItem, writeValue);
+        }
+
+        private static bool TryNormalizeWriteValue(object? newValue, out string str)
+        {
+            str = "";
+
+            if (newValue == null)
+                return false;
+
+            // DevExpress иногда дает string во время набора
+            if (newValue is string s)
+            {
+                s = s.Trim();
+                if (s.Length == 0) return false;
+
+                // Разрешаем только число (под твои поля)
+                if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
+                {
+                    str = i.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                }
+
+                if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+                {
+                    str = d.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                }
+
+                return false;
+            }
+
+            // Если пришло число напрямую
+            if (newValue is int i2) { str = i2.ToString(CultureInfo.InvariantCulture); return true; }
+            if (newValue is double d2) { str = d2.ToString(CultureInfo.InvariantCulture); return true; }
+
+            // Фоллбек
+            str = Convert.ToString(newValue, CultureInfo.InvariantCulture) ?? "";
+            return str.Length > 0;
+        }
+
+        private async Task WriteParamAsync(string equipName, string equipItem, string writeValue)
+        {
+            try
+            {
+                // Запись должна “победить” чтение: берем тот же gate, что и polling
+                await _paramRwGate.WaitAsync(CancellationToken.None);
+                try
+                {
+                    // Пауза чтения на время записи + чуть после
+                    _paramReadResumeAtUtc = DateTime.UtcNow.AddMilliseconds(400);
+
+                    BottomText = $"Write: {equipItem}={writeValue} ...";
+                    await Dispatcher.Yield(DispatcherPriority.Render);
+
+                    // Пишем через сервис
+                    await _equipmentService.WriteEquipItemAsync(equipName, equipItem, writeValue);
+
+                    BottomText = $"Wrote: {equipItem}={writeValue} at {DateTime.Now:HH:mm:ss}";
+
+                    // После записи можно сделать быстрый перечит (по желанию):
+                    // await PollParamOnceSafeAsync(CancellationToken.None);
+                }
+                finally
+                {
+                    _paramRwGate.Release();
+                }
+            }
+            catch (Exception ex)
+            {
+                BottomText = $"Write error ({equipItem}): {ex.Message}";
+            }
+        }
+
+        #endregion
+
+            #region UiStatePersistence
+
+            /// <summary>
+            /// Восстанавливает UI-состояние из user-state.json.
+            /// Важно: защищаемся флагом _isRestoringState, чтобы не запускать автосейв во время восстановления.
+            /// </summary>
         private async Task RestoreStateAsync()
         {
             _isRestoringState = true;

@@ -17,9 +17,9 @@ namespace TechEquipments
 
         public int STW { get; set; }
         public int State { get; set; }
-        public int TimeWarn { get; set; }
-        public int TimeSet { get; set; }
-        public int TimeHmi { get; set; }
+        public double TimeWarn { get; set; }
+        public double TimeSet { get; set; }
+        public double TimeHmi { get; set; }
 
         public long TimeWork { get; set; }
 
