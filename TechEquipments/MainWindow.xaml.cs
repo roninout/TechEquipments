@@ -1,5 +1,6 @@
 ﻿using CtApi;
 using DevExpress.Xpf.Core;
+using DevExpress.Xpf.Editors;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -1479,8 +1480,39 @@ namespace TechEquipments
 
         #region Param Write
 
-        public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        //public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        //{
+        //    // 1) Не пишем, если это обновление прилетело из polling-READ
+        //    if (_suppressParamWritesFromPolling)
+        //        return;
+
+        //    // 2) Пишем только на вкладке Param
+        //    if (SelectedMainTab != MainTabKind.Param)
+        //        return;
+
+        //    // 3) Нужно имя оборудования
+        //    var equip = (EquipName ?? "").Trim();
+        //    if (string.IsNullOrWhiteSpace(equip))
+        //        return;
+
+        //    // 4) Определяем EquipItem из Tag
+        //    if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
+        //        return;
+
+        //    // 5) Пытаемся нормализовать значение (у тебя эти поля int)
+        //    //    e.NewValue может быть string/null в процессе набора — аккуратно.
+        //    if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
+        //        return;
+
+        //    await WriteParamAsync(equip, equipItem, writeValue);
+        //}
+
+        public async void ParamEditable_EditValueChanged(object sender, System.Windows.Input.KeyEventArgs e)
         {
+            // пишем только по Enter
+            if (e.Key != System.Windows.Input.Key.Enter && e.Key != System.Windows.Input.Key.Return)
+                return;
+
             // 1) Не пишем, если это обновление прилетело из polling-READ
             if (_suppressParamWritesFromPolling)
                 return;
@@ -1498,13 +1530,17 @@ namespace TechEquipments
             if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
                 return;
 
-            // 5) Пытаемся нормализовать значение (у тебя эти поля int)
-            //    e.NewValue может быть string/null в процессе набора — аккуратно.
-            if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
+            // 5) Берём текущее значение из редактора
+            object? newValue = (sender as DevExpress.Xpf.Editors.BaseEdit)?.EditValue;
+
+            if (!TryNormalizeWriteValue(newValue, out string writeValue))
                 return;
+
+            e.Handled = true; // чтобы Enter не "пищал" / не делал лишнего
 
             await WriteParamAsync(equip, equipItem, writeValue);
         }
+
 
         private static bool TryNormalizeWriteValue(object? newValue, out string str)
         {

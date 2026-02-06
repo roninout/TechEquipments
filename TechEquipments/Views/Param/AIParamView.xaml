@@ -40,17 +40,13 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <dxe:TextEdit Tag="Min"
+                    <dxe:TextEdit Tag="Max"
                                   Height="28"
-                                  EditValue="{Binding Min, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  EditValue="{Binding Max, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
                                   Style="{StaticResource AppBaseEditStyle}"
-                                  EditValueChanged="ParamEditable_EditValueChanged"/>
-                    
-                    <!--<dxe:TextEdit Grid.Column="0"
-                                  Height="28"
-                                  Style="{StaticResource AppBaseEditStyle}"
-                                  IsReadOnly="True"
-                                  EditValue="{Binding Max}" />-->
+                                  PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                    <!--EditValueChanged="ParamEditable_EditValueChanged-->
+
                     <TextBlock Grid.Column="1"
                                VerticalAlignment="Center"
                                Margin="8,0,0,0"

@@ -3,7 +3,6 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-                    xmlns:sys="clr-namespace:System;assembly=mscorlib"
                     xmlns:local="clr-namespace:TechEquipments.Views.Param"
                     xmlns:views="clr-namespace:TechEquipments.Views.Param"
                     xmlns:models="clr-namespace:TechEquipments"
@@ -31,10 +30,10 @@
         </DataTemplate>-->
 
         <!-- 🧯 Фолбэк, если тип пока не поддержан -->
-        <DataTemplate DataType="{x:Type sys:Object}">
+        <!--<DataTemplate DataType="{x:Type sys:Object}">
             <TextBlock Text="No Param layout for this equipment type."
                        Margin="8"/>
-        </DataTemplate>
+        </DataTemplate>-->
 
     </UserControl.Resources>
 

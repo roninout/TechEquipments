@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -26,10 +27,23 @@ namespace TechEquipments.Views.Param
         }
 
         // если в XAML навешиваешь EditValueChanged="ParamEditable_EditValueChanged"
-        // то обработчик ДОЛЖЕН существовать
-        private void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        //// то обработчик ДОЛЖЕН существовать
+        //private void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        //{
+        //    if (DesignerProperties.GetIsInDesignMode(this))
+        //        return;
+
+        //    var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+        //    host?.ParamEditable_EditValueChanged(sender, e);
+        //}
+
+        private void ParamEditable_EditValueChanged(object sender, KeyEventArgs e)
         {
-            //RaiseParamEditValueChanged(sender, e);
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            host?.ParamEditable_EditValueChanged(sender, e);
         }
     }
 }
