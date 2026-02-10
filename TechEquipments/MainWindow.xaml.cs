@@ -18,6 +18,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
+using static DevExpress.Charts.Designer.Native.ChangeDiagramAxisNavigationEnabledCommand;
 using static TechEquipments.IEquipmentService;
 
 namespace TechEquipments
@@ -42,6 +43,8 @@ namespace TechEquipments
         /// Сервис для доступа к PostgreSQL (Operation actions / Alarm history).
         /// </summary>
         private readonly IDbService _dbService;
+
+        private readonly ICtApiService _ctApiService;
 
         #endregion
 
@@ -74,6 +77,11 @@ namespace TechEquipments
 
         /// <summary>Параметры AIParam для вкладки Param (TextBox -> Name)</summary>
         public ObservableCollection<ParamItem> ParamItems { get; } = new();
+
+        /// <summary>
+        /// TrendPoint для вкладки Param
+        /// </summary>
+        public ObservableCollection<TrendPoint> ParamTrendPoints { get; } = new();
 
         #endregion
 
@@ -472,7 +480,7 @@ namespace TechEquipments
         public MainTabKind SelectedMainTab => (MainTabKind)SelectedMainTabIndex;
 
         /// <summary>Показывать DateEdit только на DB вкладках</summary>
-        public bool IsDbTabSelected => SelectedMainTab != MainTabKind.SOE;
+        public bool IsDbTabSelected =>SelectedMainTab is MainTabKind.OperationActions or MainTabKind.AlarmHistory;
 
         /// <summary>Текст основной кнопки (одна на все режимы)</summary>
         public string MainActionButtonText => SelectedMainTab switch
@@ -583,13 +591,47 @@ namespace TechEquipments
 
         #endregion
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService)
+        #region Trend
+
+        private bool _isParamChartVisible;
+        public bool IsParamChartVisible
+        {
+            get => _isParamChartVisible;
+            set { if (_isParamChartVisible == value) return; _isParamChartVisible = value; OnPropertyChanged(); }
+        }
+
+        private string _currentTrnName = "TREND_S17_W16_TT01_R";
+        private DateTime? _trendLastTimeUtc; // для инкрементального обновления
+
+        private string? _paramChartTrnName = "TREND_S17_W16_TT01_R";      // кэш TrendTag
+        private DateTime? _trendLastUtc;         // чтобы добирать только новые точки
+
+        public string ParamTrendDebugText { get; set; } = "";
+
+        private DateTime _axisMin;
+        public DateTime AxisMin
+        {
+            get => _axisMin;
+            set { _axisMin = value; OnPropertyChanged(); } // Или SetProperty(ref _axisMin, value)
+        }
+
+        private DateTime _axisMax;
+        public DateTime AxisMax
+        {
+            get => _axisMax;
+            set { _axisMax = value; OnPropertyChanged(); }
+        }
+
+        #endregion
+
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService, ICtApiService ctApiService)
         {
             InitializeComponent();
 
             _equipmentService = equipmentService;
             _dbService = dbService;
             _stateService = stateService;
+            _ctApiService = ctApiService;
             
             DataContext = this; // DataContext на себя: используется во всём XAML (binding)
 
@@ -1310,6 +1352,10 @@ namespace TechEquipments
                 {
                     await PollParamOnceSafeAsync(ct);
 
+                    // это для трендов
+                    if (IsParamChartVisible)
+                        await PollTrendOnceSafeAsync(ct);
+
                     await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 }
             }, ct);
@@ -1320,23 +1366,12 @@ namespace TechEquipments
             try { _paramPollCts?.Cancel(); } catch { }
             _paramPollCts?.Dispose();
             _paramPollCts = null;
+
+            //ResetTrend();
         }
 
         private async Task PollParamOnceSafeAsync(CancellationToken ct)
         {
-            //try
-            //{
-            //    await PollParamOnceAsync(ct);
-            //}
-            //catch (OperationCanceledException) { }
-            //catch (Exception ex)
-            //{
-            //    await Dispatcher.InvokeAsync(() =>
-            //    {
-            //        ParamStatusText = $"Param error: {ex.Message}";
-            //    });
-            //}
-
             try
             {
                 // Если недавно писали — подождем чуть-чуть
@@ -1420,7 +1455,8 @@ namespace TechEquipments
             {
                 if (model == null)
                 {
-                    ParamStatusText = $"Param: no model for type '{equipType}'";
+                    //ParamStatusText = $"Param: no model for type '{equipType}'";
+                    ParamStatusText = $"Updating ...";
                     ParamItems.Clear();
                     _currentParamModelType = null;
                     return;
@@ -1429,7 +1465,7 @@ namespace TechEquipments
                 ApplyParamModelToUi(model);
 
                 _paramReadCycles++;
-                ParamStatusText = $"Param: {_paramReadCycles} cycles | {DateTime.Now:HH:mm:ss} | {equipName} | {equipType} | {_selectedListBoxEquipment.Description} | {(model as AIParam)?.Unit}";
+                ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_paramReadCycles} cycles";
             });
         }
 
@@ -1480,32 +1516,32 @@ namespace TechEquipments
 
         #region Param Write
 
-        //public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
-        //{
-        //    // 1) Не пишем, если это обновление прилетело из polling-READ
-        //    if (_suppressParamWritesFromPolling)
-        //        return;
+        public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        {
+            // 1) Не пишем, если это обновление прилетело из polling-READ
+            if (_suppressParamWritesFromPolling)
+                return;
 
-        //    // 2) Пишем только на вкладке Param
-        //    if (SelectedMainTab != MainTabKind.Param)
-        //        return;
+            // 2) Пишем только на вкладке Param
+            if (SelectedMainTab != MainTabKind.Param)
+                return;
 
-        //    // 3) Нужно имя оборудования
-        //    var equip = (EquipName ?? "").Trim();
-        //    if (string.IsNullOrWhiteSpace(equip))
-        //        return;
+            // 3) Нужно имя оборудования
+            var equip = (EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equip))
+                return;
 
-        //    // 4) Определяем EquipItem из Tag
-        //    if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
-        //        return;
+            // 4) Определяем EquipItem из Tag
+            if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
+                return;
 
-        //    // 5) Пытаемся нормализовать значение (у тебя эти поля int)
-        //    //    e.NewValue может быть string/null в процессе набора — аккуратно.
-        //    if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
-        //        return;
+            // 5) Пытаемся нормализовать значение (у тебя эти поля int)
+            //    e.NewValue может быть string/null в процессе набора — аккуратно.
+            if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
+                return;
 
-        //    await WriteParamAsync(equip, equipItem, writeValue);
-        //}
+            await WriteParamAsync(equip, equipItem, writeValue);
+        }
 
         public async void ParamEditable_EditValueChanged(object sender, System.Windows.Input.KeyEventArgs e)
         {
@@ -1541,13 +1577,18 @@ namespace TechEquipments
             await WriteParamAsync(equip, equipItem, writeValue);
         }
 
-
         private static bool TryNormalizeWriteValue(object? newValue, out string str)
         {
             str = "";
 
             if (newValue == null)
                 return false;
+
+            if (newValue is bool b)
+            {
+                str = b ? "1" : "0";
+                return true;
+            }
 
             // DevExpress иногда дает string во время набора
             if (newValue is string s)
@@ -1615,12 +1656,121 @@ namespace TechEquipments
 
         #endregion
 
-            #region UiStatePersistence
+        #region Trend
 
-            /// <summary>
-            /// Восстанавливает UI-состояние из user-state.json.
-            /// Важно: защищаемся флагом _isRestoringState, чтобы не запускать автосейв во время восстановления.
-            /// </summary>
+        private void ResetTrend()
+        {
+            _trendLastTimeUtc = null;
+            ParamTrendPoints.Clear();
+        }
+
+        // Toggle метод (вызов из кнопки)
+        public void ToggleParamChart()
+        {
+            IsParamChartVisible = !IsParamChartVisible;
+
+            // сбросим данные графика и кэш
+            ParamTrendPoints.Clear();
+            _paramChartTrnName = null;
+            _trendLastUtc = null;
+        }
+
+        private async Task PollTrendOnceSafeAsync(CancellationToken ct)
+        {
+            try
+            {
+                await PollTrendOnceAsync(ct);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                // чтобы не “убить” polling
+                BottomText = $"Trend error: {ex.Message}";
+            }
+        }
+
+        private async Task PollTrendOnceAsync(CancellationToken ct)
+        {
+            var (equipName, equipType) = ResolveSelectedEquipForParam();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            // 1) один раз получить TrendTag (для AI чаще всего нужен .Value)
+            if (string.IsNullOrWhiteSpace(_paramChartTrnName))
+            {
+                _paramChartTrnName = await _equipmentService.GetTrnName(equipName, "R"); // <- если хочешь HmiTrue — поменяй
+                if (string.IsNullOrWhiteSpace(_paramChartTrnName))
+                    return;
+            }
+
+            var endUtc = DateTime.UtcNow;
+            var startUtc = _trendLastUtc.HasValue
+                ? _trendLastUtc.Value.AddSeconds(-2)   // захват хвоста
+                : endUtc.AddMinutes(-60);              // первый раз — час
+
+            var trn = await _ctApiService.GetTrnData(_paramChartTrnName, startUtc, endUtc);
+            if (trn == null || trn.Count == 0)
+                return;
+
+            var points = trn
+                .Select(x => new TrendPoint
+                {
+                    // CtApi отдаёт UTC -> для UI переводим в Local
+                    Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
+                    Value = x.Value
+                })
+                .OrderBy(p => p.Time)
+                .ToList();
+
+            if (points.Count == 0)
+                return;
+
+            // 2) ВАЖНО: коллекцию, привязанную к UI, менять только через Dispatcher
+            await Dispatcher.InvokeAsync(() =>
+            {
+                // 1. Добавляем новые точки (ваш текущий код)
+                var lastAdded = ParamTrendPoints.Count > 0 ? ParamTrendPoints[^1].Time : DateTime.MinValue;
+                foreach (var p in points)
+                    if (p.Time > lastAdded)
+                        ParamTrendPoints.Add(p);
+
+                // 2. Удаляем старые, если нужно (например, держим окно в 60 минут)
+                var minKeep = DateTime.Now.AddMinutes(-60);
+                while (ParamTrendPoints.Count > 0 && ParamTrendPoints[0].Time < minKeep)
+                    ParamTrendPoints.RemoveAt(0);
+
+                // 3. РАСТЯГИВАЕМ: Устанавливаем границы оси по фактическим данным
+                if (ParamTrendPoints.Count >= 2)
+                {
+                    // Теперь AxisMin/Max всегда равны краям ваших данных
+                    //AxisMin = ParamTrendPoints[0].Time;
+                    //AxisMax = ParamTrendPoints[^1].Time;
+
+                    var now = DateTime.Now;
+                    AxisMax = now;             // Правая граница — текущий момент
+                    AxisMin = now.AddMinutes(-60); // Левая граница — строго час назад
+                }
+
+                ParamStatusText =
+                    $"First={points.First().Time:yyyy-MM-dd HH:mm:ss}, " +
+                    $"Last={points.Last().Time:yyyy-MM-dd HH:mm:ss}, " +
+                    $"Min={points.Min(p => p.Value):0.###}, Max={points.Max(p => p.Value):0.###}, " +
+                    $"Points={ParamTrendPoints.Count}";
+
+            });
+
+            _trendLastUtc = trn.Max(x => x.DateTime); // UTC
+        }
+
+
+        #endregion
+
+        #region UiStatePersistence
+
+        /// <summary>
+        /// Восстанавливает UI-состояние из user-state.json.
+        /// Важно: защищаемся флагом _isRestoringState, чтобы не запускать автосейв во время восстановления.
+        /// </summary>
         private async Task RestoreStateAsync()
         {
             _isRestoringState = true;

@@ -37,20 +37,45 @@
 
     </UserControl.Resources>
 
-    <Grid Margin="8">
+    <Grid Margin="0">
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ✅ Строка состояния именно для Param -->
-        <TextBlock Grid.Row="0"
-                   Text="{Binding ParamStatusText}"
-                   Style="{StaticResource AppTextStyle}"
-                   Margin="0,0,0,8" HorizontalAlignment="Right"/>
+        <Grid Margin="12,0,0,0">
+
+            <Grid.ColumnDefinitions >
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Padding="0, 4" Text="Name: " FontWeight="SemiBold"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Equipment, TargetNullValue='-'}" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Padding="0, 4" Text="Type: " FontWeight="SemiBold" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Type, TargetNullValue='-'}" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0, 4" Text="Desc: " FontWeight="SemiBold" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Description, TargetNullValue='-'}" />
+
+        </Grid>
 
         <!-- ✅ В зависимости от CurrentParamModel подставится нужный *ParamView.xaml -->
-        <ContentControl Grid.Row="1"
-                        Content="{Binding CurrentParamModel}" />
+        <ContentControl Grid.Row="3" Content="{Binding CurrentParamModel}" />
+
+        <!--✅ Строка состояния именно для Param-->
+        <TextBlock Grid.Row="4" Grid.Column="1" Padding="0, 4" Text="{Binding ParamStatusText}" Style="{StaticResource AppTextStyle}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+
     </Grid>
+    
 </UserControl>

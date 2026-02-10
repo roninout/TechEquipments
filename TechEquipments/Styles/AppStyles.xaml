@@ -3,7 +3,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
     xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
-    xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors">
+    xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+    xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol">
 
     <!-- ============ BASE TEXT ============ -->
     <Style x:Key="AppTextBlockStyle" TargetType="{x:Type TextBlock}">
@@ -84,6 +85,71 @@
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="Opacity" Value="0.9"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Общий шаблон лейбла Enabled/Disabled + жирность -->
+    <DataTemplate x:Key="EnabledDisabledLabelTemplate">
+        <TextBlock>
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Text" Value="Disabled"/>
+                    <Setter Property="FontWeight" Value="Normal"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Path=Content.IsChecked,
+                                                  RelativeSource={RelativeSource AncestorType={x:Type dxlc:LayoutItem}}}"
+                                 Value="True">
+                            <Setter Property="Text" Value="Enabled"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </DataTemplate>
+
+    <!-- Стиль для LayoutItem с CheckEdit внутри -->
+    <Style x:Key="BoolCheckLayoutItemStyle" TargetType="{x:Type dxlc:LayoutItem}">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+
+        <!-- чтобы зона лейбла гарантированно была -->
+        <Setter Property="Label" Value=" "/>
+
+        <Setter Property="LabelTemplate" Value="{StaticResource EnabledDisabledLabelTemplate}"/>
+    </Style>
+
+    <!-- (опционально) стиль для чекбокса -->
+    <Style x:Key="BoolParamCheckEditStyle" TargetType="{x:Type dxe:CheckEdit}">
+        <Setter Property="Width" Value="20"/>
+        <Setter Property="IsReadOnly" Value="False"/>
+    </Style>
+    
+    <!--FOR TREND-->
+    <Style x:Key="HideWhenChartVisible_Group" TargetType="{x:Type dxlc:LayoutGroup}">
+        <Setter Property="Visibility" Value="Visible"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsParamChartVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ShowWhenChartVisible_Item" TargetType="{x:Type dxlc:LayoutItem}">
+        <Setter Property="Visibility" Value="Collapsed"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsParamChartVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                <Setter Property="Visibility" Value="Visible"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ChartsToggleButtonStyle" TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+        <Setter Property="Content" Value="Графики"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsParamChartVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                <Setter Property="Content" Value="Параметры"/>
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
 </ResourceDictionary>

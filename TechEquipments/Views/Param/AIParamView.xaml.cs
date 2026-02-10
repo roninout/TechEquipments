@@ -28,14 +28,14 @@ namespace TechEquipments.Views.Param
 
         // если в XAML навешиваешь EditValueChanged="ParamEditable_EditValueChanged"
         //// то обработчик ДОЛЖЕН существовать
-        //private void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
-        //{
-        //    if (DesignerProperties.GetIsInDesignMode(this))
-        //        return;
+        private void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
 
-        //    var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
-        //    host?.ParamEditable_EditValueChanged(sender, e);
-        //}
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            host?.ParamEditable_EditValueChanged(sender, e);
+        }
 
         private void ParamEditable_EditValueChanged(object sender, KeyEventArgs e)
         {
@@ -44,6 +44,15 @@ namespace TechEquipments.Views.Param
 
             var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
             host?.ParamEditable_EditValueChanged(sender, e);
+        }
+
+        private void ChartsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            host?.ToggleParamChart();
         }
     }
 }
