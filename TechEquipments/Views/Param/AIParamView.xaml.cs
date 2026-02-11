@@ -46,13 +46,22 @@ namespace TechEquipments.Views.Param
             host?.ParamEditable_EditValueChanged(sender, e);
         }
 
-        private void ChartsButton_Click(object sender, RoutedEventArgs e)
+        private void ShowChartButton_Click(object sender, RoutedEventArgs e)
         {
             if (DesignerProperties.GetIsInDesignMode(this))
                 return;
 
             var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
-            host?.ToggleParamChart();
+            host?.ShowParamChart(reset: true); // поставь true если хочешь сбрасывать график
+        }
+
+        private void ShowParamsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            host?.ShowParamSettings();
         }
     }
 }

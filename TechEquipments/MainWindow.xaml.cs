@@ -593,17 +593,24 @@ namespace TechEquipments
 
         #region Trend
 
-        private bool _isParamChartVisible;
+        private bool _isParamChartVisible = true;
         public bool IsParamChartVisible
         {
             get => _isParamChartVisible;
-            set { if (_isParamChartVisible == value) return; _isParamChartVisible = value; OnPropertyChanged(); }
+            set {
+                if (_isParamChartVisible == value)
+                    return;
+
+                _isParamChartVisible = value;
+
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsParamSettingsVisible));
+            }
         }
 
-        private string _currentTrnName = "TREND_S17_W16_TT01_R";
-        private DateTime? _trendLastTimeUtc; // для инкрементального обновления
+        public bool IsParamSettingsVisible => !IsParamChartVisible;
 
-        private string? _paramChartTrnName = "TREND_S17_W16_TT01_R";      // кэш TrendTag
+        private string? _paramChartTrnName = ""; // кэш TrendTag
         private DateTime? _trendLastUtc;         // чтобы добирать только новые точки
 
         public string ParamTrendDebugText { get; set; } = "";
@@ -1367,7 +1374,7 @@ namespace TechEquipments
             _paramPollCts?.Dispose();
             _paramPollCts = null;
 
-            //ResetTrend();
+            ResetTrend();
         }
 
         private async Task PollParamOnceSafeAsync(CancellationToken ct)
@@ -1660,8 +1667,11 @@ namespace TechEquipments
 
         private void ResetTrend()
         {
-            _trendLastTimeUtc = null;
             ParamTrendPoints.Clear();
+            _paramChartTrnName = null;
+            _trendLastUtc = null;
+
+            IsParamChartVisible = true;
         }
 
         // Toggle метод (вызов из кнопки)
@@ -1760,6 +1770,23 @@ namespace TechEquipments
             });
 
             _trendLastUtc = trn.Max(x => x.DateTime); // UTC
+        }
+
+        public void ShowParamChart(bool reset = false)
+        {
+            if (reset)
+            {
+                ParamTrendPoints.Clear();
+                _paramChartTrnName = null;
+                _trendLastUtc = null;
+            }
+
+            IsParamChartVisible = true;
+        }
+
+        public void ShowParamSettings()
+        {
+            IsParamChartVisible = false;
         }
 
 

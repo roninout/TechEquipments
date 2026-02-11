@@ -9,6 +9,11 @@
              xmlns:conv="clr-namespace:TechEquipments"
              MinHeight="260" MinWidth="520">
 
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
+
+
     <dxlc:LayoutControl Margin="0">
         <dxlc:LayoutGroup Header="tryrtyr" View="Group" GroupBoxDisplayMode="Light">
 
@@ -87,219 +92,247 @@
             </dxlc:LayoutGroup>
 
             <!-- ================= CENTER BLOCK ================= -->
-            <dxlc:LayoutGroup Orientation="Vertical">
+            <dxlc:LayoutGroup Orientation="Vertical" HorizontalAlignment="Stretch">
 
-                <dxlc:LayoutGroup Orientation="Horizontal">
+                <!-- ====== CHART (по умолчанию виден) ====== -->
+                <dxlc:LayoutItem
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Visibility="{Binding DataContext.IsParamChartVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                    
+                    <dxc:ChartControl HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <dxc:ChartControl.Diagram>
+                            <dxc:XYDiagram2D>
 
-                    <dxlc:LayoutGroup Orientation="Vertical">
-                        <dxlc:LayoutGroup Header="PLC settings" View="GroupBox" Width="300" HorizontalAlignment="Left"  Orientation="Vertical">
+                                <!-- ====== AxisX ====== -->
+                                <dxch:XYDiagram2D.AxisX>
+                                    <dxc:AxisX2D>
+                                        <dxc:AxisX2D.Label>
+                                            <dxc:AxisLabel TextPattern="{}{A:HH:mm:ss}"/>
+                                        </dxc:AxisX2D.Label>
 
-                            <dxlc:LayoutItem Label="Max">
-                                <dxe:TextEdit Tag="Max"
-                                    Width="80" HorizontalAlignment="Right"
-                                    EditValue="{Binding Max, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Style="{StaticResource AppBaseEditStyle}"
-                                    PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
+                                        <dxc:AxisX2D.VisualRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding DataContext.AxisMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.AxisMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisX2D.VisualRange>
 
-                            <dxlc:LayoutItem Label="Min">
-                                <dxe:TextEdit Tag="Min"
-                                    Width="80" HorizontalAlignment="Right"
-                                    EditValue="{Binding Min, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Style="{StaticResource AppBaseEditStyle}"
-                                    PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
+                                        <dxc:AxisX2D.WholeRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding DataContext.AxisMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.AxisMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisX2D.WholeRange>
 
-                            <dxlc:LayoutItem Label="Filtration">
-                                <dxe:TextEdit Tag="Flt"
-                                    Width="80" HorizontalAlignment="Right"
-                                    EditValue="{Binding Flt, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Style="{StaticResource AppBaseEditStyle}"
-                                    PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
+                                        <dxc:AxisX2D.DateTimeScaleOptions>
+                                            <dxc:ContinuousDateTimeScaleOptions GridAlignment="Second" AutoGrid="True"/>
+                                        </dxc:AxisX2D.DateTimeScaleOptions>
+                                    </dxc:AxisX2D>
+                                </dxch:XYDiagram2D.AxisX>
 
-                        </dxlc:LayoutGroup>
+                                <!-- ====== AxisY ====== -->
+                                <dxch:XYDiagram2D.AxisY>
+                                    <dxc:AxisY2D>
+                                        <dxc:AxisY2D.WholeRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding MinR}"
+                                                       MaxValue="{Binding MaxR}"/>
+                                        </dxc:AxisY2D.WholeRange>
 
+                                        <dxc:AxisY2D.VisualRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding MinR}"
+                                                       MaxValue="{Binding MaxR}"/>
+                                        </dxc:AxisY2D.VisualRange>
+                                    </dxc:AxisY2D>
+                                </dxch:XYDiagram2D.AxisY>
 
-                    </dxlc:LayoutGroup>
+                                <!-- ====== Series ====== -->
+                                <dxc:XYDiagram2D.Series>
+                                    <dxc:SplineAreaSeries2D
+                                        DataSource="{Binding DataContext.ParamTrendPoints, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        ArgumentDataMember="Time"
+                                        ValueDataMember="Value"
+                                        ArgumentScaleType="DateTime"
+                                        MarkerVisible="False"
+                                        Transparency="0.6"
+                                        LineTension="0.8"
+                                        Brush="ForestGreen">
+                                    </dxc:SplineAreaSeries2D>
+                                </dxc:XYDiagram2D.Series>
 
-                    <dxlc:LayoutGroup Header="Chanel settings" View="GroupBox" Width="300" HorizontalAlignment="Left"  Orientation="Vertical">
+                            </dxc:XYDiagram2D>
+                        </dxc:ChartControl.Diagram>
+                    </dxc:ChartControl>
+                    
+                </dxlc:LayoutItem>
 
-                        <dxlc:LayoutItem Label="MaxR">
-                            <dxe:TextEdit Tag="MaxR"
-                                Width="80" HorizontalAlignment="Right"
-                                EditValue="{Binding MaxR, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                Style="{StaticResource AppBaseEditStyle}"
-                                PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                        </dxlc:LayoutItem>
+                <!-- ====== SETTINGS (PLC / Chanel / Alarm) ====== -->
+                <dxlc:LayoutItem Visibility="{Binding DataContext.IsParamSettingsVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                    
+                    <!-- вложенный LayoutControl, чтобы можно было показывать/скрывать целиком -->
+                    <dxlc:LayoutControl Margin="-12">
+                        
+                        <dxlc:LayoutGroup Orientation="Vertical" View="Group" GroupBoxDisplayMode="Light">
 
-                        <dxlc:LayoutItem Label="MinR">
-                            <dxe:TextEdit Tag="MinR"
-                                Width="80" HorizontalAlignment="Right"
-                                EditValue="{Binding MinR, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                Style="{StaticResource AppBaseEditStyle}"
-                                PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                        </dxlc:LayoutItem>
+                            <!-- ====== твой блок PLC Settings ====== -->
+                            <dxlc:LayoutGroup Header="PLC settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical">
 
-                        <dxlc:LayoutItem Label="Coefficient">
-                            <dxe:TextEdit Tag="Coef"
-                                Width="80" HorizontalAlignment="Right"
-                                EditValue="{Binding Coef, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                Style="{StaticResource AppBaseEditStyle}"
-                                PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                        </dxlc:LayoutItem>
-
-
-                    </dxlc:LayoutGroup>
-
-
-                </dxlc:LayoutGroup>
-
-                <dxlc:LayoutGroup Header="Alarm settings" View="GroupBox" Width="604" HorizontalAlignment="Left">
-
-                    <dxlc:LayoutGroup Orientation="Vertical">
-
-                        <!-- HA -->
-                        <dxlc:LayoutGroup Orientation="Horizontal">
-                            <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
-                                <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
-                                               Tag="AlarmHAEn"
-                                               IsChecked="{Binding AlarmHAEn}"
-                                               EditValueChanged="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-
-                            <dxlc:LayoutItem Label="HA" HorizontalAlignment="Right">
-                                <dxe:TextEdit Tag="SetHA"
-                                    Width="80" HorizontalAlignment="Left"
-                                    EditValue="{Binding SetHA, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Style="{StaticResource AppBaseEditStyle}"
-                                    PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-                        </dxlc:LayoutGroup>
-
-                        <!-- HW -->
-                        <dxlc:LayoutGroup Orientation="Horizontal">
-                            <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
-                                <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
-                                               Tag="AlarmHWEn"
-                                               IsChecked="{Binding AlarmHWEn}"
-                                               EditValueChanged="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-
-                            <dxlc:LayoutItem Label="HW" HorizontalAlignment="Right">
-                                <dxe:TextEdit Tag="SetHW"
-                                        Width="80" HorizontalAlignment="Left"
-                                        EditValue="{Binding SetHW, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                <dxlc:LayoutItem Label="Max">
+                                    <dxe:TextEdit
+                                        Tag="Max"
+                                        Width="80" HorizontalAlignment="Right"
+                                        EditValue="{Binding Max, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
                                         Style="{StaticResource AppBaseEditStyle}"
                                         PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-                        </dxlc:LayoutGroup>
+                                </dxlc:LayoutItem>
 
-                        <!-- LW -->
-                        <dxlc:LayoutGroup Orientation="Horizontal">
-                            <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
-                                <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
-                                               Tag="AlarmLWEn"
-                                               IsChecked="{Binding AlarmLWEn}"
-                                               EditValueChanged="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-
-                            <dxlc:LayoutItem Label="LW" HorizontalAlignment="Right">
-                                <dxe:TextEdit Tag="SetLW"
-                                    Width="80" HorizontalAlignment="Left"
-                                    EditValue="{Binding SetLW, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Style="{StaticResource AppBaseEditStyle}"
-                                    PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-                        </dxlc:LayoutGroup>
-
-                        <!-- LA -->
-                        <dxlc:LayoutGroup Orientation="Horizontal">
-                            <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
-                                <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
-                                               Tag="AlarmLAEn"
-                                               IsChecked="{Binding AlarmLAEn}"
-                                               EditValueChanged="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
-
-                            <dxlc:LayoutItem Label="LA" HorizontalAlignment="Right">
-                                <dxe:TextEdit Tag="SetLA"
-                                        Width="80" HorizontalAlignment="Left"
-                                        EditValue="{Binding SetLA, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                <dxlc:LayoutItem Label="Min">
+                                    <dxe:TextEdit
+                                        Tag="Min"
+                                        Width="80" HorizontalAlignment="Right"
+                                        EditValue="{Binding Min, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
                                         Style="{StaticResource AppBaseEditStyle}"
                                         PreviewKeyDown="ParamEditable_EditValueChanged"/>
-                            </dxlc:LayoutItem>
+                                </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="Filtration">
+                                    <dxe:TextEdit
+                                        Tag="Flt"
+                                        Width="80" HorizontalAlignment="Right"
+                                        EditValue="{Binding Flt, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Style="{StaticResource AppBaseEditStyle}"
+                                        PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                </dxlc:LayoutItem>
+
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== твой блок Chanel Settings ====== -->
+                            <dxlc:LayoutGroup Header="Chanel settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical">
+
+                                <dxlc:LayoutItem Label="MaxR">
+                                    <dxe:TextEdit
+                                            Tag="MaxR"
+                                            Width="80" HorizontalAlignment="Right"
+                                            EditValue="{Binding MaxR, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Style="{StaticResource AppBaseEditStyle}"
+                                            PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="MinR">
+                                    <dxe:TextEdit
+                                            Tag="MinR"
+                                            Width="80" HorizontalAlignment="Right"
+                                            EditValue="{Binding MinR, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Style="{StaticResource AppBaseEditStyle}"
+                                            PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="Coefficient">
+                                    <dxe:TextEdit
+                                            Tag="Coef"
+                                            Width="80" HorizontalAlignment="Right"
+                                            EditValue="{Binding Coef, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Style="{StaticResource AppBaseEditStyle}"
+                                            PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                </dxlc:LayoutItem>
+
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== твой Alarm settings ====== -->
+                            <dxlc:LayoutGroup Header="Alarm settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical">
+                                
+                                 <!--HA-->
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
+                                        <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
+                                                       Tag="AlarmHAEn"
+                                                       IsChecked="{Binding AlarmHAEn}"
+                                                       EditValueChanged="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="HA" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="SetHA"
+                                            Width="80" HorizontalAlignment="Left"
+                                            EditValue="{Binding SetHA, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Style="{StaticResource AppBaseEditStyle}"
+                                            PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+
+                                 <!--HW--> 
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
+                                        <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
+                                                       Tag="AlarmHWEn"
+                                                       IsChecked="{Binding AlarmHWEn}"
+                                                       EditValueChanged="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="HW" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="SetHW"
+                                                Width="80" HorizontalAlignment="Left"
+                                                EditValue="{Binding SetHW, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                                Style="{StaticResource AppBaseEditStyle}"
+                                                PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+
+                                 <!--LW-->
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
+                                        <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
+                                            Tag="AlarmLWEn"
+                                            IsChecked="{Binding AlarmLWEn}"
+                                            EditValueChanged="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="LW" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="SetLW"
+                                            Width="80" HorizontalAlignment="Left"
+                                            EditValue="{Binding SetLW, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Style="{StaticResource AppBaseEditStyle}"
+                                            PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+
+                                <!--LA--> 
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
+                                        <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
+                                                       Tag="AlarmLAEn"
+                                                       IsChecked="{Binding AlarmLAEn}"
+                                                       EditValueChanged="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="LA" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="SetLA"
+                                                Width="80" HorizontalAlignment="Left"
+                                                EditValue="{Binding SetLA, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                                Style="{StaticResource AppBaseEditStyle}"
+                                                PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+                                
+                            </dxlc:LayoutGroup>
+
                         </dxlc:LayoutGroup>
-
-                    </dxlc:LayoutGroup>
-
-
-
-
-                </dxlc:LayoutGroup>
-
-
-
-
-                <!-- ================= CHART BLOCK (вместо центра) ================= -->
-                <dxc:ChartControl Grid.Row="1">
-                    <dxc:ChartControl.Diagram>
-                        <dxc:XYDiagram2D>
-                            
-                            
-     
-                            <dxch:XYDiagram2D.AxisX>
-                                <dxc:AxisX2D>
-
-                                    <dxc:AxisX2D.Label>
-                                        <dxc:AxisLabel TextPattern="{}{A:HH:mm:ss}"/>
-                                    </dxc:AxisX2D.Label>
-
-                                    <dxc:AxisX2D.VisualRange>
-                                        <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                   MinValue="{Binding DataContext.AxisMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                   MaxValue="{Binding DataContext.AxisMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                    </dxc:AxisX2D.VisualRange>
-
-                                    <dxc:AxisX2D.WholeRange>
-                                        <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                   MinValue="{Binding DataContext.AxisMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                   MaxValue="{Binding DataContext.AxisMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                    </dxc:AxisX2D.WholeRange>
-
-                                    <dxc:AxisX2D.DateTimeScaleOptions>
-                                        <dxc:ContinuousDateTimeScaleOptions GridAlignment="Second" AutoGrid="True"/>
-                                    </dxc:AxisX2D.DateTimeScaleOptions>
-
-                                </dxc:AxisX2D>
-                            </dxch:XYDiagram2D.AxisX>
-                            
-
-                            <dxc:XYDiagram2D.Series>
-                                <dxc:SplineAreaSeries2D
-                                    DataSource="{Binding DataContext.ParamTrendPoints, RelativeSource={RelativeSource AncestorType=Window}}"
-                                    ArgumentDataMember="Time"
-                                    ValueDataMember="Value"
-                                    ArgumentScaleType="DateTime"
-                                    MarkerVisible="False"
-                                    Transparency="0.6"
-                                    LineTension="0.8"
-                                    Brush="ForestGreen">
-                                </dxc:SplineAreaSeries2D>
-                            </dxc:XYDiagram2D.Series>
-                            
-                        </dxc:XYDiagram2D>
-                    </dxc:ChartControl.Diagram>
-                </dxc:ChartControl>
-
-
+                        
+                    </dxlc:LayoutControl>
+                    
+                </dxlc:LayoutItem>
 
             </dxlc:LayoutGroup>
 
             <!-- ================= RIGHT BLOCK (buttons) ================= -->
+
             <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light" Header="" HorizontalAlignment="Right">
                 <StackPanel Orientation="Vertical" VerticalAlignment="Top">
-                    <dx:SimpleButton Content="G" Height="60" Width="60" Style="{StaticResource AppButtonStyle}" HorizontalAlignment="Stretch" Click="ChartsButton_Click"/>
+                    <dx:SimpleButton Content="G" Height="60" Width="60"
+                         Style="{StaticResource AppButtonStyle}"
+                         Click="ShowChartButton_Click"/>
+                    <dx:SimpleButton Content="P" Height="60" Width="60" Margin="0,8,0,0"
+                         Style="{StaticResource AppButtonStyle}"
+                         Click="ShowParamsButton_Click"/>
                 </StackPanel>
             </dxlc:LayoutGroup>
 
