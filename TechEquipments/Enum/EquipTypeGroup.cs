@@ -32,6 +32,7 @@ namespace TechEquipments
             ["DigitalOut"] = new(EquipTypeGroup.DO, c => SoeEventMapper.GetDescriptionOrEmpty<DoSoeCode>(c)),
             ["Motor"] = new(EquipTypeGroup.Motor, c => SoeEventMapper.GetDescriptionOrEmpty<MotorSoeCode>(c)),
             ["AnalogIn"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
+            ["AnalogInSiemens"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
             ["AnalogInCalc"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
             ["ValveA"] = new(EquipTypeGroup.VGA, c => SoeEventMapper.GetDescriptionOrEmpty<AoSoeCode>(c)),
             ["ValveA_EL"] = new(EquipTypeGroup.VGA_EL, c => SoeEventMapper.GetDescriptionOrEmpty<VgaElSoeCode>(c)),

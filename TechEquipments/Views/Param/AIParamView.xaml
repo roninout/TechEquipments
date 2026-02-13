@@ -99,71 +99,90 @@
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
                     Visibility="{Binding DataContext.IsParamChartVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
-                    
-                    <dxc:ChartControl HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                        <dxc:ChartControl.Diagram>
-                            <dxc:XYDiagram2D>
 
-                                <!-- ====== AxisX ====== -->
-                                <dxch:XYDiagram2D.AxisX>
+                    <!-- Trend chart (DevExpress WPF Charts).
+                         IMPORTANT:
+                         - VisualRange (AxisXMin/AxisXMax) = текущая видимая область.
+                         - WholeRange  (AxisXWholeMin/AxisXWholeMax) = весь диапазон загруженных данных.
+                           WholeRange должен быть шире VisualRange, чтобы работали scrollbars/пан.
+                    -->
+                    <dxc:ChartControl DataSource="{Binding DataContext.ParamTrendPoints, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      BoundDataChanged="ParamChart_BoundDataChanged"
+                                      CustomDrawCrosshair="Chart_CustomDrawCrosshair">
+                        <dxc:ChartControl.Diagram>
+                            <dxc:XYDiagram2D
+                                SeriesDataMember="Series"
+                                EnableAxisXNavigation="True"
+                                EnableAxisYNavigation="False"
+                                Scroll="ParamChart_DiagramScroll"
+                                Zoom="ParamChart_DiagramZoom">
+
+                                <dxc:XYDiagram2D.NavigationOptions>
+                                    <dxc:NavigationOptions UseMouse="True" UseScrollBars="True" UseKeyboard="True"/>
+                                </dxc:XYDiagram2D.NavigationOptions>
+
+                                <!-- AxisX -->
+                                <dxc:XYDiagram2D.AxisX>
                                     <dxc:AxisX2D>
-                                        <dxc:AxisX2D.Label>
+                                        <!--<dxc:AxisX2D.Label>
                                             <dxc:AxisLabel TextPattern="{}{A:HH:mm:ss}"/>
-                                        </dxc:AxisX2D.Label>
+                                        </dxc:AxisX2D.Label>-->
 
                                         <dxc:AxisX2D.VisualRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                       MinValue="{Binding DataContext.AxisMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       MaxValue="{Binding DataContext.AxisMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                MinValue="{Binding DataContext.AxisXMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                MaxValue="{Binding DataContext.AxisXMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisX2D.VisualRange>
 
                                         <dxc:AxisX2D.WholeRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                       MinValue="{Binding DataContext.AxisMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       MaxValue="{Binding DataContext.AxisMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                MinValue="{Binding DataContext.AxisXWholeMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                MaxValue="{Binding DataContext.AxisXWholeMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisX2D.WholeRange>
 
                                         <dxc:AxisX2D.DateTimeScaleOptions>
                                             <dxc:ContinuousDateTimeScaleOptions GridAlignment="Second" AutoGrid="True"/>
                                         </dxc:AxisX2D.DateTimeScaleOptions>
+
                                     </dxc:AxisX2D>
-                                </dxch:XYDiagram2D.AxisX>
+                                </dxc:XYDiagram2D.AxisX>
 
-                                <!-- ====== AxisY ====== -->
-                                <dxch:XYDiagram2D.AxisY>
+                                <!-- AxisY: -->
+                                <dxc:XYDiagram2D.AxisY>
                                     <dxc:AxisY2D>
-                                        <dxc:AxisY2D.WholeRange>
-                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                       MinValue="{Binding MinR}"
-                                                       MaxValue="{Binding MaxR}"/>
-                                        </dxc:AxisY2D.WholeRange>
-
                                         <dxc:AxisY2D.VisualRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                       MinValue="{Binding MinR}"
-                                                       MaxValue="{Binding MaxR}"/>
+                                                       MinValue="{Binding DataContext.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisY2D.VisualRange>
+                                        <dxc:AxisY2D.WholeRange>
+                                            <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
+                                                       MinValue="{Binding DataContext.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </dxc:AxisY2D.WholeRange>
                                     </dxc:AxisY2D>
-                                </dxch:XYDiagram2D.AxisY>
+                                </dxc:XYDiagram2D.AxisY>
 
                                 <!-- ====== Series ====== -->
-                                <dxc:XYDiagram2D.Series>
+                                <dxc:XYDiagram2D.SeriesTemplate>
                                     <dxc:SplineAreaSeries2D
-                                        DataSource="{Binding DataContext.ParamTrendPoints, RelativeSource={RelativeSource AncestorType=Window}}"
                                         ArgumentDataMember="Time"
                                         ValueDataMember="Value"
                                         ArgumentScaleType="DateTime"
                                         MarkerVisible="False"
-                                        Transparency="0.6"
-                                        LineTension="0.8"
-                                        Brush="ForestGreen">
+                                        LineTension="0.0">
+
+
+                                        <!--ToolTipEnabled="True"
+                                        ToolTipHintDataMember="RawValue"
+                                        ToolTipPointPattern="{}{S} | {A:HH:mm:ss} = {H:0.###}">-->
                                     </dxc:SplineAreaSeries2D>
-                                </dxc:XYDiagram2D.Series>
+                                </dxc:XYDiagram2D.SeriesTemplate>
 
                             </dxc:XYDiagram2D>
                         </dxc:ChartControl.Diagram>
                     </dxc:ChartControl>
-                    
+
                 </dxlc:LayoutItem>
 
                 <!-- ====== SETTINGS (PLC / Chanel / Alarm) ====== -->
@@ -295,7 +314,7 @@
                                     </dxlc:LayoutItem>
                                 </dxlc:LayoutGroup>
 
-                                <!--LA--> 
+                                <!--LA-->
                                 <dxlc:LayoutGroup Orientation="Horizontal">
                                     <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
                                         <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
@@ -312,7 +331,19 @@
                                                 PreviewKeyDown="ParamEditable_EditValueChanged"/>
                                     </dxlc:LayoutItem>
                                 </dxlc:LayoutGroup>
-                                
+
+                                <!--HYSTERESIS-->
+                                <dxlc:LayoutGroup Orientation="Horizontal">
+                                    <dxlc:LayoutItem Label="Hysteresis">
+                                        <dxe:TextEdit Tag="SetHyst"
+                                            Width="80" HorizontalAlignment="Right"
+                                            EditValue="{Binding SetHyst, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Style="{StaticResource AppBaseEditStyle}"
+                                            PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                    </dxlc:LayoutItem>
+                                </dxlc:LayoutGroup>
+
+
                             </dxlc:LayoutGroup>
 
                         </dxlc:LayoutGroup>
@@ -333,6 +364,10 @@
                     <dx:SimpleButton Content="P" Height="60" Width="60" Margin="0,8,0,0"
                          Style="{StaticResource AppButtonStyle}"
                          Click="ShowParamsButton_Click"/>
+                    <!-- Live: вернуть график к режиму "приклеен к текущему времени" -->
+                    <dx:SimpleButton Content="Live" Height="60" Width="60" Margin="0,108,0,0" VerticalAlignment="Bottom"
+                        Style="{StaticResource AppButtonStyle}"
+                        Click="LiveButton_Click"/>
                 </StackPanel>
             </dxlc:LayoutGroup>
 

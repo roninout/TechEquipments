@@ -45,7 +45,7 @@ namespace TechEquipments
                 "DigitalOut" => GetNameOrEmpty<DoSoeCode>(bitCode),
                 "Atv" => GetNameOrEmpty<AtvSoeCode>(bitCode),
                 "Motor" => GetNameOrEmpty<MotorSoeCode>(bitCode),
-                "AnalogIn" or "AnalogInCalc" => GetNameOrEmpty<AiSoeCode>(bitCode),
+                "AnalogIn" or "AnalogInCalc" or "AnalogInSiemens" => GetNameOrEmpty<AiSoeCode>(bitCode),
                 "ValveA" => GetNameOrEmpty<AoSoeCode>(bitCode),
                 "ValveA_EL" => GetNameOrEmpty<VgaElSoeCode>(bitCode),
                 "ValveD" => GetNameOrEmpty<VgdSoeCode>(bitCode),

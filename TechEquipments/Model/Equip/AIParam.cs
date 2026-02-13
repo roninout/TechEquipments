@@ -2,6 +2,21 @@
 
 namespace TechEquipments
 {
+    /// <summary>
+    /// Param model for Analog In equipment (AnalogInCalc).
+    /// 
+    /// IMPORTANT (Param chart):
+    /// - Use [TrendItem] to declare which "items" (series) we show in the chart.
+    /// - The FIRST [TrendItem] is treated as the base series for the common Y axis.
+    /// - For other items you can optionally define YMin/YMax - the values will be linearly scaled
+    ///   to the base Y axis (while tooltips/crosshair still show the raw values).
+    /// - Use [TrendSeriesStyle] to set colors/opacity for each series.
+    /// </summary>
+    [TrendItem("R")]
+    [TrendSeriesStyle("R", "#2E7D32", transparency: 0.7)] // green
+
+    [TrendItem("STW", YMin = 0, YMax = 100)]          // 0..100 will be stretched to base Y axis
+    [TrendSeriesStyle("STW", "DarkSlateBlue", transparency: 0.8)]
     public class AIParam // AnalogInCalc
     {
         public bool AlarmLAEn { get; set; }
@@ -41,6 +56,10 @@ namespace TechEquipments
 
         public uint HashCode { get; set; }
 
-        public string Unit { get; set; }
+        /// <summary>
+        /// Engineering units for the "R" item (filled manually during ReadEquipParamsAsync).
+        /// This is not a real tag field (we do not write it back to SCADA).
+        /// </summary>
+        public string Unit { get; set; } = "";
     }
 }

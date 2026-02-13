@@ -246,7 +246,7 @@ namespace CtApi
         /// <exception cref="Win32Exception"></exception>
         public string Cicode(string cmd, uint win = 0)
         {
-            Logger.Debug($"Citect.CtApi > Cicode, cmd={cmd}, win={win}");
+            //Logger.Debug($"Citect.CtApi > Cicode, cmd={cmd}, win={win}");
 
             var value = new StringBuilder(100);
             var result = CtCicode(_ctapi, cmd, win, 0, value, value.Capacity, IntPtr.Zero);
@@ -260,7 +260,7 @@ namespace CtApi
             }
             else
             {
-                Logger.Debug($"Citect.CtApi > Cicode, cmd={cmd}, win={win}, value={value}");
+                //Logger.Debug($"Citect.CtApi > Cicode, cmd={cmd}, win={win}, value={value}");
                 return value.ToString();
             }
         }
@@ -308,14 +308,14 @@ namespace CtApi
         /// <param name="propertiesName">The name of the properties to be retrieved.</param>
         public IEnumerable<Dictionary<string, string>> Find(string tableName, string filter, string cluster, params string[] propertiesName)
         {
-            Logger.Debug($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}");
+            //Logger.Debug($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}");
 
             var hfindptr = IntPtr.Zero;
             var hfind = CtFindFirstEx(_ctapi, tableName, filter, cluster, ref hfindptr, 0);
             if (hfind == IntPtr.Zero)
             {
                 var error = new Win32Exception(Marshal.GetLastWin32Error());
-                Logger.Error($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, error={error.Message}");
+                //Logger.Error($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, error={error.Message}");
                 throw error;
             }
 
@@ -332,7 +332,7 @@ namespace CtApi
             } while (CtFindNext(hfind, ref hfindptr));
             CtFindClose(hfind);
 
-            Logger.Debug($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, objects.Count={items.Count}");
+            //Logger.Debug($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, objects.Count={items.Count}");
 
             return items;
         }
