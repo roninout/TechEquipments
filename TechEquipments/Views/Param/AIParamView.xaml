@@ -98,7 +98,7 @@
                 <dxlc:LayoutItem
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
-                    Visibility="{Binding DataContext.IsParamChartVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding DataContext.Trend.IsChartVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
 
                     <!-- Trend chart (DevExpress WPF Charts).
                          IMPORTANT:
@@ -106,7 +106,7 @@
                          - WholeRange  (AxisXWholeMin/AxisXWholeMax) = весь диапазон загруженных данных.
                            WholeRange должен быть шире VisualRange, чтобы работали scrollbars/пан.
                     -->
-                    <dxc:ChartControl DataSource="{Binding DataContext.ParamTrendPoints, RelativeSource={RelativeSource AncestorType=Window}}"
+                    <dxc:ChartControl DataSource="{Binding DataContext.Trend.Points, RelativeSource={RelativeSource AncestorType=Window}}"
                                       BoundDataChanged="ParamChart_BoundDataChanged"
                                       CustomDrawCrosshair="Chart_CustomDrawCrosshair">
                         <dxc:ChartControl.Diagram>
@@ -130,14 +130,14 @@
 
                                         <dxc:AxisX2D.VisualRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                MinValue="{Binding DataContext.AxisXMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                MaxValue="{Binding DataContext.AxisXMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                MinValue="{Binding DataContext.Trend.AxisXMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                MaxValue="{Binding DataContext.Trend.AxisXMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisX2D.VisualRange>
 
                                         <dxc:AxisX2D.WholeRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                MinValue="{Binding DataContext.AxisXWholeMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                MaxValue="{Binding DataContext.AxisXWholeMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                MinValue="{Binding DataContext.Trend.AxisXWholeMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                MaxValue="{Binding DataContext.Trend.AxisXWholeMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisX2D.WholeRange>
 
                                         <dxc:AxisX2D.DateTimeScaleOptions>
@@ -152,13 +152,13 @@
                                     <dxc:AxisY2D>
                                         <dxc:AxisY2D.VisualRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                       MinValue="{Binding DataContext.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       MaxValue="{Binding DataContext.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                       MinValue="{Binding DataContext.Trend.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.Trend.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisY2D.VisualRange>
                                         <dxc:AxisY2D.WholeRange>
                                             <dxc:Range AutoSideMargins="False" SideMarginsValue="0"
-                                                       MinValue="{Binding DataContext.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       MaxValue="{Binding DataContext.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                       MinValue="{Binding DataContext.Trend.AxisYMin, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MaxValue="{Binding DataContext.Trend.AxisYMax, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </dxc:AxisY2D.WholeRange>
                                     </dxc:AxisY2D>
                                 </dxc:XYDiagram2D.AxisY>
@@ -186,11 +186,11 @@
                 </dxlc:LayoutItem>
 
                 <!-- ====== SETTINGS (PLC / Chanel / Alarm) ====== -->
-                <dxlc:LayoutItem Visibility="{Binding DataContext.IsParamSettingsVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
-                    
+                <dxlc:LayoutItem Visibility="{Binding DataContext.Trend.IsSettingsVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+
                     <!-- вложенный LayoutControl, чтобы можно было показывать/скрывать целиком -->
                     <dxlc:LayoutControl Margin="-12">
-                        
+
                         <dxlc:LayoutGroup Orientation="Vertical" View="Group" GroupBoxDisplayMode="Light">
 
                             <!-- ====== твой блок PLC Settings ====== -->
@@ -259,8 +259,8 @@
 
                             <!-- ====== твой Alarm settings ====== -->
                             <dxlc:LayoutGroup Header="Alarm settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical">
-                                
-                                 <!--HA-->
+
+                                <!--HA-->
                                 <dxlc:LayoutGroup Orientation="Horizontal">
                                     <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
                                         <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
@@ -278,7 +278,7 @@
                                     </dxlc:LayoutItem>
                                 </dxlc:LayoutGroup>
 
-                                 <!--HW--> 
+                                <!--HW-->
                                 <dxlc:LayoutGroup Orientation="Horizontal">
                                     <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
                                         <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
@@ -296,7 +296,7 @@
                                     </dxlc:LayoutItem>
                                 </dxlc:LayoutGroup>
 
-                                 <!--LW-->
+                                <!--LW-->
                                 <dxlc:LayoutGroup Orientation="Horizontal">
                                     <dxlc:LayoutItem Style="{StaticResource BoolCheckLayoutItemStyle}">
                                         <dxe:CheckEdit Style="{StaticResource BoolParamCheckEditStyle}"
@@ -347,30 +347,86 @@
                             </dxlc:LayoutGroup>
 
                         </dxlc:LayoutGroup>
-                        
+
                     </dxlc:LayoutControl>
-                    
+
                 </dxlc:LayoutItem>
 
             </dxlc:LayoutGroup>
 
             <!-- ================= RIGHT BLOCK (buttons) ================= -->
+            <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light"
+                  Header=""
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Stretch">
 
-            <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light" Header="" HorizontalAlignment="Right">
-                <StackPanel Orientation="Vertical" VerticalAlignment="Top">
-                    <dx:SimpleButton Content="G" Height="60" Width="60"
-                         Style="{StaticResource AppButtonStyle}"
-                         Click="ShowChartButton_Click"/>
-                    <dx:SimpleButton Content="P" Height="60" Width="60" Margin="0,8,0,0"
-                         Style="{StaticResource AppButtonStyle}"
-                         Click="ShowParamsButton_Click"/>
-                    <!-- Live: вернуть график к режиму "приклеен к текущему времени" -->
-                    <dx:SimpleButton Content="Live" Height="60" Width="60" Margin="0,108,0,0" VerticalAlignment="Bottom"
-                        Style="{StaticResource AppButtonStyle}"
-                        Click="LiveButton_Click"/>
-                </StackPanel>
+                <!-- Один LayoutItem, внутри Grid с "пружиной" -->
+                <dxlc:LayoutItem VerticalAlignment="Stretch">
+                    <Grid VerticalAlignment="Stretch">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <!-- верхние кнопки -->
+                            <RowDefinition Height="*"/>
+                            <!-- пружина -->
+                            <RowDefinition Height="Auto"/>
+                            <!-- нижняя кнопка -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Верх: Chart + Params -->
+                        <StackPanel Grid.Row="0" Orientation="Vertical" VerticalAlignment="Top">
+
+                            <!-- Chart -->
+                            <dx:SimpleButton x:Name="ChartButton"
+                                 Width="60" Height="60"
+                                 Padding="0" GlyphWidth="40" GlyphHeight="40"
+                                 Click="ShowChartButton_Click"
+                                 ToolTip="Chart"
+                                 Glyph="{dx:DXImage SvgImages/Chart/ChartType_LineStacked.svg}"
+                                 Style="{StaticResource AppButtonStyle}" />
+
+                            <!-- Params -->
+                            <dx:SimpleButton x:Name="ParamButton"
+                                 Width="60" Height="60"
+                                 Margin="0,8,0,0"
+                                 Padding="0" GlyphWidth="40" GlyphHeight="40"
+                                 Click="ShowParamsButton_Click"
+                                 ToolTip="Params"
+                                 Glyph="{dx:DXImage SvgImages/Outlook Inspired/List.svg}"
+                                 Style="{StaticResource AppButtonStyle}" />
+
+                        </StackPanel>
+
+                        <!-- Низ: Live/History (прилипает к низу автоматически) -->
+                        <dx:SimpleButton Grid.Row="2"
+                             x:Name="TrendModeButton"
+                             Width="60" Height="60"
+                             Padding="0" GlyphWidth="40" GlyphHeight="40"
+                             Click="LiveButton_Click">
+
+                            <dx:SimpleButton.Style>
+                                <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                    <!-- По умолчанию Live -->
+                                    <Setter Property="Glyph" Value="{dx:DXImage SvgImages/XAF/Action_Debug_Start.svg}"/>
+                                    <Setter Property="ToolTip" Value="Live"/>
+
+                                    <Style.Triggers>
+                                        <!-- Если History -->
+                                        <DataTrigger Binding="{Binding DataContext.Trend.IsLiveMode, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                         Value="False">
+                                            <Setter Property="Glyph" Value="{dx:DXImage SvgImages/Arrows/Last.svg}"/>
+                                            <Setter Property="ToolTip" Value="History"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </dx:SimpleButton.Style>
+
+                        </dx:SimpleButton>
+
+                    </Grid>
+                </dxlc:LayoutItem>
+
             </dxlc:LayoutGroup>
-
+            
         </dxlc:LayoutGroup>
 
     </dxlc:LayoutControl>

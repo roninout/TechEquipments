@@ -83,9 +83,7 @@ namespace TechEquipments.Views.Param
             if (DesignerProperties.GetIsInDesignMode(this))
                 return;
 
-            var host = Window.GetWindow(this) as MainWindow
-                       ?? Application.Current?.MainWindow as MainWindow;
-
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
             if (host != null && sender is ChartControl chart)
                 host.ApplyTrendSeriesStyles(chart);
         }
@@ -124,31 +122,6 @@ namespace TechEquipments.Views.Param
         }
 
 
-        private void ParamChart_DiagramScroll(object sender, XYDiagram2DScrollEventArgs e)
-        {
-            if (DesignerProperties.GetIsInDesignMode(this))
-                return;
-
-            // Для DateTime-оси MinValue/MaxValue будут DateTime
-            if (e.NewXRange.MinValue is DateTime min && e.NewXRange.MaxValue is DateTime max)
-            {
-                var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
-                host?.OnParamChartUserRangeChanged(min, max);
-            }
-        }
-
-        private void ParamChart_DiagramZoom(object sender, XYDiagram2DZoomEventArgs e)
-        {
-            if (DesignerProperties.GetIsInDesignMode(this))
-                return;
-
-            if (e.NewXRange.MinValue is DateTime min && e.NewXRange.MaxValue is DateTime max)
-            {
-                var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
-                host?.OnParamChartUserRangeChanged(min, max);
-            }
-        }
-
         /// <summary>
         /// Switches the trend chart back to Live mode (pin the visible window to "now").
         /// </summary>
@@ -159,8 +132,20 @@ namespace TechEquipments.Views.Param
 
             var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
 
-            // resetPoints:false = не чистим точки полностью, а просто обрезаем до окна live
+            // Кнопка возвращает в Live (как “прилипнуть к now”)
             host?.SetParamChartLiveMode(resetPoints: false);
+        }
+
+        private void ParamChart_DiagramScroll(object sender, XYDiagram2DScrollEventArgs e)
+        {
+            if (e.NewXRange.MinValue is DateTime min && e.NewXRange.MaxValue is DateTime max)
+                (Window.GetWindow(this) as MainWindow)?.OnParamChartUserRangeChanged(min, max);
+        }
+
+        private void ParamChart_DiagramZoom(object sender, XYDiagram2DZoomEventArgs e)
+        {
+            if (e.NewXRange.MinValue is DateTime min && e.NewXRange.MaxValue is DateTime max)
+                (Window.GetWindow(this) as MainWindow)?.OnParamChartUserRangeChanged(min, max);
         }
     }
 }

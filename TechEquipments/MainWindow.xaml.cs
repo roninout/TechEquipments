@@ -591,66 +591,69 @@ namespace TechEquipments
 
         #region Trend
 
-        private bool _isParamChartVisible = true;
-        public bool IsParamChartVisible
-        {
-            get => _isParamChartVisible;
-            set {
-                if (_isParamChartVisible == value)
-                    return;
+        public ParamTrendVm Trend { get; }
+        private ParamTrendController _trendCtl;
 
-                _isParamChartVisible = value;
+        //private bool _isParamChartVisible = true;
+        //public bool IsParamChartVisible
+        //{
+        //    get => _isParamChartVisible;
+        //    set {
+        //        if (_isParamChartVisible == value)
+        //            return;
 
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsParamSettingsVisible));
-            }
-        }
+        //        _isParamChartVisible = value;
 
-        public bool IsParamSettingsVisible => !IsParamChartVisible;
+        //        OnPropertyChanged();
+        //        OnPropertyChanged(nameof(IsParamSettingsVisible));
+        //    }
+        //}
 
-        private string? _trendEquipName; // чтобы при смене equip сбрасывать кэши
-        private readonly Dictionary<string, string> _trnNameByItem = new(StringComparer.OrdinalIgnoreCase);   // кэш TrendTag
-        private readonly Dictionary<string, DateTime> _lastUtcByItem = new(StringComparer.OrdinalIgnoreCase); // чтобы добирать только новые точки
+        //public bool IsParamSettingsVisible => !IsParamChartVisible;
 
-        private double _axisYMin;
-        public double AxisYMin
-        {
-            get => _axisYMin;
-            set { if (_axisYMin == value) return; _axisYMin = value; OnPropertyChanged(); }
-        }
+        //private string? _trendEquipName; // чтобы при смене equip сбрасывать кэши
+        //private readonly Dictionary<string, string> _trnNameByItem = new(StringComparer.OrdinalIgnoreCase);   // кэш TrendTag
+        //private readonly Dictionary<string, DateTime> _lastUtcByItem = new(StringComparer.OrdinalIgnoreCase); // чтобы добирать только новые точки
 
-        private double _axisYMax;
-        public double AxisYMax
-        {
-            get => _axisYMax;
-            set { if (_axisYMax == value) return; _axisYMax = value; OnPropertyChanged(); }
-        }
+        //private double _axisYMin;
+        //public double AxisYMin
+        //{
+        //    get => _axisYMin;
+        //    set { if (_axisYMin == value) return; _axisYMin = value; OnPropertyChanged(); }
+        //}
 
-        // Gate: trend обновляется и polling’ом, и автоподгрузкой истории (чтобы не было гонок)
-        private readonly SemaphoreSlim _trendGate = new(1, 1);
+        //private double _axisYMax;
+        //public double AxisYMax
+        //{
+        //    get => _axisYMax;
+        //    set { if (_axisYMax == value) return; _axisYMax = value; OnPropertyChanged(); }
+        //}
 
-        // Live: окно pinned к now-60..now
-        // History: окно двигает пользователь
-        private bool _trendLiveMode = true;
+        //// Gate: trend обновляется и polling’ом, и автоподгрузкой истории (чтобы не было гонок)
+        //private readonly SemaphoreSlim _trendGate = new(1, 1);
 
-        private const int TrendLiveWindowMinutes = 60;
-        private const int TrendHistoryChunkMinutes = 60; // сколько подгружаем за раз
-        private const int TrendHistoryKeepHours = 24;    // страховка по памяти (0 = не резать)
+        //// Live: окно pinned к now-60..now
+        //// History: окно двигает пользователь
+        //private bool _trendLiveMode = true;
 
-        private DateTime _trendLastNavUtc = DateTime.MinValue;
-        private static readonly TimeSpan TrendNavDebounce = TimeSpan.FromMilliseconds(250);
+        //private const int TrendLiveWindowMinutes = 60;
+        //private const int TrendHistoryChunkMinutes = 60; // сколько подгружаем за раз
+        //private const int TrendHistoryKeepHours = 24;    // страховка по памяти (0 = не резать)
 
-        // VisualRange
-        private DateTime _axisXMin;
-        private DateTime _axisXMax;
-        public DateTime AxisXMin { get => _axisXMin; set { _axisXMin = value; OnPropertyChanged(); } }
-        public DateTime AxisXMax { get => _axisXMax; set { _axisXMax = value; OnPropertyChanged(); } }
+        //private DateTime _trendLastNavUtc = DateTime.MinValue;
+        //private static readonly TimeSpan TrendNavDebounce = TimeSpan.FromMilliseconds(250);
 
-        // WholeRange (весь загруженный диапазон)
-        private DateTime _axisXWholeMin;
-        private DateTime _axisXWholeMax;
-        public DateTime AxisXWholeMin { get => _axisXWholeMin; set { _axisXWholeMin = value; OnPropertyChanged(); } }
-        public DateTime AxisXWholeMax { get => _axisXWholeMax; set { _axisXWholeMax = value; OnPropertyChanged(); } }
+        //// VisualRange
+        //private DateTime _axisXMin;
+        //private DateTime _axisXMax;
+        //public DateTime AxisXMin { get => _axisXMin; set { _axisXMin = value; OnPropertyChanged(); } }
+        //public DateTime AxisXMax { get => _axisXMax; set { _axisXMax = value; OnPropertyChanged(); } }
+
+        //// WholeRange (весь загруженный диапазон)
+        //private DateTime _axisXWholeMin;
+        //private DateTime _axisXWholeMax;
+        //public DateTime AxisXWholeMin { get => _axisXWholeMin; set { _axisXWholeMin = value; OnPropertyChanged(); } }
+        //public DateTime AxisXWholeMax { get => _axisXWholeMax; set { _axisXWholeMax = value; OnPropertyChanged(); } }
 
         #endregion
 
@@ -662,7 +665,20 @@ namespace TechEquipments
             _dbService = dbService;
             _stateService = stateService;
             _ctApiService = ctApiService;
-            
+
+            // Vm + Controller
+            Trend = new ParamTrendVm();
+
+            _trendCtl = new ParamTrendController(
+                Trend,
+                Dispatcher,
+                _equipmentService,
+                _ctApiService,
+                resolveEquip: ResolveSelectedEquipForParam,        // твой существующий метод
+                getParamModel: () => CurrentParamModel,            // твоя текущая модель параметров
+                getParamCycles: () => _paramReadCycles             // счетчик циклов
+            );
+
             DataContext = this; // DataContext на себя: используется во всём XAML (binding)
 
             InitEquipmentsView();
@@ -1383,8 +1399,8 @@ namespace TechEquipments
                     await PollParamOnceSafeAsync(ct);
 
                     // это для трендов
-                    if (IsParamChartVisible)
-                        await PollTrendOnceSafeAsync(ct);
+                    if (Trend.IsChartVisible)
+                        await _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
 
                     await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 }
@@ -1688,64 +1704,84 @@ namespace TechEquipments
 
         #region Trend
 
-        private void ResetTrendState(bool clearPoints = true)
-        {
-            if (clearPoints)
-                ParamTrendPoints.Clear();
+        // прокси для View
+        public void OnParamChartUserRangeChanged(DateTime minLocal, DateTime maxLocal)
+            => _trendCtl.OnUserRangeChanged(minLocal, maxLocal);
 
-            _trnNameByItem.Clear();
-            _lastUtcByItem.Clear();
-            _trendEquipName = null;
+        public void SetParamChartLiveMode(bool resetPoints = false)
+            => _trendCtl.SetLiveMode(resetPoints);
 
-            // Back to Live mode and reset ranges.
-            _trendLiveMode = true;
+        public void ShowParamChart(bool reset = false)
+            => _trendCtl.ShowChart(reset);
 
-            // Axis X: visible window.
-            AxisXMax = DateTime.Now;
-            AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
-
-            // Axis X: whole range (scrollable area).
-            AxisXWholeMin = AxisXMin;
-            AxisXWholeMax = AxisXMax;
-        }
+        public void ShowParamSettings()
+            => _trendCtl.ShowSettings();
 
         /// <summary>
-        /// Toggle метод (вызов из кнопки)
-        /// при включении графика можно делать resetWhenShow=true
+        /// Called from AIParamView.ParamChart_BoundDataChanged.
+        /// Re-applies [TrendSeriesStyle] attributes to recreated DevExpress series.
         /// </summary>
-        public void ToggleParamChart(bool resetWhenShow = false)
-        {
-            if (IsParamChartVisible)
-            {
-                ShowParamSettings();
-            }
-            else
-            {
-                ShowParamChart(reset: resetWhenShow);
-            }
-        }
+        public void ApplyTrendSeriesStyles(ChartControl chart)
+            => TrendSeriesStyler.Apply(chart, CurrentParamModel);
 
-        private async Task PollTrendOnceSafeAsync(CancellationToken ct)
-        {
-            try
-            {
-                await _trendGate.WaitAsync(ct);
-                try
-                {
-                    await PollTrendOnceAsync(ct);
-                }
-                finally
-                {
-                    _trendGate.Release();
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                // чтобы не “убить” polling
-                BottomText = $"Trend error: {ex.Message}";
-            }
-        }
+        //private void ResetTrendState(bool clearPoints = true)
+        //{
+        //    if (clearPoints)
+        //        ParamTrendPoints.Clear();
+
+        //    _trnNameByItem.Clear();
+        //    _lastUtcByItem.Clear();
+        //    _trendEquipName = null;
+
+        //    // Back to Live mode and reset ranges.
+        //    _trendLiveMode = true;
+
+        //    // Axis X: visible window.
+        //    AxisXMax = DateTime.Now;
+        //    AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
+
+        //    // Axis X: whole range (scrollable area).
+        //    AxisXWholeMin = AxisXMin;
+        //    AxisXWholeMax = AxisXMax;
+        //}
+
+        ///// <summary>
+        ///// Toggle метод (вызов из кнопки)
+        ///// при включении графика можно делать resetWhenShow=true
+        ///// </summary>
+        //public void ToggleParamChart(bool resetWhenShow = false)
+        //{
+        //    if (IsParamChartVisible)
+        //    {
+        //        ShowParamSettings();
+        //    }
+        //    else
+        //    {
+        //        ShowParamChart(reset: resetWhenShow);
+        //    }
+        //}
+
+        //private async Task PollTrendOnceSafeAsync(CancellationToken ct)
+        //{
+        //    try
+        //    {
+        //        await _trendGate.WaitAsync(ct);
+        //        try
+        //        {
+        //            await PollTrendOnceAsync(ct);
+        //        }
+        //        finally
+        //        {
+        //            _trendGate.Release();
+        //        }
+        //    }
+        //    catch (OperationCanceledException) { }
+        //    catch (Exception ex)
+        //    {
+        //        // чтобы не “убить” polling
+        //        BottomText = $"Trend error: {ex.Message}";
+        //    }
+        //}
 
         //private async Task PollTrendOnceAsync(CancellationToken ct)
         //{
@@ -1756,11 +1792,11 @@ namespace TechEquipments
         //    // Those items are linearly scaled into the base range for drawing.
         //    // Tooltips/crosshair still show the original (raw) values.
 
-        //    var (equipName, equipType) = ResolveSelectedEquipForParam();
+        //    var (equipName, _) = ResolveSelectedEquipForParam();
         //    if (string.IsNullOrWhiteSpace(equipName))
         //        return;
 
-        //    // если сменилось оборудование — сбрасываем кэши/точки
+        //    // If equipment changed — reset caches/points.
         //    if (!string.Equals(_trendEquipName, equipName, StringComparison.OrdinalIgnoreCase))
         //    {
         //        _trendEquipName = equipName;
@@ -1773,6 +1809,17 @@ namespace TechEquipments
         //    // TrendItems are declared by attributes of the CURRENT param model.
         //    // First item is treated as "base" for axis Y.
         //    var trendItems = GetTrendItemsFromModel(CurrentParamModel, "R");
+        //    if (trendItems.Length == 0)
+        //        trendItems = new[] { "R" };
+
+        //    var baseItem = trendItems[0];
+
+        //    // Resolve base Y-range (axis): attribute on baseItem OR model MinR/MaxR.
+        //    if (!TryGetBaseYRange(baseItem, out var baseMin, out var baseMax))
+        //    {
+        //        baseMin = 0;
+        //        baseMax = 1;
+        //    }
 
         //    var endUtc = DateTime.UtcNow;
 
@@ -1780,7 +1827,7 @@ namespace TechEquipments
         //    {
         //        ct.ThrowIfCancellationRequested();
 
-        //        // 1) TrendTagName для item
+        //        // 1) Resolve TrendTagName for item (cached).
         //        if (!_trnNameByItem.TryGetValue(item, out var trnName) || string.IsNullOrWhiteSpace(trnName))
         //        {
         //            trnName = await _equipmentService.GetTrnName(equipName, item);
@@ -1790,7 +1837,7 @@ namespace TechEquipments
         //            _trnNameByItem[item] = trnName;
         //        }
 
-        //        // 2) окно чтения по последней точке данного item
+        //        // 2) Read window based on last read per item (UTC!).
         //        var startUtc = _lastUtcByItem.TryGetValue(item, out var lastUtc)
         //            ? lastUtc.AddSeconds(-2)
         //            : endUtc.AddMinutes(-60);
@@ -1799,12 +1846,36 @@ namespace TechEquipments
         //        if (trn == null || trn.Count == 0)
         //            continue;
 
-        //        var points = trn
-        //            .Select(x => new TrendPoint
+        //        // Native Y-range for this item:
+        //        // - base item: use base range (no scaling)
+        //        // - other items: use attribute range if present, otherwise also base range (no scaling)
+        //        double nativeMin = baseMin, nativeMax = baseMax;
+        //        if (!item.Equals(baseItem, StringComparison.OrdinalIgnoreCase))
+        //        {
+        //            if (TryGetYRangeForItem(item, out var aMin, out var aMax))
         //            {
-        //                Series = item,
-        //                Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
-        //                Value = x.Value
+        //                nativeMin = aMin;
+        //                nativeMax = aMax;
+        //            }
+        //        }
+
+        //        var points = trn
+        //            .Select(x =>
+        //            {
+        //                var raw = x.Value;
+
+        //                // Draw value (scaled to base axis if needed)
+        //                var plot = item.Equals(baseItem, StringComparison.OrdinalIgnoreCase)
+        //                    ? raw
+        //                    : MapToBase(raw, nativeMin, nativeMax, baseMin, baseMax);
+
+        //                return new TrendPoint
+        //                {
+        //                    Series = item,
+        //                    Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
+        //                    RawValue = raw,
+        //                    Value = plot
+        //                };
         //            })
         //            .OrderBy(p => p.Time)
         //            .ToList();
@@ -1812,10 +1883,10 @@ namespace TechEquipments
         //        if (points.Count == 0)
         //            continue;
 
-        //        // 3) применяем в UI
+        //        // 3) Apply to UI.
         //        await Dispatcher.InvokeAsync(() =>
         //        {
-        //            // добавляем только новые точки для этой серии
+        //            // Add only new points for this series.
         //            var lastAdded = ParamTrendPoints
         //                .Where(p => p.Series.Equals(item, StringComparison.OrdinalIgnoreCase))
         //                .Select(p => p.Time)
@@ -1826,690 +1897,550 @@ namespace TechEquipments
         //                if (p.Time > lastAdded)
         //                    ParamTrendPoints.Add(p);
 
-        //            // держим окно 60 минут (удаляем старые по всем сериям)
-        //            var minKeep = DateTime.Now.AddMinutes(-60);
-        //            for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-        //                if (ParamTrendPoints[i].Time < minKeep)
-        //                    ParamTrendPoints.RemoveAt(i);
+        //            // Y axis: base range (single axis for all series).
+        //            AxisYMin = baseMin;
+        //            AxisYMax = baseMax;
 
-        //            // ось X всегда "с края до края"
-        //            AxisXMax = DateTime.Now;
-        //            AxisXMin = AxisXMax.AddMinutes(-60);
+        //            // --- Axis X + retention policy ---
+        //            // Live mode: keep only last N minutes and pin visible window to "now".
+        //            // History mode: do NOT change AxisXMin/AxisXMax (user controls it),
+        //            //              but we still update WholeRange to match loaded data.
 
-        //            // ось Y
-        //            //if (TryGetModelScaleMinMax(out var yMin, out var yMax))
-        //            if (TryGetModelScaleMinMax(out var yMin, out var yMax))
+        //            var now = DateTime.Now;
+
+        //            if (_trendLiveMode)
         //            {
-        //                AxisYMin = yMin;
-        //                AxisYMax = yMax;
+        //                AxisXMax = now;
+        //                AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
+
+        //                // WholeRange equals visible range in Live mode.
+        //                AxisXWholeMin = AxisXMin;
+        //                AxisXWholeMax = AxisXMax;
+
+        //                // Keep only the visible window.
+        //                var minKeep = AxisXMin;
+        //                for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
+        //                    if (ParamTrendPoints[i].Time < minKeep)
+        //                        ParamTrendPoints.RemoveAt(i);
+        //            }
+        //            else
+        //            {
+        //                // History mode: keep more data to support scrolling.
+        //                // WholeRange is based on loaded points.
+        //                UpdateAxisXWholeRangeFromPoints_NoThrow();
+
+        //                // Optional safety trimming.
+        //                TrimTrendPointsIfNeeded_NoThrow();
         //            }
 
-        //            ParamStatusText = $"Trends={trendItems.Length}, Points={ParamTrendPoints.Count} | {DateTime.Now:HH:mm:ss} | {_paramReadCycles} cycles";
+        //            ParamStatusText = $"Trends={trendItems.Length}, Points={ParamTrendPoints.Count} | {now:HH:mm:ss} | {_paramReadCycles} cycles";
         //        });
 
-        //        // 4) обновляем lastUtc для item (UTC!)
+        //        // 4) Update lastUtc for item (keep UTC from CtApi).
         //        _lastUtcByItem[item] = trn.Max(x => x.DateTime);
         //    }
         //}
 
-        private async Task PollTrendOnceAsync(CancellationToken ct)
-        {
-            // NOTE:
-            // We use a single Y axis for all series.
-            // The FIRST trend item defines the base Y-range (axis).
-            // Every NEXT item can specify its own native range via [TrendItem(..., YMin=..., YMax=...)].
-            // Those items are linearly scaled into the base range for drawing.
-            // Tooltips/crosshair still show the original (raw) values.
-
-            var (equipName, _) = ResolveSelectedEquipForParam();
-            if (string.IsNullOrWhiteSpace(equipName))
-                return;
-
-            // If equipment changed — reset caches/points.
-            if (!string.Equals(_trendEquipName, equipName, StringComparison.OrdinalIgnoreCase))
-            {
-                _trendEquipName = equipName;
-                _trnNameByItem.Clear();
-                _lastUtcByItem.Clear();
-
-                await Dispatcher.InvokeAsync(() => ParamTrendPoints.Clear());
-            }
-
-            // TrendItems are declared by attributes of the CURRENT param model.
-            // First item is treated as "base" for axis Y.
-            var trendItems = GetTrendItemsFromModel(CurrentParamModel, "R");
-            if (trendItems.Length == 0)
-                trendItems = new[] { "R" };
-
-            var baseItem = trendItems[0];
-
-            // Resolve base Y-range (axis): attribute on baseItem OR model MinR/MaxR.
-            if (!TryGetBaseYRange(baseItem, out var baseMin, out var baseMax))
-            {
-                baseMin = 0;
-                baseMax = 1;
-            }
-
-            var endUtc = DateTime.UtcNow;
-
-            foreach (var item in trendItems)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                // 1) Resolve TrendTagName for item (cached).
-                if (!_trnNameByItem.TryGetValue(item, out var trnName) || string.IsNullOrWhiteSpace(trnName))
-                {
-                    trnName = await _equipmentService.GetTrnName(equipName, item);
-                    if (string.IsNullOrWhiteSpace(trnName))
-                        continue;
-
-                    _trnNameByItem[item] = trnName;
-                }
-
-                // 2) Read window based on last read per item (UTC!).
-                var startUtc = _lastUtcByItem.TryGetValue(item, out var lastUtc)
-                    ? lastUtc.AddSeconds(-2)
-                    : endUtc.AddMinutes(-60);
-
-                var trn = await _ctApiService.GetTrnData(trnName, startUtc, endUtc);
-                if (trn == null || trn.Count == 0)
-                    continue;
-
-                // Native Y-range for this item:
-                // - base item: use base range (no scaling)
-                // - other items: use attribute range if present, otherwise also base range (no scaling)
-                double nativeMin = baseMin, nativeMax = baseMax;
-                if (!item.Equals(baseItem, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (TryGetYRangeForItem(item, out var aMin, out var aMax))
-                    {
-                        nativeMin = aMin;
-                        nativeMax = aMax;
-                    }
-                }
-
-                var points = trn
-                    .Select(x =>
-                    {
-                        var raw = x.Value;
-
-                        // Draw value (scaled to base axis if needed)
-                        var plot = item.Equals(baseItem, StringComparison.OrdinalIgnoreCase)
-                            ? raw
-                            : MapToBase(raw, nativeMin, nativeMax, baseMin, baseMax);
-
-                        return new TrendPoint
-                        {
-                            Series = item,
-                            Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
-                            RawValue = raw,
-                            Value = plot
-                        };
-                    })
-                    .OrderBy(p => p.Time)
-                    .ToList();
-
-                if (points.Count == 0)
-                    continue;
-
-                // 3) Apply to UI.
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    // Add only new points for this series.
-                    var lastAdded = ParamTrendPoints
-                        .Where(p => p.Series.Equals(item, StringComparison.OrdinalIgnoreCase))
-                        .Select(p => p.Time)
-                        .DefaultIfEmpty(DateTime.MinValue)
-                        .Max();
-
-                    foreach (var p in points)
-                        if (p.Time > lastAdded)
-                            ParamTrendPoints.Add(p);
-
-                    // Y axis: base range (single axis for all series).
-                    AxisYMin = baseMin;
-                    AxisYMax = baseMax;
-
-                    // --- Axis X + retention policy ---
-                    // Live mode: keep only last N minutes and pin visible window to "now".
-                    // History mode: do NOT change AxisXMin/AxisXMax (user controls it),
-                    //              but we still update WholeRange to match loaded data.
-
-                    var now = DateTime.Now;
-
-                    if (_trendLiveMode)
-                    {
-                        AxisXMax = now;
-                        AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
-
-                        // WholeRange equals visible range in Live mode.
-                        AxisXWholeMin = AxisXMin;
-                        AxisXWholeMax = AxisXMax;
-
-                        // Keep only the visible window.
-                        var minKeep = AxisXMin;
-                        for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-                            if (ParamTrendPoints[i].Time < minKeep)
-                                ParamTrendPoints.RemoveAt(i);
-                    }
-                    else
-                    {
-                        // History mode: keep more data to support scrolling.
-                        // WholeRange is based on loaded points.
-                        UpdateAxisXWholeRangeFromPoints_NoThrow();
-
-                        // Optional safety trimming.
-                        TrimTrendPointsIfNeeded_NoThrow();
-                    }
-
-                    ParamStatusText = $"Trends={trendItems.Length}, Points={ParamTrendPoints.Count} | {now:HH:mm:ss} | {_paramReadCycles} cycles";
-                });
-
-                // 4) Update lastUtc for item (keep UTC from CtApi).
-                _lastUtcByItem[item] = trn.Max(x => x.DateTime);
-            }
-        }
-
-        /// <summary>
-        /// Called from AIParamView when an end-user scrolls/zooms the chart.
-        /// Switches the trend from Live mode to History mode and triggers auto-loading
-        /// when the user reaches the left edge.
-        /// </summary>
-        public void OnParamChartUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
-        {
-            // Zoom/scroll events can fire very frequently.
-            // Debounce to avoid launching too many history-load tasks.
-            var nowUtc = DateTime.UtcNow;
-            if (nowUtc - _trendLastNavUtc < TrendNavDebounce)
-                return;
-
-            _trendLastNavUtc = nowUtc;
-
-            // User interaction means we stop pinning the axis to "now".
-            _trendLiveMode = false;
-
-            // Keep VM in sync with the current visible window.
-            AxisXMin = newMinLocal;
-            AxisXMax = newMaxLocal;
-
-            // Start background auto-load (fire-and-forget).
-            _ = MaybeLoadMoreTrendHistoryAsync(newMinLocal, newMaxLocal);
-        }
-
-        /// <summary>
-        /// Auto-load older trend points when the user scrolls close to the left edge.
-        /// </summary>
-        private async Task MaybeLoadMoreTrendHistoryAsync(DateTime visibleMinLocal, DateTime visibleMaxLocal)
-        {
-            try
-            {
-                // We never block the UI thread here.
-                await _trendGate.WaitAsync(CancellationToken.None);
-                try
-                {
-                    // We need at least some data to know where the left edge is.
-                    DateTime loadedMinLocal = DateTime.MinValue;
-                    DateTime loadedMaxLocal = DateTime.MinValue;
-
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        if (ParamTrendPoints.Count == 0)
-                            return;
-
-                        loadedMinLocal = ParamTrendPoints.Min(p => p.Time);
-                        loadedMaxLocal = ParamTrendPoints.Max(p => p.Time);
-                    });
-
-                    if (loadedMinLocal == DateTime.MinValue || loadedMaxLocal == DateTime.MinValue)
-                        return;
-
-                    // If the user is close to the left edge of loaded data – load one more chunk.
-                    var visSpan = visibleMaxLocal - visibleMinLocal;
-                    if (visSpan <= TimeSpan.Zero)
-                        visSpan = TimeSpan.FromMinutes(TrendLiveWindowMinutes);
-
-                    var threshold = loadedMinLocal + TimeSpan.FromTicks((long)(visSpan.Ticks * 0.15));
-                    if (visibleMinLocal > threshold)
-                        return;
-
-                    var toUtc = loadedMinLocal.ToUniversalTime();
-                    var fromUtc = toUtc.AddMinutes(-TrendHistoryChunkMinutes);
-
-                    await LoadTrendHistoryWindowAsync(fromUtc, toUtc, CancellationToken.None);
-
-                    // Update WholeRange after loading.
-                    await Dispatcher.InvokeAsync(() => UpdateAxisXWholeRangeFromPoints_NoThrow());
-                }
-                finally
-                {
-                    _trendGate.Release();
-                }
-            }
-            catch
-            {
-                // History load must never break the UI/polling.
-            }
-        }
-
-        /// <summary>
-        /// Loads historical data for all configured trend series and merges it into ParamTrendPoints.
-        /// IMPORTANT: This method does NOT touch AxisXMin/AxisXMax (user-visible window).
-        /// </summary>
-        private async Task LoadTrendHistoryWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
-        {
-            var (equipName, _) = ResolveSelectedEquipForParam();
-            if (string.IsNullOrWhiteSpace(equipName))
-                return;
-
-            // Prevent accidental mixing if the user switched equipment.
-            if (!string.Equals(_trendEquipName, equipName, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            var trendItems = GetTrendItemsFromModel(CurrentParamModel, "R");
-            if (trendItems.Length == 0)
-                trendItems = new[] { "R" };
-
-            var baseItem = trendItems[0];
-            if (!TryGetBaseYRange(baseItem, out var baseMin, out var baseMax))
-            {
-                baseMin = 0;
-                baseMax = 1;
-            }
-
-            var newPoints = new List<TrendPoint>(capacity: 512);
-
-            foreach (var item in trendItems)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                // Resolve TrendTagName for item (cached).
-                if (!_trnNameByItem.TryGetValue(item, out var trnName) || string.IsNullOrWhiteSpace(trnName))
-                {
-                    trnName = await _equipmentService.GetTrnName(equipName, item);
-                    if (string.IsNullOrWhiteSpace(trnName))
-                        continue;
-
-                    _trnNameByItem[item] = trnName;
-                }
-
-                var trn = await _ctApiService.GetTrnData(trnName, fromUtc, toUtc);
-                if (trn == null || trn.Count == 0)
-                    continue;
-
-                // Native Y-range for this item.
-                double nativeMin = baseMin, nativeMax = baseMax;
-                if (!item.Equals(baseItem, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (TryGetYRangeForItem(item, out var aMin, out var aMax))
-                    {
-                        nativeMin = aMin;
-                        nativeMax = aMax;
-                    }
-                }
-
-                foreach (var x in trn)
-                {
-                    var raw = x.Value;
-                    var plot = item.Equals(baseItem, StringComparison.OrdinalIgnoreCase)
-                        ? raw
-                        : MapToBase(raw, nativeMin, nativeMax, baseMin, baseMax);
-
-                    newPoints.Add(new TrendPoint
-                    {
-                        Series = item,
-                        Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
-                        RawValue = raw,
-                        Value = plot,
-                    });
-                }
-            }
-
-            if (newPoints.Count == 0)
-                return;
-
-            // Merge into the bound collection on the UI thread.
-            await Dispatcher.InvokeAsync(() =>
-            {
-                // De-duplicate by (Series, Time) and keep order by time.
-                var all = ParamTrendPoints.Concat(newPoints);
-
-                var merged = all
-                    .GroupBy(p => (series: (p.Series ?? "").Trim().ToUpperInvariant(), time: p.Time))
-                    .Select(g => g.First())
-                    .OrderBy(p => p.Time)
-                    .ThenBy(p => p.Series, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                ParamTrendPoints.Clear();
-                foreach (var p in merged)
-                    ParamTrendPoints.Add(p);
-
-                UpdateAxisXWholeRangeFromPoints_NoThrow();
-                TrimTrendPointsIfNeeded_NoThrow();
-            });
-        }
-
-        /// <summary>
-        /// Updates AxisXWholeMin/AxisXWholeMax from ParamTrendPoints.
-        /// Must be called on UI thread.
-        /// </summary>
-        private void UpdateAxisXWholeRangeFromPoints_NoThrow()
-        {
-            if (ParamTrendPoints.Count == 0)
-                return;
-
-            AxisXWholeMin = ParamTrendPoints.Min(p => p.Time);
-            AxisXWholeMax = ParamTrendPoints.Max(p => p.Time);
-        }
-
-        /// <summary>
-        /// Safety trim for history mode.
-        /// Must be called on UI thread.
-        /// </summary>
-        private void TrimTrendPointsIfNeeded_NoThrow()
-        {
-            if (TrendHistoryKeepHours <= 0)
-                return;
-
-            if (ParamTrendPoints.Count == 0)
-                return;
-
-            // Keep only last N hours relative to the newest loaded point.
-            var newest = ParamTrendPoints.Max(p => p.Time);
-            var cut = newest.AddHours(-TrendHistoryKeepHours);
-
-            for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-                if (ParamTrendPoints[i].Time < cut)
-                    ParamTrendPoints.RemoveAt(i);
-
-            UpdateAxisXWholeRangeFromPoints_NoThrow();
-        }
-
-        // Получаем MinR/MaxR из текущей модели (через reflection)
-        private bool TryGetModelScaleMinMax(out double scaleLo, out double scaleHi)
-        {
-            scaleLo = 0;
-            scaleHi = 1;
-
-            if (CurrentParamModel == null) return false;
-
-            var t = CurrentParamModel.GetType();
-            var pMinR = t.GetProperty("MinR");
-            var pMaxR = t.GetProperty("MaxR");
-            if (pMinR == null || pMaxR == null) return false;
-
-            var vMin = pMinR.GetValue(CurrentParamModel);
-            var vMax = pMaxR.GetValue(CurrentParamModel);
-            if (vMin == null || vMax == null) return false;
-
-            var a = Convert.ToDouble(vMin, CultureInfo.InvariantCulture);
-            var b = Convert.ToDouble(vMax, CultureInfo.InvariantCulture);
-
-            // защита от “переворота”
-            scaleLo = Math.Min(a, b);
-            scaleHi = Math.Max(a, b);
-            return true;
-        }
-
-
-        /// <summary>
-        /// Resolves the base Y-range (single axis) used for the whole trend chart.
-        /// Priority:
-        /// 1) Explicit range on the base item via [TrendItem(Item=..., YMin=..., YMax=...)]
-        /// 2) Model-wide MinR/MaxR properties (typical for AI params)
-        /// </summary>
-        private bool TryGetBaseYRange(string baseItem, out double baseMin, out double baseMax)
-        {
-            // 1) If base series has an explicit attribute range — use it.
-            if (!string.IsNullOrWhiteSpace(baseItem) &&
-                TryGetYRangeForItem(baseItem, out baseMin, out baseMax))
-                return true;
-
-            // 2) Otherwise fall back to the model scale (MinR/MaxR).
-            if (TryGetModelScaleMinMax(out baseMin, out baseMax))
-                return true;
-
-            baseMin = 0;
-            baseMax = 1;
-            return false;
-        }
-
-        public void ShowParamChart(bool reset = false)
-        {
-            if (reset)
-                ResetTrendState(clearPoints: true);
-
-            IsParamChartVisible = true;
-            OnPropertyChanged(nameof(IsParamSettingsVisible)); // если используешь инверсию
-        }
-
-        public void ShowParamSettings()
-        {
-            IsParamChartVisible = false;
-            OnPropertyChanged(nameof(IsParamSettingsVisible));
-        }
-
+        ///// <summary>
+        ///// Called from AIParamView when an end-user scrolls/zooms the chart.
+        ///// Switches the trend from Live mode to History mode and triggers auto-loading
+        ///// when the user reaches the left edge.
+        ///// </summary>
+        //public void OnParamChartUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
+        //{
+        //    // Zoom/scroll events can fire very frequently.
+        //    // Debounce to avoid launching too many history-load tasks.
+        //    var nowUtc = DateTime.UtcNow;
+        //    if (nowUtc - _trendLastNavUtc < TrendNavDebounce)
+        //        return;
+
+        //    _trendLastNavUtc = nowUtc;
+
+        //    // User interaction means we stop pinning the axis to "now".
+        //    _trendLiveMode = false;
+
+        //    // Keep VM in sync with the current visible window.
+        //    AxisXMin = newMinLocal;
+        //    AxisXMax = newMaxLocal;
+
+        //    // Start background auto-load (fire-and-forget).
+        //    _ = MaybeLoadMoreTrendHistoryAsync(newMinLocal, newMaxLocal);
+        //}
+
+        ///// <summary>
+        ///// Auto-load older trend points when the user scrolls close to the left edge.
+        ///// </summary>
+        //private async Task MaybeLoadMoreTrendHistoryAsync(DateTime visibleMinLocal, DateTime visibleMaxLocal)
+        //{
+        //    try
+        //    {
+        //        // We never block the UI thread here.
+        //        await _trendGate.WaitAsync(CancellationToken.None);
+        //        try
+        //        {
+        //            // We need at least some data to know where the left edge is.
+        //            DateTime loadedMinLocal = DateTime.MinValue;
+        //            DateTime loadedMaxLocal = DateTime.MinValue;
+
+        //            await Dispatcher.InvokeAsync(() =>
+        //            {
+        //                if (ParamTrendPoints.Count == 0)
+        //                    return;
+
+        //                loadedMinLocal = ParamTrendPoints.Min(p => p.Time);
+        //                loadedMaxLocal = ParamTrendPoints.Max(p => p.Time);
+        //            });
+
+        //            if (loadedMinLocal == DateTime.MinValue || loadedMaxLocal == DateTime.MinValue)
+        //                return;
+
+        //            // If the user is close to the left edge of loaded data – load one more chunk.
+        //            var visSpan = visibleMaxLocal - visibleMinLocal;
+        //            if (visSpan <= TimeSpan.Zero)
+        //                visSpan = TimeSpan.FromMinutes(TrendLiveWindowMinutes);
+
+        //            var threshold = loadedMinLocal + TimeSpan.FromTicks((long)(visSpan.Ticks * 0.15));
+        //            if (visibleMinLocal > threshold)
+        //                return;
+
+        //            var toUtc = loadedMinLocal.ToUniversalTime();
+        //            var fromUtc = toUtc.AddMinutes(-TrendHistoryChunkMinutes);
+
+        //            await LoadTrendHistoryWindowAsync(fromUtc, toUtc, CancellationToken.None);
+
+        //            // Update WholeRange after loading.
+        //            await Dispatcher.InvokeAsync(() => UpdateAxisXWholeRangeFromPoints_NoThrow());
+        //        }
+        //        finally
+        //        {
+        //            _trendGate.Release();
+        //        }
+        //    }
+        //    catch
+        //    {
+        //        // History load must never break the UI/polling.
+        //    }
+        //}
+
+        ///// <summary>
+        ///// Loads historical data for all configured trend series and merges it into ParamTrendPoints.
+        ///// IMPORTANT: This method does NOT touch AxisXMin/AxisXMax (user-visible window).
+        ///// </summary>
+        //private async Task LoadTrendHistoryWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+        //{
+        //    var (equipName, _) = ResolveSelectedEquipForParam();
+        //    if (string.IsNullOrWhiteSpace(equipName))
+        //        return;
+
+        //    // Prevent accidental mixing if the user switched equipment.
+        //    if (!string.Equals(_trendEquipName, equipName, StringComparison.OrdinalIgnoreCase))
+        //        return;
+
+        //    var trendItems = GetTrendItemsFromModel(CurrentParamModel, "R");
+        //    if (trendItems.Length == 0)
+        //        trendItems = new[] { "R" };
+
+        //    var baseItem = trendItems[0];
+        //    if (!TryGetBaseYRange(baseItem, out var baseMin, out var baseMax))
+        //    {
+        //        baseMin = 0;
+        //        baseMax = 1;
+        //    }
+
+        //    var newPoints = new List<TrendPoint>(capacity: 512);
+
+        //    foreach (var item in trendItems)
+        //    {
+        //        ct.ThrowIfCancellationRequested();
+
+        //        // Resolve TrendTagName for item (cached).
+        //        if (!_trnNameByItem.TryGetValue(item, out var trnName) || string.IsNullOrWhiteSpace(trnName))
+        //        {
+        //            trnName = await _equipmentService.GetTrnName(equipName, item);
+        //            if (string.IsNullOrWhiteSpace(trnName))
+        //                continue;
+
+        //            _trnNameByItem[item] = trnName;
+        //        }
+
+        //        var trn = await _ctApiService.GetTrnData(trnName, fromUtc, toUtc);
+        //        if (trn == null || trn.Count == 0)
+        //            continue;
+
+        //        // Native Y-range for this item.
+        //        double nativeMin = baseMin, nativeMax = baseMax;
+        //        if (!item.Equals(baseItem, StringComparison.OrdinalIgnoreCase))
+        //        {
+        //            if (TryGetYRangeForItem(item, out var aMin, out var aMax))
+        //            {
+        //                nativeMin = aMin;
+        //                nativeMax = aMax;
+        //            }
+        //        }
+
+        //        foreach (var x in trn)
+        //        {
+        //            var raw = x.Value;
+        //            var plot = item.Equals(baseItem, StringComparison.OrdinalIgnoreCase)
+        //                ? raw
+        //                : MapToBase(raw, nativeMin, nativeMax, baseMin, baseMax);
+
+        //            newPoints.Add(new TrendPoint
+        //            {
+        //                Series = item,
+        //                Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
+        //                RawValue = raw,
+        //                Value = plot,
+        //            });
+        //        }
+        //    }
+
+        //    if (newPoints.Count == 0)
+        //        return;
+
+        //    // Merge into the bound collection on the UI thread.
+        //    await Dispatcher.InvokeAsync(() =>
+        //    {
+        //        // De-duplicate by (Series, Time) and keep order by time.
+        //        var all = ParamTrendPoints.Concat(newPoints);
+
+        //        var merged = all
+        //            .GroupBy(p => (series: (p.Series ?? "").Trim().ToUpperInvariant(), time: p.Time))
+        //            .Select(g => g.First())
+        //            .OrderBy(p => p.Time)
+        //            .ThenBy(p => p.Series, StringComparer.OrdinalIgnoreCase)
+        //            .ToList();
+
+        //        ParamTrendPoints.Clear();
+        //        foreach (var p in merged)
+        //            ParamTrendPoints.Add(p);
+
+        //        UpdateAxisXWholeRangeFromPoints_NoThrow();
+        //        TrimTrendPointsIfNeeded_NoThrow();
+        //    });
+        //}
+
+        ///// <summary>
+        ///// Updates AxisXWholeMin/AxisXWholeMax from ParamTrendPoints.
+        ///// Must be called on UI thread.
+        ///// </summary>
+        //private void UpdateAxisXWholeRangeFromPoints_NoThrow()
+        //{
+        //    if (ParamTrendPoints.Count == 0)
+        //        return;
+
+        //    AxisXWholeMin = ParamTrendPoints.Min(p => p.Time);
+        //    AxisXWholeMax = ParamTrendPoints.Max(p => p.Time);
+        //}
+
+        ///// <summary>
+        ///// Safety trim for history mode.
+        ///// Must be called on UI thread.
+        ///// </summary>
+        //private void TrimTrendPointsIfNeeded_NoThrow()
+        //{
+        //    if (TrendHistoryKeepHours <= 0)
+        //        return;
+
+        //    if (ParamTrendPoints.Count == 0)
+        //        return;
+
+        //    // Keep only last N hours relative to the newest loaded point.
+        //    var newest = ParamTrendPoints.Max(p => p.Time);
+        //    var cut = newest.AddHours(-TrendHistoryKeepHours);
+
+        //    for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
+        //        if (ParamTrendPoints[i].Time < cut)
+        //            ParamTrendPoints.RemoveAt(i);
+
+        //    UpdateAxisXWholeRangeFromPoints_NoThrow();
+        //}
+
+        //// Получаем MinR/MaxR из текущей модели (через reflection)
+        //private bool TryGetModelScaleMinMax(out double scaleLo, out double scaleHi)
+        //{
+        //    scaleLo = 0;
+        //    scaleHi = 1;
+
+        //    if (CurrentParamModel == null) return false;
+
+        //    var t = CurrentParamModel.GetType();
+        //    var pMinR = t.GetProperty("MinR");
+        //    var pMaxR = t.GetProperty("MaxR");
+        //    if (pMinR == null || pMaxR == null) return false;
+
+        //    var vMin = pMinR.GetValue(CurrentParamModel);
+        //    var vMax = pMaxR.GetValue(CurrentParamModel);
+        //    if (vMin == null || vMax == null) return false;
+
+        //    var a = Convert.ToDouble(vMin, CultureInfo.InvariantCulture);
+        //    var b = Convert.ToDouble(vMax, CultureInfo.InvariantCulture);
+
+        //    // защита от “переворота”
+        //    scaleLo = Math.Min(a, b);
+        //    scaleHi = Math.Max(a, b);
+        //    return true;
+        //}
+
+
+        ///// <summary>
+        ///// Resolves the base Y-range (single axis) used for the whole trend chart.
+        ///// Priority:
+        ///// 1) Explicit range on the base item via [TrendItem(Item=..., YMin=..., YMax=...)]
+        ///// 2) Model-wide MinR/MaxR properties (typical for AI params)
+        ///// </summary>
+        //private bool TryGetBaseYRange(string baseItem, out double baseMin, out double baseMax)
+        //{
+        //    // 1) If base series has an explicit attribute range — use it.
+        //    if (!string.IsNullOrWhiteSpace(baseItem) &&
+        //        TryGetYRangeForItem(baseItem, out baseMin, out baseMax))
+        //        return true;
+
+        //    // 2) Otherwise fall back to the model scale (MinR/MaxR).
+        //    if (TryGetModelScaleMinMax(out baseMin, out baseMax))
+        //        return true;
+
+        //    baseMin = 0;
+        //    baseMax = 1;
+        //    return false;
+        //}
+
+        //public void ShowParamChart(bool reset = false)
+        //{
+        //    if (reset)
+        //        ResetTrendState(clearPoints: true);
+
+        //    IsParamChartVisible = true;
+        //    OnPropertyChanged(nameof(IsParamSettingsVisible)); // если используешь инверсию
+        //}
+
+        //public void ShowParamSettings()
+        //{
+        //    IsParamChartVisible = false;
+        //    OnPropertyChanged(nameof(IsParamSettingsVisible));
+        //}
+
+        ////private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
+        ////{
+        ////    if (model == null) return fallback;
+
+        ////    var t = model.GetType();
+        ////    var attr = (TrendItemsAttribute?)Attribute.GetCustomAttribute(t, typeof(TrendItemsAttribute), inherit: true);
+
+        ////    var items = attr?.Items;
+        ////    if (items == null || items.Length == 0) return fallback;
+
+        ////    return items.Where(s => !string.IsNullOrWhiteSpace(s))
+        ////                .Select(s => s.Trim())
+        ////                .ToArray();
+        ////}
+
+        ///// <summary>
+        ///// Tries to get an explicit Y-range for a specific series item from [TrendItem] attribute.
+        ///// Returns false if the item has no range defined.
+        ///// </summary>
+        //private bool TryGetYRangeForItem(string item, out double yMin, out double yMax)
+        //{
+        //    yMin = 0; yMax = 1;
+
+        //    if (CurrentParamModel == null) return false;
+
+        //    var a = CurrentParamModel.GetType()
+        //        .GetCustomAttributes(typeof(TrendItemAttribute), true)
+        //        .OfType<TrendItemAttribute>()
+        //        .FirstOrDefault(x => string.Equals(x.Item, item, StringComparison.OrdinalIgnoreCase));
+
+        //    if (a == null || !a.HasYRange) return false;
+
+        //    yMin = Math.Min(a.YMin, a.YMax);
+        //    yMax = Math.Max(a.YMin, a.YMax);
+        //    return true;
+        //}
+
+        ///// <summary>
+        ///// Maps a value from its native range (fromMin..fromMax) to the common/base Y range (baseMin..baseMax).
+        ///// We clamp to the base range so that series never disappear if the value goes slightly out of bounds.
+        ///// </summary>
+        //private static double MapToBase(double raw, double fromMin, double fromMax, double baseMin, double baseMax)
+        //{
+        //    var fromSpan = fromMax - fromMin;
+        //    if (Math.Abs(fromSpan) < 1e-12)
+        //        return baseMin; // или (baseMin+baseMax)/2
+
+        //    var t = (raw - fromMin) / fromSpan;
+
+        //    // чтобы не улетало за шкалу (можно убрать, если хочешь видеть выходы)
+        //    if (t < 0) t = 0;
+        //    else if (t > 1) t = 1;
+
+        //    return baseMin + t * (baseMax - baseMin);
+        //}
+
+        ///// <summary>
+        ///// Builds the ordered list of trend items (series keys) from [TrendItem] attributes on the model.
+        ///// Attribute order is respected; duplicates are removed while keeping the first occurrence.
+        ///// </summary>
         //private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
         //{
         //    if (model == null) return fallback;
 
-        //    var t = model.GetType();
-        //    var attr = (TrendItemsAttribute?)Attribute.GetCustomAttribute(t, typeof(TrendItemsAttribute), inherit: true);
+        //    var items = model.GetType()
+        //        .GetCustomAttributes(typeof(TrendItemAttribute), inherit: true)
+        //        .OfType<TrendItemAttribute>()
+        //        .Select(a => a.Item)
+        //        .Where(s => !string.IsNullOrWhiteSpace(s))
+        //        .Select(s => s.Trim())
+        //        .Distinct(StringComparer.OrdinalIgnoreCase)
+        //        .ToArray();
 
-        //    var items = attr?.Items;
-        //    if (items == null || items.Length == 0) return fallback;
-
-        //    return items.Where(s => !string.IsNullOrWhiteSpace(s))
-        //                .Select(s => s.Trim())
-        //                .ToArray();
+        //    return items.Length > 0 ? items : fallback;
         //}
 
-        /// <summary>
-        /// Tries to get an explicit Y-range for a specific series item from [TrendItem] attribute.
-        /// Returns false if the item has no range defined.
-        /// </summary>
-        private bool TryGetYRangeForItem(string item, out double yMin, out double yMax)
-        {
-            yMin = 0; yMax = 1;
+        //private static Dictionary<string, (Brush brush, double transparency)> GetSeriesStyleMap(object? model)
+        //{
+        //    var map = new Dictionary<string, (Brush, double)>(StringComparer.OrdinalIgnoreCase);
+        //    if (model == null) return map;
 
-            if (CurrentParamModel == null) return false;
+        //    var t = model.GetType();
+        //    var attrs = t.GetCustomAttributes(typeof(TrendSeriesStyleAttribute), inherit: true).OfType<TrendSeriesStyleAttribute>();
 
-            var a = CurrentParamModel.GetType()
-                .GetCustomAttributes(typeof(TrendItemAttribute), true)
-                .OfType<TrendItemAttribute>()
-                .FirstOrDefault(x => string.Equals(x.Item, item, StringComparison.OrdinalIgnoreCase));
+        //    foreach (var a in attrs)
+        //    {
+        //        if (string.IsNullOrWhiteSpace(a.Item) || string.IsNullOrWhiteSpace(a.Color))
+        //            continue;
 
-            if (a == null || !a.HasYRange) return false;
+        //        Color c;
+        //        try
+        //        {
+        //            c = (Color)ColorConverter.ConvertFromString(a.Color);
+        //        }
+        //        catch { continue; }
 
-            yMin = Math.Min(a.YMin, a.YMax);
-            yMax = Math.Max(a.YMin, a.YMax);
-            return true;
-        }
+        //        var brush = new SolidColorBrush(c);
+        //        brush.Freeze();
 
-        /// <summary>
-        /// Maps a value from its native range (fromMin..fromMax) to the common/base Y range (baseMin..baseMax).
-        /// We clamp to the base range so that series never disappear if the value goes slightly out of bounds.
-        /// </summary>
-        private static double MapToBase(double raw, double fromMin, double fromMax, double baseMin, double baseMax)
-        {
-            var fromSpan = fromMax - fromMin;
-            if (Math.Abs(fromSpan) < 1e-12)
-                return baseMin; // или (baseMin+baseMax)/2
+        //        map[a.Item.Trim()] = (brush, Clamp01(a.Transparency));
+        //    }
 
-            var t = (raw - fromMin) / fromSpan;
+        //    return map;
+        //}
 
-            // чтобы не улетало за шкалу (можно убрать, если хочешь видеть выходы)
-            if (t < 0) t = 0;
-            else if (t > 1) t = 1;
+        //private static double Clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
 
-            return baseMin + t * (baseMax - baseMin);
-        }
+        ///// <summary>
+        ///// Вызывай это после биндинга данных у ChartControl (BoundDataChanged),
+        ///// чтобы раскрасить созданные авто-серии.
+        ///// </summary>
+        //public void ApplyTrendSeriesStyles(ChartControl chart)
+        //{
+        //    if (chart?.Diagram is not XYDiagram2D d)
+        //        return;
 
-        /// <summary>
-        /// Builds the ordered list of trend items (series keys) from [TrendItem] attributes on the model.
-        /// Attribute order is respected; duplicates are removed while keeping the first occurrence.
-        /// </summary>
-        private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
-        {
-            if (model == null) return fallback;
+        //    var styleMap = GetSeriesStyleMap(CurrentParamModel);
 
-            var items = model.GetType()
-                .GetCustomAttributes(typeof(TrendItemAttribute), inherit: true)
-                .OfType<TrendItemAttribute>()
-                .Select(a => a.Item)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+        //    foreach (var s in d.Series)
+        //    {
+        //        var key = (s.DisplayName ?? s.Name ?? "").Trim();
+        //        if (key.Length == 0) continue;
 
-            return items.Length > 0 ? items : fallback;
-        }
+        //        if (!styleMap.TryGetValue(key, out var st))
+        //            continue;
 
-        private static Dictionary<string, (Brush brush, double transparency)> GetSeriesStyleMap(object? model)
-        {
-            var map = new Dictionary<string, (Brush, double)>(StringComparer.OrdinalIgnoreCase);
-            if (model == null) return map;
+        //        // 1) Заливка / Brush у SplineAreaSeries2D
+        //        s.GetType().GetProperty("Brush")?.SetValue(s, st.brush);
 
-            var t = model.GetType();
-            var attrs = t.GetCustomAttributes(typeof(TrendSeriesStyleAttribute), inherit: true).OfType<TrendSeriesStyleAttribute>();
+        //        // 2) Transparency (DevExpress)
+        //        var pTr = s.GetType().GetProperty("Transparency");
+        //        if (pTr != null && pTr.CanWrite)
+        //        {
+        //            if (pTr.PropertyType == typeof(double))
+        //                pTr.SetValue(s, st.transparency);
+        //            else if (pTr.PropertyType == typeof(float))
+        //                pTr.SetValue(s, (float)st.transparency);
+        //        }
 
-            foreach (var a in attrs)
-            {
-                if (string.IsNullOrWhiteSpace(a.Item) || string.IsNullOrWhiteSpace(a.Color))
-                    continue;
+        //        // 3) Линия
+        //        var propLineStyle = s.GetType().GetProperty("LineStyle");
+        //        if (propLineStyle != null)
+        //        {
+        //            var ls = propLineStyle.GetValue(s) ?? Activator.CreateInstance(propLineStyle.PropertyType);
+        //            if (ls != null)
+        //            {
+        //                ls.GetType().GetProperty("Brush")?.SetValue(ls, st.brush);
+        //                propLineStyle.SetValue(s, ls);
+        //            }
+        //        }
+        //        else
+        //        {
+        //            // fallback (на всякий)
+        //            s.GetType().GetProperty("BorderBrush")?.SetValue(s, st.brush);
+        //        }
+        //    }
+        //}
 
-                Color c;
-                try
-                {
-                    c = (Color)ColorConverter.ConvertFromString(a.Color);
-                }
-                catch { continue; }
+        ///// <summary>
+        ///// Switch trend chart back to Live mode:
+        ///// - pins X axis to "now - window .. now"
+        ///// - trims points to the live window (unless resetPoints=true)
+        ///// - keeps polling going as usual
+        /////
+        ///// Called from the "Live" button on Param tab.
+        ///// </summary>
+        //public void SetParamChartLiveMode(bool resetPoints = false)
+        //{
+        //    // Fire-and-forget: UI remains responsive.
+        //    _ = SetParamChartLiveModeAsync(resetPoints);
+        //}
 
-                var brush = new SolidColorBrush(c);
-                brush.Freeze();
+        //private async Task SetParamChartLiveModeAsync(bool resetPoints)
+        //{
+        //    try
+        //    {
+        //        await _trendGate.WaitAsync(CancellationToken.None);
+        //        try
+        //        {
+        //            // Back to Live mode.
+        //            _trendLiveMode = true;
 
-                map[a.Item.Trim()] = (brush, Clamp01(a.Transparency));
-            }
+        //            var now = DateTime.Now;
 
-            return map;
-        }
+        //            // All collection / axis updates must run on UI thread.
+        //            await Dispatcher.InvokeAsync(() =>
+        //            {
+        //                if (resetPoints)
+        //                {
+        //                    // Full reset (clears points + caches and resets axis ranges).
+        //                    ResetTrendState(clearPoints: true);
+        //                    return;
+        //                }
 
-        private static double Clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
+        //                // Pin visible window to "now".
+        //                AxisXMax = now;
+        //                AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
 
-        /// <summary>
-        /// Вызывай это после биндинга данных у ChartControl (BoundDataChanged),
-        /// чтобы раскрасить созданные авто-серии.
-        /// </summary>
-        public void ApplyTrendSeriesStyles(ChartControl chart)
-        {
-            if (chart?.Diagram is not XYDiagram2D d)
-                return;
+        //                // In Live mode whole range equals visible window (no scrollbars needed).
+        //                AxisXWholeMin = AxisXMin;
+        //                AxisXWholeMax = AxisXMax;
 
-            var styleMap = GetSeriesStyleMap(CurrentParamModel);
-
-            foreach (var s in d.Series)
-            {
-                var key = (s.DisplayName ?? s.Name ?? "").Trim();
-                if (key.Length == 0) continue;
-
-                if (!styleMap.TryGetValue(key, out var st))
-                    continue;
-
-                // 1) Заливка / Brush у SplineAreaSeries2D
-                s.GetType().GetProperty("Brush")?.SetValue(s, st.brush);
-
-                // 2) Transparency (DevExpress)
-                var pTr = s.GetType().GetProperty("Transparency");
-                if (pTr != null && pTr.CanWrite)
-                {
-                    if (pTr.PropertyType == typeof(double))
-                        pTr.SetValue(s, st.transparency);
-                    else if (pTr.PropertyType == typeof(float))
-                        pTr.SetValue(s, (float)st.transparency);
-                }
-
-                // 3) Линия
-                var propLineStyle = s.GetType().GetProperty("LineStyle");
-                if (propLineStyle != null)
-                {
-                    var ls = propLineStyle.GetValue(s) ?? Activator.CreateInstance(propLineStyle.PropertyType);
-                    if (ls != null)
-                    {
-                        ls.GetType().GetProperty("Brush")?.SetValue(ls, st.brush);
-                        propLineStyle.SetValue(s, ls);
-                    }
-                }
-                else
-                {
-                    // fallback (на всякий)
-                    s.GetType().GetProperty("BorderBrush")?.SetValue(s, st.brush);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Switch trend chart back to Live mode:
-        /// - pins X axis to "now - window .. now"
-        /// - trims points to the live window (unless resetPoints=true)
-        /// - keeps polling going as usual
-        ///
-        /// Called from the "Live" button on Param tab.
-        /// </summary>
-        public void SetParamChartLiveMode(bool resetPoints = false)
-        {
-            // Fire-and-forget: UI remains responsive.
-            _ = SetParamChartLiveModeAsync(resetPoints);
-        }
-
-        private async Task SetParamChartLiveModeAsync(bool resetPoints)
-        {
-            try
-            {
-                await _trendGate.WaitAsync(CancellationToken.None);
-                try
-                {
-                    // Back to Live mode.
-                    _trendLiveMode = true;
-
-                    var now = DateTime.Now;
-
-                    // All collection / axis updates must run on UI thread.
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        if (resetPoints)
-                        {
-                            // Full reset (clears points + caches and resets axis ranges).
-                            ResetTrendState(clearPoints: true);
-                            return;
-                        }
-
-                        // Pin visible window to "now".
-                        AxisXMax = now;
-                        AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
-
-                        // In Live mode whole range equals visible window (no scrollbars needed).
-                        AxisXWholeMin = AxisXMin;
-                        AxisXWholeMax = AxisXMax;
-
-                        // Keep only points inside the live window to avoid memory growth.
-                        var minKeep = AxisXMin;
-                        for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-                        {
-                            if (ParamTrendPoints[i].Time < minKeep)
-                                ParamTrendPoints.RemoveAt(i);
-                        }
-                    });
-                }
-                finally
-                {
-                    _trendGate.Release();
-                }
-            }
-            catch
-            {
-                // Switching mode must never break the UI.
-            }
-        }
+        //                // Keep only points inside the live window to avoid memory growth.
+        //                var minKeep = AxisXMin;
+        //                for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
+        //                {
+        //                    if (ParamTrendPoints[i].Time < minKeep)
+        //                        ParamTrendPoints.RemoveAt(i);
+        //                }
+        //            });
+        //        }
+        //        finally
+        //        {
+        //            _trendGate.Release();
+        //        }
+        //    }
+        //    catch
+        //    {
+        //        // Switching mode must never break the UI.
+        //    }
+        //}
 
         #endregion
 
