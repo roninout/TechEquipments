@@ -1,4 +1,5 @@
 ﻿using CtApi;
+using DevExpress.XtraRichEdit.Import.Html;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Concurrent;
@@ -250,6 +251,31 @@ namespace TechEquipments
             return (v ?? "").Trim();
         }
 
+        /// <summary>
+        /// Пишет строковое значение в внешний тег (CtApi:ExternalTag).
+        /// Важно: для строк в Cicode/TagWrite обычно нужны кавычки.
+        /// </summary>
+        public async Task SetExternalTagAsync(string value, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tagName = (_config["CtApi:ExternalTag"] ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(tagName))
+                throw new InvalidOperationException("CtApi:ExternalTag is empty in config.");
+
+            value = (value ?? "").Trim();
+
+            // Экранируем кавычки как для Cicode-строки: " -> ""
+            var escaped = value.Replace("\"", "\"\"");
+
+            // Передаём как строковый литерал Cicode: "..."
+            var cicodeString = $"\"{escaped}\"";
+
+            await _ctApiService.TagWriteAsync(tagName, cicodeString);
+
+            ct.ThrowIfCancellationRequested();
+        }
+
         #endregion
 
         #region Trend
@@ -424,11 +450,9 @@ namespace TechEquipments
                 var tagName = await _ctApiService.CicodeAsync($"TagInfo(\"{name}.{equipItem}\", 0)");
                 tagName = (tagName ?? "").Trim();
 
-                if (model is AIParam && equipItem == "R")
-                {
-                    var tagUnit = await _ctApiService.CicodeAsync($"TagInfo(\"{tagName}\", 1)");
-                    (model as AIParam).Unit = tagUnit;
-                }
+                // unit
+                if (model is IHasUnit mUnit && equipItem == "R")
+                    mUnit.Unit = await _ctApiService.CicodeAsync($"TagInfo(\"{tagName}\", 1)");
 
                 if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -440,6 +464,9 @@ namespace TechEquipments
                 if (TryConvert(raw, p.PropertyType, out var converted))
                     p.SetValue(model, converted);
             }
+
+            if (model is IHasChanel mCh)
+                mCh.Chanel = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{equipName}\",\"Custom1\", 3)");
 
             return model;
         }

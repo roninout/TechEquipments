@@ -11,7 +11,7 @@ namespace TechEquipments
     /// </summary>
     public sealed class ParamTrendVm : INotifyPropertyChanged
     {
-        public event PropertyChangedEventHandler? PropertyChanged;
+        public event PropertyChangedEventHandler PropertyChanged;
 
         private void Raise([CallerMemberName] string? name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -54,6 +54,23 @@ namespace TechEquipments
         }
 
         public string ModeText => IsLiveMode ? "Live" : "History";
+
+        private bool _autoLive = true; // default = включено, если нет в appsettings
+        /// <summary>
+        /// AutoLive:
+        /// true  - когда дотянулись до правого края (последние данные) -> авто-переход в Live
+        /// false - авто-переход запрещён, только ручная кнопка Live
+        /// </summary>
+        public bool AutoLive
+        {
+            get => _autoLive;
+            set
+            {
+                if (_autoLive == value) return;
+                _autoLive = value;
+                Raise();
+            }
+        }
 
         // ===== Trend time window (Live window size) =====
 

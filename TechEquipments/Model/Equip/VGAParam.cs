@@ -2,7 +2,7 @@
 
 namespace TechEquipments
 {
-    public class VGAParam
+    public class VGAParam : IHasChanel
     {
         public bool Mode { get; set; }
         public bool AlarmLAEn { get; set; }
@@ -39,5 +39,6 @@ namespace TechEquipments
 
         public uint HashCode { get; set; }
 
+        public string Chanel { get; set; } = "";
     }
 }

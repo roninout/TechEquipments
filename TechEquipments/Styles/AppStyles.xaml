@@ -152,4 +152,68 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Мигающий текст для Forced -->
+    <Style x:Key="ForcedBlinkTextStyle" TargetType="{x:Type TextBlock}">
+        <!-- Внешний вид -->
+        <Setter Property="Foreground" Value="DarkOrange"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Opacity" Value="1"/>
+
+        <Style.Triggers>
+            <!-- Когда ForceCmd=true -> запускаем мигание -->
+            <DataTrigger Binding="{Binding ForceCmd}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="ForcedBlinkBegin">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <!-- Мигание: Opacity 1 <-> 0.15 -->
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             From="1.0" To="0.15"
+                                             Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+
+                <!-- Когда ForceCmd станет false -> стопаем мигание и возвращаем Opacity -->
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="ForcedBlinkBegin"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Мигающий текст для AlarmHealth -->
+    <Style x:Key="AlarmHealthBlinkTextStyle" TargetType="{x:Type TextBlock}">
+        <!-- Внешний вид -->
+        <Setter Property="Foreground" Value="Red"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Opacity" Value="1"/>
+
+        <Style.Triggers>
+            <!-- Когда AlarmHealth=true -> запускаем мигание -->
+            <DataTrigger Binding="{Binding AlarmHealth}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="AlarmHealthBlinkBegin">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <!-- Мигание: Opacity 1 <-> 0.15 -->
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             From="1.0" To="0.15"
+                                             Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+
+                <!-- Когда AlarmHealth станет false -> стопаем мигание и возвращаем Opacity -->
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="AlarmHealthBlinkBegin"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
 </ResourceDictionary>

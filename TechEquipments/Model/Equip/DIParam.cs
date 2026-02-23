@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace TechEquipments
 {
-    public class DIParam
+    public class DIParam : IHasChanel
     {
         public bool Value { get; set; }
         public bool ValueTrue { get; set; }
@@ -19,5 +19,7 @@ namespace TechEquipments
         public int STW { get; set; }
 
         public uint HashCode { get; set; }
+
+        public string Chanel { get; set; } = "";
     }
 }

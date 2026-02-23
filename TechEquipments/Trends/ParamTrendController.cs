@@ -19,6 +19,8 @@ namespace TechEquipments
     /// </summary>
     public sealed class ParamTrendController
     {
+        #region Fields
+
         private readonly ParamTrendVm _vm;
         private readonly Dispatcher _ui;
         private readonly IEquipmentService _equipmentService;
@@ -45,14 +47,30 @@ namespace TechEquipments
         private const int HistoryChunkMinutes = 60; // сколько добираем за раз при подходе к левому краю
         private const int HistoryKeepHours = 24;    // safety trim (0 = не резать)
 
-        public ParamTrendController(
-            ParamTrendVm vm,
-            Dispatcher ui,
-            IEquipmentService equipmentService,
-            ICtApiService ctApiService,
-            Func<(string equipName, string equipType)> resolveEquip,
-            Func<object?> getParamModel,
-            Func<int> getParamCycles)
+        // подавление событий Scroll/Zoom, которые могут прилетать из-за programmatic changes VisualRange
+        private int _navSuppressCount;
+        private bool IsNavSuppressed => Volatile.Read(ref _navSuppressCount) > 0;
+
+        private void NavSuppressEnter() => Interlocked.Increment(ref _navSuppressCount);
+        private void NavSuppressExit() => Interlocked.Decrement(ref _navSuppressCount);
+
+        // набор “разрешенных” окон (под ComboBox). Подстрой под свой список.
+        private static readonly int[] WindowPresets = new[] { 5, 10, 15, 30, 60, 120, 240 };
+
+        // чтобы игнорировать RangeChanged, которые вызваны НАШИМ же SetLiveMode (иначе будет дергать History обратно)
+        private int _suppressUserRangeChanged;
+
+        // чтобы авто-переход сработал только когда реально "дотянулись",
+        // а не на каждом Zoom/Scroll пока мы уже стоим у правого края
+        private bool _wasAtRightEdge;
+
+        private static readonly TimeSpan RightEdgeTolerance = TimeSpan.FromSeconds(2);
+
+        private bool IsSuppressed => Volatile.Read(ref _suppressUserRangeChanged) > 0;
+
+        #endregion
+
+        public ParamTrendController(ParamTrendVm vm, Dispatcher ui, IEquipmentService equipmentService, ICtApiService ctApiService, Func<(string equipName, string equipType)> resolveEquip, Func<object?> getParamModel,Func<int> getParamCycles)
         {
             _vm = vm;
             _ui = ui;
@@ -92,8 +110,16 @@ namespace TechEquipments
         public void ShowChart(bool reset)
         {
             if (reset)
-                Reset(clearPoints: true);
+            {
+                // 1) Сбрасываем окно отображения на дефолт (60 минут)
+                _vm.WindowMinutes = 60;
 
+                // 2) Полный reset: Live + оси + (опционально) очистка точек
+                Reset(clearPoints: true);
+                //SetLiveMode(resetPoints: false);
+            }
+
+            // 3) Показываем график
             _vm.IsChartVisible = true;
         }
 
@@ -112,10 +138,10 @@ namespace TechEquipments
         /// </summary>
         public void SetLiveMode(bool resetPoints = false)
         {
-            _ = SetLiveModeAsync(resetPoints);
+            _ = SetLiveModeAsync(resetPoints, keepSpan: null);
         }
 
-        private async Task SetLiveModeAsync(bool resetPoints)
+        private async Task SetLiveModeAsync(bool resetPoints, TimeSpan? keepSpan)
         {
             try
             {
@@ -125,29 +151,44 @@ namespace TechEquipments
                     _vm.IsLiveMode = true;
 
                     var now = DateTime.Now;
-                    var win = Math.Max(1, _vm.WindowMinutes);
+                    //var win = Math.Max(1, _vm.WindowMinutes);
 
-                    await _ui.InvokeAsync(() =>
+                    // ✅ если keepSpan передали — используем его (сохранение масштаба)
+                    // иначе — стандартное окно WindowMinutes
+                    var span = keepSpan.GetValueOrDefault(TimeSpan.FromMinutes(Math.Max(1, _vm.WindowMinutes)));
+                    if (span < TimeSpan.FromSeconds(5))
+                        span = TimeSpan.FromMinutes(Math.Max(1, _vm.WindowMinutes));
+
+                    NavSuppressEnter();
+                    try
                     {
-                        if (resetPoints)
+                        await _ui.InvokeAsync(() =>
                         {
-                            Reset(clearPoints: true);
-                            return;
-                        }
+                            if (resetPoints)
+                            {
+                                Reset(clearPoints: true);
+                                return;
+                            }
 
-                        _vm.AxisXMax = now;
-                        _vm.AxisXMin = now.AddMinutes(-win);
+                            _vm.AxisXMax = now;
+                            _vm.AxisXMin = now - span;
+                            //_vm.AxisXMin = now.AddMinutes(-win);
 
-                        // В Live WholeRange = VisualRange (скроллбар не нужен)
-                        _vm.AxisXWholeMin = _vm.AxisXMin;
-                        _vm.AxisXWholeMax = _vm.AxisXMax;
+                            // в Live WholeRange = VisualRange
+                            _vm.AxisXWholeMin = _vm.AxisXMin;
+                            _vm.AxisXWholeMax = _vm.AxisXMax;
 
-                        // Оставляем только live-окно
-                        var minKeep = _vm.AxisXMin;
-                        for (int i = _vm.Points.Count - 1; i >= 0; i--)
-                            if (_vm.Points[i].Time < minKeep)
-                                _vm.Points.RemoveAt(i);
-                    });
+                            // режем точки по окну
+                            var minKeep = _vm.AxisXMin;
+                            for (int i = _vm.Points.Count - 1; i >= 0; i--)
+                                if (_vm.Points[i].Time < minKeep)
+                                    _vm.Points.RemoveAt(i);
+                        });
+                    }
+                    finally
+                    {
+                        NavSuppressExit();
+                    }
                 }
                 finally
                 {
@@ -156,7 +197,7 @@ namespace TechEquipments
             }
             catch
             {
-                // Не ломаем UI
+                // не ломаем UI
             }
         }
 
@@ -164,17 +205,86 @@ namespace TechEquipments
         /// Вызывается из View при Scroll/Zoom DevExpress.
         /// Переключает в History, сохраняет VisualRange и запускает автоподгрузку слева.
         /// </summary>
+        //public void OnUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
+        //{
+        //    // 0) игнорируем range changes, вызванные нашим кодом (Live pinned)
+        //    if (IsNavSuppressed)
+        //        return;
+
+        //    // 1) debounce
+        //    var nowUtc = DateTime.UtcNow;
+        //    if (nowUtc - _lastNavUtc < NavDebounce)
+        //        return;
+        //    _lastNavUtc = nowUtc;
+
+        //    // 2) текущий масштаб (ширина окна)
+        //    var span = newMaxLocal - newMinLocal;
+        //    if (span <= TimeSpan.FromSeconds(1))
+        //        span = TimeSpan.FromMinutes(Math.Max(1, _vm.WindowMinutes));
+
+        //    // 3) если пользователь дотянул вправо почти до "now" -> Live с сохранением масштаба
+        //    if (ShouldSnapToLive(newMaxLocal, span))
+        //    {
+        //        // сохраняем масштаб (через пресеты, чтобы ComboBox синхронизировался)
+        //        _vm.WindowMinutes = NormalizeWindowMinutes(span.TotalMinutes);
+
+        //        // включаем Live без полного reset
+        //        SetLiveMode(resetPoints: false);
+        //        return;
+        //    }
+
+        //    // 4) иначе это History
+        //    _vm.IsLiveMode = false;
+
+        //    _ui.InvokeAsync(() =>
+        //    {
+        //        _vm.AxisXMin = newMinLocal;
+        //        _vm.AxisXMax = newMaxLocal;
+        //    });
+
+        //    _ = MaybeLoadMoreHistoryAsync(newMinLocal, newMaxLocal);
+        //}
         public void OnUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
         {
+            // 0) игнорируем RangeChanged, вызванные нами при SetLiveMode
+            if (IsSuppressed)
+                return;
+
             var nowUtc = DateTime.UtcNow;
             if (nowUtc - _lastNavUtc < NavDebounce)
                 return;
 
             _lastNavUtc = nowUtc;
 
+            // 1) AutoLive: только если включено в конфиге
+            //    и только когда мы "впервые" дотянулись до правого края (переход threshold false -> true)
+            if (_vm.AutoLive)
+            {
+                var atRightEdge = IsAtRightEdge(newMaxLocal);
+
+                if (!_vm.IsLiveMode && atRightEdge && !_wasAtRightEdge)
+                {
+                    _wasAtRightEdge = true;
+
+                    // сохраняем текущий масштаб (span)
+                    var span = newMaxLocal - newMinLocal;
+                    if (span < TimeSpan.FromSeconds(5))
+                        span = TimeSpan.FromMinutes(Math.Max(1, _vm.WindowMinutes));
+
+                    _ = SetLiveModeAsync(resetPoints: false, keepSpan: span);
+                    return;
+                }
+
+                _wasAtRightEdge = atRightEdge;
+            }
+            else
+            {
+                _wasAtRightEdge = false;
+            }
+
+            // 2) обычное поведение: любое движение пользователя переводит в History
             _vm.IsLiveMode = false;
 
-            // Это UI-событие, но обновим через Dispatcher (на всякий)
             _ui.InvokeAsync(() =>
             {
                 _vm.AxisXMin = newMinLocal;
@@ -327,15 +437,22 @@ namespace TechEquipments
 
                     if (_vm.IsLiveMode)
                     {
-                        // Live: pin X к now-window..now
-                        var win = Math.Max(1, _vm.WindowMinutes);
-                        _vm.AxisXMax = now;
-                        _vm.AxisXMin = now.AddMinutes(-win);
+                        NavSuppressEnter();
+                        try
+                        {
+                            var win = Math.Max(1, _vm.WindowMinutes);
+                            _vm.AxisXMax = now;
+                            _vm.AxisXMin = now.AddMinutes(-win);
 
-                        _vm.AxisXWholeMin = _vm.AxisXMin;
-                        _vm.AxisXWholeMax = _vm.AxisXMax;
+                            _vm.AxisXWholeMin = _vm.AxisXMin;
+                            _vm.AxisXWholeMax = _vm.AxisXMax;
+                        }
+                        finally
+                        {
+                            NavSuppressExit();
+                        }
 
-                        // режем точки по live-окну
+                        // trimming можно оставлять без suppress
                         var minKeep = _vm.AxisXMin;
                         for (int i = _vm.Points.Count - 1; i >= 0; i--)
                             if (_vm.Points[i].Time < minKeep)
@@ -538,7 +655,7 @@ namespace TechEquipments
             UpdateWholeRangeFromPoints_NoThrow();
         }
 
-        // ===== helpers (из твоей реализации) =====
+        #region helpers
 
         private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
         {
@@ -619,5 +736,61 @@ namespace TechEquipments
 
             return baseMin + t * (baseMax - baseMin);
         }
+
+        private static int NormalizeWindowMinutes(double minutes)
+        {
+            if (double.IsNaN(minutes) || double.IsInfinity(minutes))
+                return 60;
+
+            var m = Math.Max(1, minutes);
+
+            // выбираем ближайшее к пресетам (чтобы ComboBox выбрал элемент)
+            int best = WindowPresets[0];
+            double bestDiff = Math.Abs(best - m);
+
+            for (int i = 1; i < WindowPresets.Length; i++)
+            {
+                var diff = Math.Abs(WindowPresets[i] - m);
+                if (diff < bestDiff)
+                {
+                    bestDiff = diff;
+                    best = WindowPresets[i];
+                }
+            }
+
+            return best;
+        }
+
+        private static bool ShouldSnapToLive(DateTime visibleMaxLocal, TimeSpan span)
+        {
+            // Чем меньше масштаб — тем меньше допуск.
+            // 2% от окна, но минимум 5 сек и максимум 30 сек.
+            var tol = TimeSpan.FromSeconds(Math.Clamp(span.TotalSeconds * 0.02, 5, 30));
+            return (DateTime.Now - visibleMaxLocal) <= tol;
+        }
+
+        private void SuppressUserRangeChangedFor(TimeSpan duration)
+        {
+            Interlocked.Increment(ref _suppressUserRangeChanged);
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(duration); } catch { }
+                Interlocked.Decrement(ref _suppressUserRangeChanged);
+            });
+        }
+
+        private bool IsAtRightEdge(DateTime visibleMaxLocal)
+        {
+            // WholeRangeMax = самый правый край загруженных точек
+            var wholeMax = _vm.AxisXWholeMax;
+
+            // если по какой-то причине default — сравним с now
+            if (wholeMax == default)
+                wholeMax = DateTime.Now;
+
+            return visibleMaxLocal >= wholeMax - RightEdgeTolerance;
+        }
+
+        #endregion
     }
 }

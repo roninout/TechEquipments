@@ -1,7 +1,9 @@
 ﻿using CtApi;
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
+using DevExpress.Xpf.Editors;
 using DevExpress.XtraRichEdit.Import.Html;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -17,6 +19,8 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using TechEquipments.Services.QR;
+using System.IO;
 using static TechEquipments.IEquipmentService;
 
 namespace TechEquipments
@@ -215,8 +219,9 @@ namespace TechEquipments
                 _equipName = value;
                 OnPropertyChanged();
 
-                ScheduleSearch(_equipName);   // твой debounce поиска
-                ScheduleStateSave();        // debounce сохранения состояния
+                ScheduleSearch(_equipName);     // твой debounce поиска
+                ScheduleStateSave();            // debounce сохранения состояния
+                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
         }
 
@@ -227,7 +232,11 @@ namespace TechEquipments
         public EquipListBoxItem? SelectedListBoxEquipment
         {
             get => _selectedListBoxEquipment;
-            set { _selectedListBoxEquipment = value; OnPropertyChanged(); }
+            set {
+                _selectedListBoxEquipment = value;
+                OnPropertyChanged();
+                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
+            }
         }
 
         /// <summary>
@@ -252,6 +261,8 @@ namespace TechEquipments
                 ApplyFilters();
 
                 ScheduleStateSave();
+
+                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
         }
 
@@ -269,6 +280,7 @@ namespace TechEquipments
                 ApplyFilters();
 
                 ScheduleStateSave();
+                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
         }
 
@@ -571,7 +583,14 @@ namespace TechEquipments
         public object CurrentParamModel
         {
             get => _currentParamModel;
-            set { _currentParamModel = value; OnPropertyChanged(); }
+            set {
+                _currentParamModel = value;
+                OnPropertyChanged();
+
+                // ✅ Обновляем вычисляемые свойства для шапки ParamTabHost
+                OnPropertyChanged(nameof(CurrentParamChanel));
+                OnPropertyChanged(nameof(IsCurrentParamChanelVisible));
+            }
         }
 
         // polling
@@ -587,6 +606,41 @@ namespace TechEquipments
         // 3) Небольшая “пауза” чтения после записи (чтобы не словить мгновенный старый read)
         private DateTime _paramReadResumeAtUtc = DateTime.MinValue;
 
+        // Чтобы при откате чекбокса назад не улетал повторный write
+        private bool _suppressParamWritesFromUiRollback;
+
+        /// <summary>
+        /// Chanel из модели, если модель поддерживает IHasChanel.
+        /// Если не поддерживает — пустая строка.
+        /// </summary>
+        public string CurrentParamChanel => (CurrentParamModel as IHasChanel)?.Chanel ?? "";
+
+        /// <summary>
+        /// Показывать строку Chanel только если:
+        /// - модель поддерживает IHasChanel
+        /// - значение не пустое
+        /// - значение не "Unknown"
+        /// </summary>
+        public bool IsCurrentParamChanelVisible
+        {
+            get
+            {
+                var ch = (CurrentParamModel as IHasChanel)?.Chanel;
+                if (string.IsNullOrWhiteSpace(ch))
+                    return false;
+
+                return !ch.Equals("Unknown", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        // ===== Param editing (anti-overwrite during typing) =====
+
+        // 0/1 флаг (Interlocked/Volatile, чтобы безопасно читать из background polling)
+        private int _isEditingField;
+
+        // Быстрая проверка из polling
+        private bool IsEditingField => System.Threading.Volatile.Read(ref _isEditingField) == 1;
+
         #endregion
 
         #region Trend
@@ -594,70 +648,14 @@ namespace TechEquipments
         public ParamTrendVm Trend { get; }
         private ParamTrendController _trendCtl;
 
-        //private bool _isParamChartVisible = true;
-        //public bool IsParamChartVisible
-        //{
-        //    get => _isParamChartVisible;
-        //    set {
-        //        if (_isParamChartVisible == value)
-        //            return;
-
-        //        _isParamChartVisible = value;
-
-        //        OnPropertyChanged();
-        //        OnPropertyChanged(nameof(IsParamSettingsVisible));
-        //    }
-        //}
-
-        //public bool IsParamSettingsVisible => !IsParamChartVisible;
-
-        //private string? _trendEquipName; // чтобы при смене equip сбрасывать кэши
-        //private readonly Dictionary<string, string> _trnNameByItem = new(StringComparer.OrdinalIgnoreCase);   // кэш TrendTag
-        //private readonly Dictionary<string, DateTime> _lastUtcByItem = new(StringComparer.OrdinalIgnoreCase); // чтобы добирать только новые точки
-
-        //private double _axisYMin;
-        //public double AxisYMin
-        //{
-        //    get => _axisYMin;
-        //    set { if (_axisYMin == value) return; _axisYMin = value; OnPropertyChanged(); }
-        //}
-
-        //private double _axisYMax;
-        //public double AxisYMax
-        //{
-        //    get => _axisYMax;
-        //    set { if (_axisYMax == value) return; _axisYMax = value; OnPropertyChanged(); }
-        //}
-
-        //// Gate: trend обновляется и polling’ом, и автоподгрузкой истории (чтобы не было гонок)
-        //private readonly SemaphoreSlim _trendGate = new(1, 1);
-
-        //// Live: окно pinned к now-60..now
-        //// History: окно двигает пользователь
-        //private bool _trendLiveMode = true;
-
-        //private const int TrendLiveWindowMinutes = 60;
-        //private const int TrendHistoryChunkMinutes = 60; // сколько подгружаем за раз
-        //private const int TrendHistoryKeepHours = 24;    // страховка по памяти (0 = не резать)
-
-        //private DateTime _trendLastNavUtc = DateTime.MinValue;
-        //private static readonly TimeSpan TrendNavDebounce = TimeSpan.FromMilliseconds(250);
-
-        //// VisualRange
-        //private DateTime _axisXMin;
-        //private DateTime _axisXMax;
-        //public DateTime AxisXMin { get => _axisXMin; set { _axisXMin = value; OnPropertyChanged(); } }
-        //public DateTime AxisXMax { get => _axisXMax; set { _axisXMax = value; OnPropertyChanged(); } }
-
-        //// WholeRange (весь загруженный диапазон)
-        //private DateTime _axisXWholeMin;
-        //private DateTime _axisXWholeMax;
-        //public DateTime AxisXWholeMin { get => _axisXWholeMin; set { _axisXWholeMin = value; OnPropertyChanged(); } }
-        //public DateTime AxisXWholeMax { get => _axisXWholeMax; set { _axisXWholeMax = value; OnPropertyChanged(); } }
-
         #endregion
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService, ICtApiService ctApiService)
+        #region QR
+        private readonly IQrCodeService _qrCodeService;
+        private readonly IQrScannerService _qrScannerService;
+        #endregion
+
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
         {
             InitializeComponent();
 
@@ -665,9 +663,12 @@ namespace TechEquipments
             _dbService = dbService;
             _stateService = stateService;
             _ctApiService = ctApiService;
+            _qrCodeService = qrCodeService;
+            _qrScannerService = qrScannerService;
 
             // Vm + Controller
             Trend = new ParamTrendVm();
+            Trend.AutoLive = config.GetValue("Trend:AutoLive", true);
 
             _trendCtl = new ParamTrendController(
                 Trend,
@@ -1424,25 +1425,18 @@ namespace TechEquipments
                 if (DateTime.UtcNow < _paramReadResumeAtUtc)
                     return;
 
+                // если пользователь сейчас вводит значение — НЕ читаем, чтобы не затирать ввод
+                if (IsEditingField)
+                    return;
+
                 await _paramRwGate.WaitAsync(ct);
                 try
                 {
-                    // --- ЧТЕНИЕ ---
                     await PollParamOnceAsync(ct);
-                    // result = await _equipmentService.ReadEquipModelAsync<AIParam>(...);
-
-                    // ВАЖНО: пока мы применяем значения в модель/биндинги — не запускать запись
-                    _suppressParamWritesFromPolling = true;
-
-                    // apply result -> VM/Model
-                    // CurrentParam = result; или заполняешь свойства
-
-                    // Статус
-                    // ParamStatusText = $"Read: {count} at {DateTime.Now:HH:mm:ss}";
                 }
                 finally
                 {
-                    _suppressParamWritesFromPolling = false;
+                    //_suppressParamWritesFromPolling = false;
                     _paramRwGate.Release();
                 }
             }
@@ -1499,19 +1493,35 @@ namespace TechEquipments
 
             await Dispatcher.InvokeAsync(() =>
             {
-                if (model == null)
+                _suppressParamWritesFromPolling = true;
+
+                try
                 {
-                    //ParamStatusText = $"Param: no model for type '{equipType}'";
-                    ParamStatusText = $"Updating ...";
-                    ParamItems.Clear();
-                    _currentParamModelType = null;
-                    return;
+                    if (model == null)
+                    {
+                        ParamStatusText = "Updating ...";
+                        ParamItems.Clear();
+                        _currentParamModelType = null;
+                        return;
+                    }
+
+                    ApplyParamModelToUi(model);
+
+                    // Chanel (если модель поддерживает)
+                    //CurrentParamChanel = (model as IHasChanel)?.Chanel?.Trim() ?? "";
+
+                    _paramReadCycles++;
+
+                    ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_paramReadCycles} cycles";
                 }
-
-                ApplyParamModelToUi(model);
-
-                _paramReadCycles++;
-                ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_paramReadCycles} cycles";
+                finally
+                {
+                    // Снимаем подавление ПОСЛЕ того, как UI применит биндинги/создаст визуальные элементы
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        _suppressParamWritesFromPolling = false;
+                    }), DispatcherPriority.ContextIdle); // можно Background, но ContextIdle обычно надежнее
+                }
             });
         }
 
@@ -1557,13 +1567,29 @@ namespace TechEquipments
             }
         }
 
+        // Взводим, когда пользователь начал редактировать поле (focus в TextEdit)
+        public void BeginParamFieldEdit()
+        {
+            Interlocked.Exchange(ref _isEditingField, 1);
+        }
+
+        // Сбрасываем, когда пользователь закончил редактирование (lost focus или Enter)
+        public void EndParamFieldEdit()
+        {
+            Interlocked.Exchange(ref _isEditingField, 0);
+        }
 
         #endregion
 
         #region Param Write
 
+        // для checkBox
         public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
         {
+            // 0) подавляем записи, если это откат значения из UI (Cancel в confirm)
+            if (_suppressParamWritesFromUiRollback)
+                return;
+
             // 1) Не пишем, если это обновление прилетело из polling-READ
             if (_suppressParamWritesFromPolling)
                 return;
@@ -1581,6 +1607,38 @@ namespace TechEquipments
             if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
                 return;
 
+            // Confirm только при включении ForceCmd (false -> true).
+            if (equipItem.Equals("ForceCmd", StringComparison.OrdinalIgnoreCase))
+            {
+                // Важно: e.OldValue/e.NewValue обычно bool? для CheckEdit
+                bool oldVal = ToBool(e.OldValue);
+                bool newVal = ToBool(e.NewValue);
+
+                // Показываем окно ТОЛЬКО при включении форса
+                if (!oldVal && newVal)
+                {
+                    var res = DXMessageBox.Show(this,"Do you really want to enable channel forcing?","Attention!!!",MessageBoxButton.OKCancel,MessageBoxImage.Warning);
+
+                    if (res != MessageBoxResult.OK)
+                    {
+                        // Cancel -> откатить чекбокс и не писать в SCADA
+                        _suppressParamWritesFromUiRollback = true;
+                        try
+                        {
+                            // откатываем именно IsChecked
+                            if (sender is CheckEdit ce)
+                                ce.IsChecked = (e.OldValue as bool?) ?? oldVal;
+                        }
+                        finally
+                        {
+                            _suppressParamWritesFromUiRollback = false;
+                        }
+
+                        return;
+                    }
+                }
+            }
+
             // 5) Пытаемся нормализовать значение (у тебя эти поля int)
             //    e.NewValue может быть string/null в процессе набора — аккуратно.
             if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
@@ -1589,6 +1647,7 @@ namespace TechEquipments
             await WriteParamAsync(equip, equipItem, writeValue);
         }
 
+        // по нажатию кнопки Еnter
         public async void ParamEditable_EditValueChanged(object sender, System.Windows.Input.KeyEventArgs e)
         {
             // пишем только по Enter
@@ -1619,6 +1678,9 @@ namespace TechEquipments
                 return;
 
             e.Handled = true; // чтобы Enter не "пищал" / не делал лишнего
+
+            // закончили ввод
+            EndParamFieldEdit();
 
             await WriteParamAsync(equip, equipItem, writeValue);
         }
@@ -1700,6 +1762,22 @@ namespace TechEquipments
             }
         }
 
+        // helper: безопасно привести object? к bool
+        private static bool ToBool(object? v)
+        {
+            try
+            {
+                if (v is bool b) return b;
+                //if (v is bool? bn) return bn.GetValueOrDefault(false);
+                if (v == null) return false;
+                return Convert.ToBoolean(v);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         #endregion
 
         #region Trend
@@ -1723,724 +1801,296 @@ namespace TechEquipments
         /// </summary>
         public void ApplyTrendSeriesStyles(ChartControl chart)
             => TrendSeriesStyler.Apply(chart, CurrentParamModel);
-
-        //private void ResetTrendState(bool clearPoints = true)
-        //{
-        //    if (clearPoints)
-        //        ParamTrendPoints.Clear();
-
-        //    _trnNameByItem.Clear();
-        //    _lastUtcByItem.Clear();
-        //    _trendEquipName = null;
-
-        //    // Back to Live mode and reset ranges.
-        //    _trendLiveMode = true;
-
-        //    // Axis X: visible window.
-        //    AxisXMax = DateTime.Now;
-        //    AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
-
-        //    // Axis X: whole range (scrollable area).
-        //    AxisXWholeMin = AxisXMin;
-        //    AxisXWholeMax = AxisXMax;
-        //}
-
-        ///// <summary>
-        ///// Toggle метод (вызов из кнопки)
-        ///// при включении графика можно делать resetWhenShow=true
-        ///// </summary>
-        //public void ToggleParamChart(bool resetWhenShow = false)
-        //{
-        //    if (IsParamChartVisible)
-        //    {
-        //        ShowParamSettings();
-        //    }
-        //    else
-        //    {
-        //        ShowParamChart(reset: resetWhenShow);
-        //    }
-        //}
-
-        //private async Task PollTrendOnceSafeAsync(CancellationToken ct)
-        //{
-        //    try
-        //    {
-        //        await _trendGate.WaitAsync(ct);
-        //        try
-        //        {
-        //            await PollTrendOnceAsync(ct);
-        //        }
-        //        finally
-        //        {
-        //            _trendGate.Release();
-        //        }
-        //    }
-        //    catch (OperationCanceledException) { }
-        //    catch (Exception ex)
-        //    {
-        //        // чтобы не “убить” polling
-        //        BottomText = $"Trend error: {ex.Message}";
-        //    }
-        //}
-
-        //private async Task PollTrendOnceAsync(CancellationToken ct)
-        //{
-        //    // NOTE:
-        //    // We use a single Y axis for all series.
-        //    // The FIRST trend item defines the base Y-range (axis).
-        //    // Every NEXT item can specify its own native range via [TrendItem(..., YMin=..., YMax=...)].
-        //    // Those items are linearly scaled into the base range for drawing.
-        //    // Tooltips/crosshair still show the original (raw) values.
-
-        //    var (equipName, _) = ResolveSelectedEquipForParam();
-        //    if (string.IsNullOrWhiteSpace(equipName))
-        //        return;
-
-        //    // If equipment changed — reset caches/points.
-        //    if (!string.Equals(_trendEquipName, equipName, StringComparison.OrdinalIgnoreCase))
-        //    {
-        //        _trendEquipName = equipName;
-        //        _trnNameByItem.Clear();
-        //        _lastUtcByItem.Clear();
-
-        //        await Dispatcher.InvokeAsync(() => ParamTrendPoints.Clear());
-        //    }
-
-        //    // TrendItems are declared by attributes of the CURRENT param model.
-        //    // First item is treated as "base" for axis Y.
-        //    var trendItems = GetTrendItemsFromModel(CurrentParamModel, "R");
-        //    if (trendItems.Length == 0)
-        //        trendItems = new[] { "R" };
-
-        //    var baseItem = trendItems[0];
-
-        //    // Resolve base Y-range (axis): attribute on baseItem OR model MinR/MaxR.
-        //    if (!TryGetBaseYRange(baseItem, out var baseMin, out var baseMax))
-        //    {
-        //        baseMin = 0;
-        //        baseMax = 1;
-        //    }
-
-        //    var endUtc = DateTime.UtcNow;
-
-        //    foreach (var item in trendItems)
-        //    {
-        //        ct.ThrowIfCancellationRequested();
-
-        //        // 1) Resolve TrendTagName for item (cached).
-        //        if (!_trnNameByItem.TryGetValue(item, out var trnName) || string.IsNullOrWhiteSpace(trnName))
-        //        {
-        //            trnName = await _equipmentService.GetTrnName(equipName, item);
-        //            if (string.IsNullOrWhiteSpace(trnName))
-        //                continue;
-
-        //            _trnNameByItem[item] = trnName;
-        //        }
-
-        //        // 2) Read window based on last read per item (UTC!).
-        //        var startUtc = _lastUtcByItem.TryGetValue(item, out var lastUtc)
-        //            ? lastUtc.AddSeconds(-2)
-        //            : endUtc.AddMinutes(-60);
-
-        //        var trn = await _ctApiService.GetTrnData(trnName, startUtc, endUtc);
-        //        if (trn == null || trn.Count == 0)
-        //            continue;
-
-        //        // Native Y-range for this item:
-        //        // - base item: use base range (no scaling)
-        //        // - other items: use attribute range if present, otherwise also base range (no scaling)
-        //        double nativeMin = baseMin, nativeMax = baseMax;
-        //        if (!item.Equals(baseItem, StringComparison.OrdinalIgnoreCase))
-        //        {
-        //            if (TryGetYRangeForItem(item, out var aMin, out var aMax))
-        //            {
-        //                nativeMin = aMin;
-        //                nativeMax = aMax;
-        //            }
-        //        }
-
-        //        var points = trn
-        //            .Select(x =>
-        //            {
-        //                var raw = x.Value;
-
-        //                // Draw value (scaled to base axis if needed)
-        //                var plot = item.Equals(baseItem, StringComparison.OrdinalIgnoreCase)
-        //                    ? raw
-        //                    : MapToBase(raw, nativeMin, nativeMax, baseMin, baseMax);
-
-        //                return new TrendPoint
-        //                {
-        //                    Series = item,
-        //                    Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
-        //                    RawValue = raw,
-        //                    Value = plot
-        //                };
-        //            })
-        //            .OrderBy(p => p.Time)
-        //            .ToList();
-
-        //        if (points.Count == 0)
-        //            continue;
-
-        //        // 3) Apply to UI.
-        //        await Dispatcher.InvokeAsync(() =>
-        //        {
-        //            // Add only new points for this series.
-        //            var lastAdded = ParamTrendPoints
-        //                .Where(p => p.Series.Equals(item, StringComparison.OrdinalIgnoreCase))
-        //                .Select(p => p.Time)
-        //                .DefaultIfEmpty(DateTime.MinValue)
-        //                .Max();
-
-        //            foreach (var p in points)
-        //                if (p.Time > lastAdded)
-        //                    ParamTrendPoints.Add(p);
-
-        //            // Y axis: base range (single axis for all series).
-        //            AxisYMin = baseMin;
-        //            AxisYMax = baseMax;
-
-        //            // --- Axis X + retention policy ---
-        //            // Live mode: keep only last N minutes and pin visible window to "now".
-        //            // History mode: do NOT change AxisXMin/AxisXMax (user controls it),
-        //            //              but we still update WholeRange to match loaded data.
-
-        //            var now = DateTime.Now;
-
-        //            if (_trendLiveMode)
-        //            {
-        //                AxisXMax = now;
-        //                AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
-
-        //                // WholeRange equals visible range in Live mode.
-        //                AxisXWholeMin = AxisXMin;
-        //                AxisXWholeMax = AxisXMax;
-
-        //                // Keep only the visible window.
-        //                var minKeep = AxisXMin;
-        //                for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-        //                    if (ParamTrendPoints[i].Time < minKeep)
-        //                        ParamTrendPoints.RemoveAt(i);
-        //            }
-        //            else
-        //            {
-        //                // History mode: keep more data to support scrolling.
-        //                // WholeRange is based on loaded points.
-        //                UpdateAxisXWholeRangeFromPoints_NoThrow();
-
-        //                // Optional safety trimming.
-        //                TrimTrendPointsIfNeeded_NoThrow();
-        //            }
-
-        //            ParamStatusText = $"Trends={trendItems.Length}, Points={ParamTrendPoints.Count} | {now:HH:mm:ss} | {_paramReadCycles} cycles";
-        //        });
-
-        //        // 4) Update lastUtc for item (keep UTC from CtApi).
-        //        _lastUtcByItem[item] = trn.Max(x => x.DateTime);
-        //    }
-        //}
-
-        ///// <summary>
-        ///// Called from AIParamView when an end-user scrolls/zooms the chart.
-        ///// Switches the trend from Live mode to History mode and triggers auto-loading
-        ///// when the user reaches the left edge.
-        ///// </summary>
-        //public void OnParamChartUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
-        //{
-        //    // Zoom/scroll events can fire very frequently.
-        //    // Debounce to avoid launching too many history-load tasks.
-        //    var nowUtc = DateTime.UtcNow;
-        //    if (nowUtc - _trendLastNavUtc < TrendNavDebounce)
-        //        return;
-
-        //    _trendLastNavUtc = nowUtc;
-
-        //    // User interaction means we stop pinning the axis to "now".
-        //    _trendLiveMode = false;
-
-        //    // Keep VM in sync with the current visible window.
-        //    AxisXMin = newMinLocal;
-        //    AxisXMax = newMaxLocal;
-
-        //    // Start background auto-load (fire-and-forget).
-        //    _ = MaybeLoadMoreTrendHistoryAsync(newMinLocal, newMaxLocal);
-        //}
-
-        ///// <summary>
-        ///// Auto-load older trend points when the user scrolls close to the left edge.
-        ///// </summary>
-        //private async Task MaybeLoadMoreTrendHistoryAsync(DateTime visibleMinLocal, DateTime visibleMaxLocal)
-        //{
-        //    try
-        //    {
-        //        // We never block the UI thread here.
-        //        await _trendGate.WaitAsync(CancellationToken.None);
-        //        try
-        //        {
-        //            // We need at least some data to know where the left edge is.
-        //            DateTime loadedMinLocal = DateTime.MinValue;
-        //            DateTime loadedMaxLocal = DateTime.MinValue;
-
-        //            await Dispatcher.InvokeAsync(() =>
-        //            {
-        //                if (ParamTrendPoints.Count == 0)
-        //                    return;
-
-        //                loadedMinLocal = ParamTrendPoints.Min(p => p.Time);
-        //                loadedMaxLocal = ParamTrendPoints.Max(p => p.Time);
-        //            });
-
-        //            if (loadedMinLocal == DateTime.MinValue || loadedMaxLocal == DateTime.MinValue)
-        //                return;
-
-        //            // If the user is close to the left edge of loaded data – load one more chunk.
-        //            var visSpan = visibleMaxLocal - visibleMinLocal;
-        //            if (visSpan <= TimeSpan.Zero)
-        //                visSpan = TimeSpan.FromMinutes(TrendLiveWindowMinutes);
-
-        //            var threshold = loadedMinLocal + TimeSpan.FromTicks((long)(visSpan.Ticks * 0.15));
-        //            if (visibleMinLocal > threshold)
-        //                return;
-
-        //            var toUtc = loadedMinLocal.ToUniversalTime();
-        //            var fromUtc = toUtc.AddMinutes(-TrendHistoryChunkMinutes);
-
-        //            await LoadTrendHistoryWindowAsync(fromUtc, toUtc, CancellationToken.None);
-
-        //            // Update WholeRange after loading.
-        //            await Dispatcher.InvokeAsync(() => UpdateAxisXWholeRangeFromPoints_NoThrow());
-        //        }
-        //        finally
-        //        {
-        //            _trendGate.Release();
-        //        }
-        //    }
-        //    catch
-        //    {
-        //        // History load must never break the UI/polling.
-        //    }
-        //}
-
-        ///// <summary>
-        ///// Loads historical data for all configured trend series and merges it into ParamTrendPoints.
-        ///// IMPORTANT: This method does NOT touch AxisXMin/AxisXMax (user-visible window).
-        ///// </summary>
-        //private async Task LoadTrendHistoryWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
-        //{
-        //    var (equipName, _) = ResolveSelectedEquipForParam();
-        //    if (string.IsNullOrWhiteSpace(equipName))
-        //        return;
-
-        //    // Prevent accidental mixing if the user switched equipment.
-        //    if (!string.Equals(_trendEquipName, equipName, StringComparison.OrdinalIgnoreCase))
-        //        return;
-
-        //    var trendItems = GetTrendItemsFromModel(CurrentParamModel, "R");
-        //    if (trendItems.Length == 0)
-        //        trendItems = new[] { "R" };
-
-        //    var baseItem = trendItems[0];
-        //    if (!TryGetBaseYRange(baseItem, out var baseMin, out var baseMax))
-        //    {
-        //        baseMin = 0;
-        //        baseMax = 1;
-        //    }
-
-        //    var newPoints = new List<TrendPoint>(capacity: 512);
-
-        //    foreach (var item in trendItems)
-        //    {
-        //        ct.ThrowIfCancellationRequested();
-
-        //        // Resolve TrendTagName for item (cached).
-        //        if (!_trnNameByItem.TryGetValue(item, out var trnName) || string.IsNullOrWhiteSpace(trnName))
-        //        {
-        //            trnName = await _equipmentService.GetTrnName(equipName, item);
-        //            if (string.IsNullOrWhiteSpace(trnName))
-        //                continue;
-
-        //            _trnNameByItem[item] = trnName;
-        //        }
-
-        //        var trn = await _ctApiService.GetTrnData(trnName, fromUtc, toUtc);
-        //        if (trn == null || trn.Count == 0)
-        //            continue;
-
-        //        // Native Y-range for this item.
-        //        double nativeMin = baseMin, nativeMax = baseMax;
-        //        if (!item.Equals(baseItem, StringComparison.OrdinalIgnoreCase))
-        //        {
-        //            if (TryGetYRangeForItem(item, out var aMin, out var aMax))
-        //            {
-        //                nativeMin = aMin;
-        //                nativeMax = aMax;
-        //            }
-        //        }
-
-        //        foreach (var x in trn)
-        //        {
-        //            var raw = x.Value;
-        //            var plot = item.Equals(baseItem, StringComparison.OrdinalIgnoreCase)
-        //                ? raw
-        //                : MapToBase(raw, nativeMin, nativeMax, baseMin, baseMax);
-
-        //            newPoints.Add(new TrendPoint
-        //            {
-        //                Series = item,
-        //                Time = DateTime.SpecifyKind(x.DateTime, DateTimeKind.Utc).ToLocalTime(),
-        //                RawValue = raw,
-        //                Value = plot,
-        //            });
-        //        }
-        //    }
-
-        //    if (newPoints.Count == 0)
-        //        return;
-
-        //    // Merge into the bound collection on the UI thread.
-        //    await Dispatcher.InvokeAsync(() =>
-        //    {
-        //        // De-duplicate by (Series, Time) and keep order by time.
-        //        var all = ParamTrendPoints.Concat(newPoints);
-
-        //        var merged = all
-        //            .GroupBy(p => (series: (p.Series ?? "").Trim().ToUpperInvariant(), time: p.Time))
-        //            .Select(g => g.First())
-        //            .OrderBy(p => p.Time)
-        //            .ThenBy(p => p.Series, StringComparer.OrdinalIgnoreCase)
-        //            .ToList();
-
-        //        ParamTrendPoints.Clear();
-        //        foreach (var p in merged)
-        //            ParamTrendPoints.Add(p);
-
-        //        UpdateAxisXWholeRangeFromPoints_NoThrow();
-        //        TrimTrendPointsIfNeeded_NoThrow();
-        //    });
-        //}
-
-        ///// <summary>
-        ///// Updates AxisXWholeMin/AxisXWholeMax from ParamTrendPoints.
-        ///// Must be called on UI thread.
-        ///// </summary>
-        //private void UpdateAxisXWholeRangeFromPoints_NoThrow()
-        //{
-        //    if (ParamTrendPoints.Count == 0)
-        //        return;
-
-        //    AxisXWholeMin = ParamTrendPoints.Min(p => p.Time);
-        //    AxisXWholeMax = ParamTrendPoints.Max(p => p.Time);
-        //}
-
-        ///// <summary>
-        ///// Safety trim for history mode.
-        ///// Must be called on UI thread.
-        ///// </summary>
-        //private void TrimTrendPointsIfNeeded_NoThrow()
-        //{
-        //    if (TrendHistoryKeepHours <= 0)
-        //        return;
-
-        //    if (ParamTrendPoints.Count == 0)
-        //        return;
-
-        //    // Keep only last N hours relative to the newest loaded point.
-        //    var newest = ParamTrendPoints.Max(p => p.Time);
-        //    var cut = newest.AddHours(-TrendHistoryKeepHours);
-
-        //    for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-        //        if (ParamTrendPoints[i].Time < cut)
-        //            ParamTrendPoints.RemoveAt(i);
-
-        //    UpdateAxisXWholeRangeFromPoints_NoThrow();
-        //}
-
-        //// Получаем MinR/MaxR из текущей модели (через reflection)
-        //private bool TryGetModelScaleMinMax(out double scaleLo, out double scaleHi)
-        //{
-        //    scaleLo = 0;
-        //    scaleHi = 1;
-
-        //    if (CurrentParamModel == null) return false;
-
-        //    var t = CurrentParamModel.GetType();
-        //    var pMinR = t.GetProperty("MinR");
-        //    var pMaxR = t.GetProperty("MaxR");
-        //    if (pMinR == null || pMaxR == null) return false;
-
-        //    var vMin = pMinR.GetValue(CurrentParamModel);
-        //    var vMax = pMaxR.GetValue(CurrentParamModel);
-        //    if (vMin == null || vMax == null) return false;
-
-        //    var a = Convert.ToDouble(vMin, CultureInfo.InvariantCulture);
-        //    var b = Convert.ToDouble(vMax, CultureInfo.InvariantCulture);
-
-        //    // защита от “переворота”
-        //    scaleLo = Math.Min(a, b);
-        //    scaleHi = Math.Max(a, b);
-        //    return true;
-        //}
-
-
-        ///// <summary>
-        ///// Resolves the base Y-range (single axis) used for the whole trend chart.
-        ///// Priority:
-        ///// 1) Explicit range on the base item via [TrendItem(Item=..., YMin=..., YMax=...)]
-        ///// 2) Model-wide MinR/MaxR properties (typical for AI params)
-        ///// </summary>
-        //private bool TryGetBaseYRange(string baseItem, out double baseMin, out double baseMax)
-        //{
-        //    // 1) If base series has an explicit attribute range — use it.
-        //    if (!string.IsNullOrWhiteSpace(baseItem) &&
-        //        TryGetYRangeForItem(baseItem, out baseMin, out baseMax))
-        //        return true;
-
-        //    // 2) Otherwise fall back to the model scale (MinR/MaxR).
-        //    if (TryGetModelScaleMinMax(out baseMin, out baseMax))
-        //        return true;
-
-        //    baseMin = 0;
-        //    baseMax = 1;
-        //    return false;
-        //}
-
-        //public void ShowParamChart(bool reset = false)
-        //{
-        //    if (reset)
-        //        ResetTrendState(clearPoints: true);
-
-        //    IsParamChartVisible = true;
-        //    OnPropertyChanged(nameof(IsParamSettingsVisible)); // если используешь инверсию
-        //}
-
-        //public void ShowParamSettings()
-        //{
-        //    IsParamChartVisible = false;
-        //    OnPropertyChanged(nameof(IsParamSettingsVisible));
-        //}
-
-        ////private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
-        ////{
-        ////    if (model == null) return fallback;
-
-        ////    var t = model.GetType();
-        ////    var attr = (TrendItemsAttribute?)Attribute.GetCustomAttribute(t, typeof(TrendItemsAttribute), inherit: true);
-
-        ////    var items = attr?.Items;
-        ////    if (items == null || items.Length == 0) return fallback;
-
-        ////    return items.Where(s => !string.IsNullOrWhiteSpace(s))
-        ////                .Select(s => s.Trim())
-        ////                .ToArray();
-        ////}
-
-        ///// <summary>
-        ///// Tries to get an explicit Y-range for a specific series item from [TrendItem] attribute.
-        ///// Returns false if the item has no range defined.
-        ///// </summary>
-        //private bool TryGetYRangeForItem(string item, out double yMin, out double yMax)
-        //{
-        //    yMin = 0; yMax = 1;
-
-        //    if (CurrentParamModel == null) return false;
-
-        //    var a = CurrentParamModel.GetType()
-        //        .GetCustomAttributes(typeof(TrendItemAttribute), true)
-        //        .OfType<TrendItemAttribute>()
-        //        .FirstOrDefault(x => string.Equals(x.Item, item, StringComparison.OrdinalIgnoreCase));
-
-        //    if (a == null || !a.HasYRange) return false;
-
-        //    yMin = Math.Min(a.YMin, a.YMax);
-        //    yMax = Math.Max(a.YMin, a.YMax);
-        //    return true;
-        //}
-
-        ///// <summary>
-        ///// Maps a value from its native range (fromMin..fromMax) to the common/base Y range (baseMin..baseMax).
-        ///// We clamp to the base range so that series never disappear if the value goes slightly out of bounds.
-        ///// </summary>
-        //private static double MapToBase(double raw, double fromMin, double fromMax, double baseMin, double baseMax)
-        //{
-        //    var fromSpan = fromMax - fromMin;
-        //    if (Math.Abs(fromSpan) < 1e-12)
-        //        return baseMin; // или (baseMin+baseMax)/2
-
-        //    var t = (raw - fromMin) / fromSpan;
-
-        //    // чтобы не улетало за шкалу (можно убрать, если хочешь видеть выходы)
-        //    if (t < 0) t = 0;
-        //    else if (t > 1) t = 1;
-
-        //    return baseMin + t * (baseMax - baseMin);
-        //}
-
-        ///// <summary>
-        ///// Builds the ordered list of trend items (series keys) from [TrendItem] attributes on the model.
-        ///// Attribute order is respected; duplicates are removed while keeping the first occurrence.
-        ///// </summary>
-        //private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
-        //{
-        //    if (model == null) return fallback;
-
-        //    var items = model.GetType()
-        //        .GetCustomAttributes(typeof(TrendItemAttribute), inherit: true)
-        //        .OfType<TrendItemAttribute>()
-        //        .Select(a => a.Item)
-        //        .Where(s => !string.IsNullOrWhiteSpace(s))
-        //        .Select(s => s.Trim())
-        //        .Distinct(StringComparer.OrdinalIgnoreCase)
-        //        .ToArray();
-
-        //    return items.Length > 0 ? items : fallback;
-        //}
-
-        //private static Dictionary<string, (Brush brush, double transparency)> GetSeriesStyleMap(object? model)
-        //{
-        //    var map = new Dictionary<string, (Brush, double)>(StringComparer.OrdinalIgnoreCase);
-        //    if (model == null) return map;
-
-        //    var t = model.GetType();
-        //    var attrs = t.GetCustomAttributes(typeof(TrendSeriesStyleAttribute), inherit: true).OfType<TrendSeriesStyleAttribute>();
-
-        //    foreach (var a in attrs)
-        //    {
-        //        if (string.IsNullOrWhiteSpace(a.Item) || string.IsNullOrWhiteSpace(a.Color))
-        //            continue;
-
-        //        Color c;
-        //        try
-        //        {
-        //            c = (Color)ColorConverter.ConvertFromString(a.Color);
-        //        }
-        //        catch { continue; }
-
-        //        var brush = new SolidColorBrush(c);
-        //        brush.Freeze();
-
-        //        map[a.Item.Trim()] = (brush, Clamp01(a.Transparency));
-        //    }
-
-        //    return map;
-        //}
-
-        //private static double Clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
-
-        ///// <summary>
-        ///// Вызывай это после биндинга данных у ChartControl (BoundDataChanged),
-        ///// чтобы раскрасить созданные авто-серии.
-        ///// </summary>
-        //public void ApplyTrendSeriesStyles(ChartControl chart)
-        //{
-        //    if (chart?.Diagram is not XYDiagram2D d)
-        //        return;
-
-        //    var styleMap = GetSeriesStyleMap(CurrentParamModel);
-
-        //    foreach (var s in d.Series)
-        //    {
-        //        var key = (s.DisplayName ?? s.Name ?? "").Trim();
-        //        if (key.Length == 0) continue;
-
-        //        if (!styleMap.TryGetValue(key, out var st))
-        //            continue;
-
-        //        // 1) Заливка / Brush у SplineAreaSeries2D
-        //        s.GetType().GetProperty("Brush")?.SetValue(s, st.brush);
-
-        //        // 2) Transparency (DevExpress)
-        //        var pTr = s.GetType().GetProperty("Transparency");
-        //        if (pTr != null && pTr.CanWrite)
-        //        {
-        //            if (pTr.PropertyType == typeof(double))
-        //                pTr.SetValue(s, st.transparency);
-        //            else if (pTr.PropertyType == typeof(float))
-        //                pTr.SetValue(s, (float)st.transparency);
-        //        }
-
-        //        // 3) Линия
-        //        var propLineStyle = s.GetType().GetProperty("LineStyle");
-        //        if (propLineStyle != null)
-        //        {
-        //            var ls = propLineStyle.GetValue(s) ?? Activator.CreateInstance(propLineStyle.PropertyType);
-        //            if (ls != null)
-        //            {
-        //                ls.GetType().GetProperty("Brush")?.SetValue(ls, st.brush);
-        //                propLineStyle.SetValue(s, ls);
-        //            }
-        //        }
-        //        else
-        //        {
-        //            // fallback (на всякий)
-        //            s.GetType().GetProperty("BorderBrush")?.SetValue(s, st.brush);
-        //        }
-        //    }
-        //}
-
-        ///// <summary>
-        ///// Switch trend chart back to Live mode:
-        ///// - pins X axis to "now - window .. now"
-        ///// - trims points to the live window (unless resetPoints=true)
-        ///// - keeps polling going as usual
-        /////
-        ///// Called from the "Live" button on Param tab.
-        ///// </summary>
-        //public void SetParamChartLiveMode(bool resetPoints = false)
-        //{
-        //    // Fire-and-forget: UI remains responsive.
-        //    _ = SetParamChartLiveModeAsync(resetPoints);
-        //}
-
-        //private async Task SetParamChartLiveModeAsync(bool resetPoints)
-        //{
-        //    try
-        //    {
-        //        await _trendGate.WaitAsync(CancellationToken.None);
-        //        try
-        //        {
-        //            // Back to Live mode.
-        //            _trendLiveMode = true;
-
-        //            var now = DateTime.Now;
-
-        //            // All collection / axis updates must run on UI thread.
-        //            await Dispatcher.InvokeAsync(() =>
-        //            {
-        //                if (resetPoints)
-        //                {
-        //                    // Full reset (clears points + caches and resets axis ranges).
-        //                    ResetTrendState(clearPoints: true);
-        //                    return;
-        //                }
-
-        //                // Pin visible window to "now".
-        //                AxisXMax = now;
-        //                AxisXMin = AxisXMax.AddMinutes(-TrendLiveWindowMinutes);
-
-        //                // In Live mode whole range equals visible window (no scrollbars needed).
-        //                AxisXWholeMin = AxisXMin;
-        //                AxisXWholeMax = AxisXMax;
-
-        //                // Keep only points inside the live window to avoid memory growth.
-        //                var minKeep = AxisXMin;
-        //                for (int i = ParamTrendPoints.Count - 1; i >= 0; i--)
-        //                {
-        //                    if (ParamTrendPoints[i].Time < minKeep)
-        //                        ParamTrendPoints.RemoveAt(i);
-        //                }
-        //            });
-        //        }
-        //        finally
-        //        {
-        //            _trendGate.Release();
-        //        }
-        //    }
-        //    catch
-        //    {
-        //        // Switching mode must never break the UI.
-        //    }
-        //}
+        #endregion
+
+        #region QR-Code       
+
+        /// <summary>
+        /// Param tab: генерирует QR по текущему тексту поиска (EquipName) или выбранному оборудованию.
+        /// Автосохраняет в .\QRCodes\Station\Type\*.png и показывает DevExpress окно об успехе.
+        /// </summary>
+        public async Task Param_GenerateQrAsync()
+        {
+            var text = string.Empty;
+            var outputDir = string.Empty;
+            var path = string.Empty;
+
+            try
+            {
+                // 0) Если файл уже существует — не генерируем дубликаты (UI может не успеть скрыть кнопку)
+                if (Param_IsQrAlreadyGenerated())
+                {
+                    text = GetQrTextOrEmpty();
+                    outputDir = GetQrOutputDirectory(text);
+                    path = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
+
+                    DXMessageBox.Show(this, $"QR уже существует:\n{path}", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
+                    NotifyParamQrUiChanged();
+
+                    return;
+                }
+
+                // 1) Берём текст: сначала поле поиска, если пусто — выбранное оборудование
+                text = (EquipName ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                    text = (SelectedListBoxEquipment?.Equipment ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    DXMessageBox.Show(this, "Нет текста для QR.\nВведи имя в поиск или выбери оборудование в списке.", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // 2) Авто-папка: Station\Type
+                outputDir = GetQrOutputDirectory(text);
+
+                // 3) Генерация PNG
+                path = await _qrCodeService.GenerateQrPngAsync(text, outputDirectory: outputDir);
+
+                // 4) UI-статусы (по желанию)
+                ParamStatusText = $"QR saved: {System.IO.Path.GetFileName(path)}";
+                //BottomText = $"QR saved: {path}";
+
+                // 5) DevExpress модалка об успехе
+                DXMessageBox.Show(this, $"QR-код успешно сохранён:\n{path}","QR",MessageBoxButton.OK,MessageBoxImage.Information);
+                // после сохранения файл появился -> кнопку нужно спрятать
+                NotifyParamQrUiChanged();
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(this,ex.ToString(),"QR generate error",MessageBoxButton.OK,MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Param tab: сканирует QR с камеры.
+        /// Затем:
+        /// 1) выставляет Station/Type фильтры по найденному оборудованию,
+        /// 2) пишет в ExternalTag (best-effort),
+        /// 3) подставляет в поиск,
+        /// 4) выделяет оборудование,
+        /// 5) переключает на Param и запускает polling.
+        /// </summary>
+        public async Task Param_ScanQrToExternalTagAndSearchAsync()
+        {
+            try
+            {
+                // 1) Сканируем камерой (модально)
+                var text = await _qrScannerService.ScanFromCameraAsync(this);
+                if (string.IsNullOrWhiteSpace(text))
+                    return;
+
+                text = text.Trim();
+
+                // 2) Ставим фильтры Station/Type по данным оборудования (если найдём)
+                // Важно: это нужно сделать ДО DoIncrementalSearch, иначе элемент может быть "за фильтром".
+                TryApplyStationTypeFiltersFromQr(text);
+
+                // 3) Пишем в внешний тег (best-effort: если не выйдет — не мешаем поиску)
+                try
+                {
+                    await _equipmentService.SetExternalTagAsync(text);
+                }
+                catch
+                {
+                    // Не критично
+                }
+
+                // 4) Подставляем в поле поиска
+                EquipName = text;
+
+                // 5) Выделяем элемент в ListBox (уже с правильными фильтрами)
+                DoIncrementalSearch(text);
+
+                // 6) Переключаем на Param + запускаем polling
+                if (SelectedMainTab != MainTabKind.Param)
+                    SelectedMainTabIndex = (int)MainTabKind.Param;
+
+                StartParamPolling();
+
+                ParamStatusText = $"QR scanned: {text}";
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(this, ex.ToString(), "QR scan error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Делает безопасную часть пути (для папок Station/Type).
+        /// </summary>
+        private static string MakeSafePathPart(string? s)
+        {
+            s = (s ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(s))
+                return "Unknown";
+
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var safe = new string(s.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+
+            // дополнительно: чтобы не было точек/пробелов в конце
+            safe = safe.Trim().TrimEnd('.', ' ');
+
+            if (safe.Length == 0)
+                safe = "Unknown";
+
+            // чтобы папки не были супер-длинными
+            if (safe.Length > 60)
+                safe = safe.Substring(0, 60);
+
+            return safe;
+        }
+
+        /// <summary>
+        /// Ищет оборудование по тексту QR в ПОЛНОМ списке (без учёта фильтров).
+        /// Сначала точное совпадение, затем StartsWith/Contains по Equipment и Tag.
+        /// </summary>
+        private EquipListBoxItem? FindEquipmentForQrText(string qrText)
+        {
+            qrText = (qrText ?? "").Trim();
+            if (qrText.Length == 0)
+                return null;
+
+            // 1) exact Equipment
+            var it =
+                Equipments.FirstOrDefault(x => string.Equals(x.Equipment, qrText, StringComparison.OrdinalIgnoreCase))
+                ?? Equipments.FirstOrDefault(x => string.Equals(x.Tag, qrText, StringComparison.OrdinalIgnoreCase));
+
+            if (it != null)
+                return it;
+
+            // 2) startswith Equipment, then Tag
+            it =
+                Equipments.FirstOrDefault(x => (x.Equipment ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase))
+                ?? Equipments.FirstOrDefault(x => (x.Tag ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase));
+
+            if (it != null)
+                return it;
+
+            // 3) contains Equipment, then Tag
+            it =
+                Equipments.FirstOrDefault(x => (x.Equipment ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase))
+                ?? Equipments.FirstOrDefault(x => (x.Tag ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase));
+
+            return it;
+        }
+
+        /// <summary>
+        /// Определяет папку для сохранения QR: .\QRCodes\Station\TypeGroup
+        /// Логика:
+        /// - если найдено оборудование по тексту -> берём Station из него и TypeGroup из его Type
+        /// - иначе -> берём текущий фильтр SelectedStation и SelectedTypeFilter (TypeGroup)
+        /// </summary>
+        private string GetQrOutputDirectory(string qrText)
+        {
+            var baseDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "QRCodes");
+
+            var match = FindEquipmentForQrText(qrText);
+
+            // --- Station ---
+            string stationPart =
+                !string.IsNullOrWhiteSpace(match?.Station) ? match!.Station :
+                !string.IsNullOrWhiteSpace(SelectedStation) ? SelectedStation :
+                "All";
+
+            // --- TypeGroup ---
+            // Если нашли оборудование -> вычисляем группу по его Type
+            // Иначе берём текущий выбранный фильтр-группу
+            EquipTypeGroup group =
+                match != null
+                    ? EquipTypeRegistry.GetGroup(match.Type ?? "")
+                    : SelectedTypeFilter;
+
+            string groupPart =
+                group != EquipTypeGroup.All
+                    ? group.ToString()      // например "AI", "DI", ...
+                    : "All";
+
+            stationPart = MakeSafePathPart(stationPart);
+            groupPart = MakeSafePathPart(groupPart);
+
+            return System.IO.Path.Combine(baseDir, stationPart, groupPart);
+        }
+
+        /// <summary>
+        /// Применяет фильтры Station/Type по найденному элементу оборудования.
+        /// Возвращает true, если удалось найти и применить.
+        /// </summary>
+        private bool TryApplyStationTypeFiltersFromQr(string qrText)
+        {
+            var match = FindEquipmentForQrText(qrText);
+            if (match == null)
+                return false;
+
+            // 1) Station
+            if (!string.IsNullOrWhiteSpace(match.Station))
+                SelectedStation = match.Station.Trim();
+
+            // 2) TypeFilter (группа по match.Type)
+            var grp = EquipTypeRegistry.GetGroup(match.Type ?? "");
+            SelectedTypeFilter = grp;
+
+            return true;
+        }
+
+        /// <summary>
+        /// Возвращает текст, по которому сейчас будет генерироваться QR:
+        /// сначала EquipName, если пусто — выбранное оборудование.
+        /// </summary>
+        private string GetQrTextOrEmpty()
+        {
+            var text = (EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                text = (SelectedListBoxEquipment?.Equipment ?? "").Trim();
+
+            return text ?? "";
+        }
+
+        /// <summary>
+        /// Проверяет, существует ли уже QR PNG файл для текущего текста (с учётом Station\TypeGroup папки).
+        /// Это используется для скрытия кнопки Generate QR.
+        /// </summary>
+        public bool Param_IsQrAlreadyGenerated()
+        {
+            var text = GetQrTextOrEmpty();
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            var outputDir = GetQrOutputDirectory(text); // у тебя уже есть Station\TypeGroup логика
+            var expectedPath = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
+
+            return File.Exists(expectedPath);
+        }
+
+        /// <summary>
+        /// True => показываем кнопку Generate QR.
+        /// False => прячем (нет текста для QR или файл уже существует).
+        /// Используется в XAML через BoolToVis.
+        /// </summary>
+        public bool Param_ShowGenerateQrButton => GetParamShowGenerateQrButton();
+
+        /// <summary>
+        /// Реальная логика показа кнопки (вынесена в метод, чтобы было удобно отлаживать).
+        /// </summary>
+        private bool GetParamShowGenerateQrButton()
+        {
+            var text = GetQrTextOrEmpty();
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            var outputDir = GetQrOutputDirectory(text); // Station\TypeGroup
+            var expectedPath = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
+
+            return !File.Exists(expectedPath);
+        }
+
+        /// <summary>
+        /// Уведомляет UI, что нужно пересчитать Visibility кнопки Generate QR.
+        /// </summary>
+        private void NotifyParamQrUiChanged()
+        {
+            OnPropertyChanged(nameof(Param_ShowGenerateQrButton));
+        }
 
         #endregion
 

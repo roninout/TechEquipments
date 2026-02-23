@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using CtApi;
+using TechEquipments.Services.QR;
 using Microsoft.EntityFrameworkCore;
 
 namespace TechEquipments
@@ -42,6 +43,9 @@ namespace TechEquipments
                     services.AddSingleton<IEquipmentService, EquipmentService>();
 
                     services.AddSingleton<IUserStateService, JsonUserStateService>();
+
+                    services.AddSingleton<IQrCodeService, QrCodeService>();
+                    services.AddSingleton<IQrScannerService, QrScannerService>();
 
                     services.AddTransient<MainWindow>();
                 })

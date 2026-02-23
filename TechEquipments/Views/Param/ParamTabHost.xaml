@@ -6,10 +6,13 @@
                     xmlns:local="clr-namespace:TechEquipments.Views.Param"
                     xmlns:views="clr-namespace:TechEquipments.Views.Param"
                     xmlns:models="clr-namespace:TechEquipments"
+                    xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
                     mc:Ignorable="d"
                     d:DesignHeight="400" d:DesignWidth="700">
 
     <UserControl.Resources>
+
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <!-- ✅ Автовыбор разметки по типу модели (CurrentParamModel) -->
 
@@ -60,21 +63,47 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Padding="0, 4" Text="Name: " FontWeight="SemiBold"/>
-            <TextBlock Grid.Row="0" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Equipment, TargetNullValue='-'}" />
+
+            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left">
+                
+                <TextBlock Grid.Row="0" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Equipment, TargetNullValue='-'}" />
+
+                <dx:SimpleButton Grid.Row="0" Grid.Column="1" Margin="10,0,0,0" Width="20" Height="20"
+                                 Padding="0" GlyphWidth="15" GlyphHeight="15"
+                                 Click="GenerateQr_Click"
+                                 ToolTip="Generate QR"
+                                 Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"
+                                 Style="{StaticResource AppButtonStyle}"
+                                 Visibility="{Binding Param_ShowGenerateQrButton, Converter={StaticResource BoolToVis}}"/>
+            </StackPanel>
 
             <TextBlock Grid.Row="1" Grid.Column="0" Padding="0, 4" Text="Type: " FontWeight="SemiBold" />
             <TextBlock Grid.Row="1" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Type, TargetNullValue='-'}" />
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0, 4" Text="Desc: " FontWeight="SemiBold" />
-            <TextBlock Grid.Row="2" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Description, TargetNullValue='-'}" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Chanel: " FontWeight="SemiBold" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Padding="0,4" Text="{Binding CurrentParamChanel}" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
+
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Padding="0, 4" Text="Desc: " FontWeight="SemiBold" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Description, TargetNullValue='-'}" />
 
         </Grid>
 
         <!-- ✅ В зависимости от CurrentParamModel подставится нужный *ParamView.xaml -->
         <ContentControl Grid.Row="3" Content="{Binding CurrentParamModel}" />
 
-        <!--✅ Строка состояния именно для Param-->
-        <TextBlock Grid.Row="0" Margin="0,0,0,0" Text="{Binding ParamStatusText}" Style="{StaticResource AppTextStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" />
+        <StackPanel Grid.Row="0" Orientation="Vertical" Margin="0,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Right">
+            <!--✅ Строка состояния именно для Param-->
+            <TextBlock Grid.Row="0" Margin="0,0,0,0" Text="{Binding ParamStatusText}" Style="{StaticResource AppTextStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" />
+
+            <dx:SimpleButton Grid.Row="0" Width="60" Height="60" Margin="0,8,13,0" HorizontalAlignment="Right"
+                             Padding="0" GlyphWidth="40" GlyphHeight="40"
+                             Click="ScanQr_Click"
+                             ToolTip="Scan QR"
+                             Glyph="{dx:DXImage 'SvgImages/Icon Builder/Shopping_Barcode.svg'}"
+                             Style="{StaticResource AppButtonStyle}" />
+
+        </StackPanel>
 
     </Grid>
     

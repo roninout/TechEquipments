@@ -15,9 +15,9 @@ namespace TechEquipments
     [TrendItem("R")]
     [TrendSeriesStyle("R", "#2E7D32", transparency: 0.7)] // green
 
-    [TrendItem("STW", YMin = 0, YMax = 100)]          // 0..100 will be stretched to base Y axis
-    [TrendSeriesStyle("STW", "DarkSlateBlue", transparency: 0.8)]
-    public class AIParam // AnalogInCalc
+    //[TrendItem("STW", YMin = 0, YMax = 100)]          // 0..100 will be stretched to base Y axis
+    //[TrendSeriesStyle("STW", "DarkSlateBlue", transparency: 1.0)]
+    public class AIParam : IHasUnit, IHasChanel // AnalogInCalc
     {
         public bool AlarmLAEn { get; set; }
         public bool AlarmLWEn { get; set; }
@@ -61,5 +61,6 @@ namespace TechEquipments
         /// This is not a real tag field (we do not write it back to SCADA).
         /// </summary>
         public string Unit { get; set; } = "";
+        public string Chanel { get; set; } = "";
     }
 }

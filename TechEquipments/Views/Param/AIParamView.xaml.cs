@@ -1,4 +1,5 @@
 ﻿using DevExpress.Xpf.Charts;
+using DevExpress.Xpf.Editors;
 using Microsoft.Extensions.Hosting;
 using System;
 using System.ComponentModel;
@@ -24,6 +25,10 @@ namespace TechEquipments.Views.Param
         public AIParamView()
         {
             InitializeComponent();
+
+            // ловим фокус всех вложенных редакторов (TextEdit и т.п.)
+            AddHandler(Keyboard.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(OnAnyEditorGotFocus), true);
+            AddHandler(Keyboard.LostKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(OnAnyEditorLostFocus), true);
         }
 
         // если в XAML навешиваешь EditValueChanged="ParamEditable_EditValueChanged"
@@ -146,6 +151,20 @@ namespace TechEquipments.Views.Param
         {
             if (e.NewXRange.MinValue is DateTime min && e.NewXRange.MaxValue is DateTime max)
                 (Window.GetWindow(this) as MainWindow)?.OnParamChartUserRangeChanged(min, max);
+        }
+
+        // Взводим флаг, когда фокус попал в текстовый редактор (а не в CheckEdit)
+        private void OnAnyEditorGotFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (e.NewFocus is TextBox && e.NewFocus is not CheckEdit)
+                (System.Windows.Application.Current.MainWindow as MainWindow)?.BeginParamFieldEdit();
+        }
+
+        // Сбрасываем флаг при выходе из текстового редактора
+        private void OnAnyEditorLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (e.OldFocus is TextBox && e.OldFocus is not CheckEdit)
+                (System.Windows.Application.Current.MainWindow as MainWindow)?.EndParamFieldEdit();
         }
     }
 }
