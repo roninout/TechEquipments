@@ -188,6 +188,7 @@
     <Style x:Key="AlarmHealthBlinkTextStyle" TargetType="{x:Type TextBlock}">
         <!-- Внешний вид -->
         <Setter Property="Foreground" Value="Red"/>
+        <!--<Setter Property="Foreground" Value="CornflowerBlue"/>-->
         <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="FontSize" Value="18"/>
         <Setter Property="HorizontalAlignment" Value="Center"/>

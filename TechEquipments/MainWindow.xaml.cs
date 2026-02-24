@@ -562,6 +562,12 @@ namespace TechEquipments
         private DispatcherTimer _stateSaveTimer = null!;
         private bool _isRestoringState;
 
+        // Если true — на старте использовали ExternalTag как источник состояния
+        private bool _startupUsedExternalTag;
+
+        // Значение ExternalTag, которое использовали на старте (для применения Station/Type после загрузки Equipments)
+        private string _startupExternalTag = "";
+
         #endregion
 
         #region Params
@@ -692,22 +698,22 @@ namespace TechEquipments
                 _layoutReady = true;
                 InitLeftPaneState();
 
-                // 1) Сначала восстановим сохранённое состояние (включая вкладку/дату/поиск)
-                await RestoreStateAsync();
+                // 1) ExternalTag имеет приоритет над user-state.json
+                //    Если ExternalTag пустой -> восстановим с файла
+                var usedExt = await TryApplyStartupStateFromExternalTagAsync();
+                if (!usedExt)
+                    await RestoreStateAsync();
 
-                // 2) Потом пытаемся взять ExternalTag.
-                //    Если ExternalTag пустой/Unknown — остаёмся на восстановленном.
-                await ApplyExternalTagIfAnyAsync();
-
-                // 3) Параллельные загрузки
-                _ = LoadEquipmentsListAsync();
+                // 2) Параллельные загрузки
+                await LoadEquipmentsListAsync();
                 await CheckDbAsync();
 
-                // 4) И как будто нажали “поиск/лоад” на текущей вкладке
+                // 3) И как будто нажали “поиск/лоад” на текущей вкладке
                 await OnTabActivatedLikeSearchAsync(force: true);
             };
 
         }
+
 
         #region Startup loading
 
@@ -763,6 +769,16 @@ namespace TechEquipments
                     SelectedStation = "All";
 
                 ApplyFilters();
+
+                // Если на старте использовали ExternalTag — выставляем Station/TypeGroup по найденному оборудованию
+                if (_startupUsedExternalTag && !string.IsNullOrWhiteSpace(_startupExternalTag))
+                {
+                    TryApplyStationTypeFiltersFromQr(_startupExternalTag);
+
+                    // После смены фильтров — снова выделим оборудование
+                    if (!string.IsNullOrWhiteSpace(EquipName))
+                        DoIncrementalSearch(EquipName);
+                }
 
                 BottomText = $"Equipments: {Equipments.Count}";
             }
@@ -1685,6 +1701,33 @@ namespace TechEquipments
             await WriteParamAsync(equip, equipItem, writeValue);
         }
 
+        /// <summary>
+        /// Универсальная запись параметра по equipItem (Tag) и значению из UI.
+        /// Используется ToggleButton/кастомными контролами без DevExpress EditValueChanged.
+        /// </summary>
+        public async void ParamEditable_WriteFromUi(string? equipItem, object? newValue)
+        {
+            if (_suppressParamWritesFromPolling)
+                return;
+
+            if (SelectedMainTab != MainTabKind.Param)
+                return;
+
+            var (equipName, _) = ResolveSelectedEquipForParam();
+            var equip = (equipName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equip))
+                return;
+
+            if (string.IsNullOrWhiteSpace(equipItem))
+                return;
+
+            if (!TryNormalizeWriteValue(newValue, out string writeValue))
+                return;
+
+            await WriteParamAsync(equip, equipItem, writeValue);
+        }
+
         private static bool TryNormalizeWriteValue(object? newValue, out string str)
         {
             str = "";
@@ -2095,6 +2138,80 @@ namespace TechEquipments
         #endregion
 
         #region UiStatePersistence
+
+        /// <summary>
+        /// Пытается восстановить стартовое состояние из ExternalTag.
+        /// Правила:
+        /// - если ExternalTag НЕ пустой и НЕ "Unknown":
+        ///     EquipName = ExternalTag
+        ///     SelectedTab = 0 (Param)
+        ///     DbDate = Today
+        ///     SelectedStation/SelectedTypeFilter выставим позже (после загрузки Equipments)
+        /// - если пустой: возвращаем false (тогда восстановим user-state.json)
+        /// </summary>
+        private async Task<bool> TryApplyStartupStateFromExternalTagAsync()
+        {
+            try
+            {
+                var ext = await _equipmentService.GetExternalTagAsync(CancellationToken.None);
+
+                if (string.IsNullOrWhiteSpace(ext) ||
+                    ext.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    _startupUsedExternalTag = false;
+                    _startupExternalTag = "";
+                    return false;
+                }
+
+                _startupUsedExternalTag = true;
+                _startupExternalTag = ext.Trim();
+
+                // Сразу очищаем ExternalTag, чтобы не конфликтовал при следующем запуске
+                // Best-effort: не ломаем старт, если запись не удалась
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await _equipmentService.SetExternalTagAsync("", cts.Token);
+                }
+                catch
+                {
+                    // ignore
+                }
+
+
+                // Важно: чтобы не запускались автодействия/автосейв во время проставления
+                _isRestoringState = true;
+                try
+                {
+                    // 1) Берём имя из ExternalTag
+                    EquipName = _startupExternalTag;
+
+                    // 2) Всегда Param tab
+                    SelectedMainTabIndex = (int)MainTabKind.Param;
+
+                    // 3) Дата = сегодня
+                    DbDate = DateTime.Today;
+
+                    // 4) Фильтры Station/TypeGroup выставим после загрузки Equipments,
+                    //    пока ставим безопасные значения
+                    SelectedStation = "All";
+                    SelectedTypeFilter = EquipTypeGroup.All;
+                }
+                finally
+                {
+                    _isRestoringState = false;
+                }
+
+                return true;
+            }
+            catch
+            {
+                // Если что-то пошло не так — просто откатываемся на восстановление из файла
+                _startupUsedExternalTag = false;
+                _startupExternalTag = "";
+                return false;
+            }
+        }
 
         /// <summary>
         /// Восстанавливает UI-состояние из user-state.json.

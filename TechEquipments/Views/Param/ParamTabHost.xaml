@@ -20,20 +20,24 @@
             <views:AIParamView />
         </DataTemplate>
 
-        <!--<DataTemplate DataType="{x:Type models:DIParam}">
+        <DataTemplate DataType="{x:Type models:DIParam}">
             <local:DIParamView />
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type models:DOParam}">
-            <local:DOParamView />
+            <local:DIParamView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type models:MotorParam}">
-            <local:MotorParamView />
-        </DataTemplate>-->
+        <DataTemplate DataType="{x:Type models:VGAParam}">
+            <local:VGAParamView />
+        </DataTemplate>
 
-        <!-- 🧯 Фолбэк, если тип пока не поддержан -->
-        <!--<DataTemplate DataType="{x:Type sys:Object}">
+        <!--<DataTemplate DataType="{x:Type models:MotorParam}">
+            <local:MotorParamView />
+        </DataTemplate>
+
+         🧯 Фолбэк, если тип пока не поддержан 
+        <DataTemplate DataType="{x:Type sys:Object}">
             <TextBlock Text="No Param layout for this equipment type."
                        Margin="8"/>
         </DataTemplate>-->

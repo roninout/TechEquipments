@@ -74,7 +74,7 @@ namespace TechEquipments
 
         // ===== Trend time window (Live window size) =====
 
-        private int _windowMinutes = 60;
+        private int _windowMinutes = 30;
 
         /// <summary>
         /// Размер окна Live-режима (минут).

@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 
 namespace TechEquipments
 {
+
+    [TrendItem("Value", YMin = -0.2, YMax = 1.2)]
+    [TrendSeriesStyle("Value", "CornflowerBlue", transparency: 0.7)]
     public class DIParam : IHasChanel
     {
         public bool Value { get; set; }

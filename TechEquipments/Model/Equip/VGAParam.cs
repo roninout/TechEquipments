@@ -2,7 +2,9 @@
 
 namespace TechEquipments
 {
-    public class VGAParam : IHasChanel
+    [TrendItem("R")]
+    [TrendSeriesStyle("R", "#4F81BD", transparency: 0.7)]
+    public class VGAParam : IHasUnit, IHasChanel
     {
         public bool Mode { get; set; }
         public bool AlarmLAEn { get; set; }
@@ -40,5 +42,31 @@ namespace TechEquipments
         public uint HashCode { get; set; }
 
         public string Chanel { get; set; } = "";
+
+        private string _unit = "";
+        public string Unit
+        {
+            get => _unit;
+            set => _unit = Clean(value);
+        }
+
+        private static string Clean(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return "";
+
+            s = s.Trim();
+
+            if (s.StartsWith("@(") && s.EndsWith(")") && s.Length >= 3)
+            {
+                s = s.Substring(2, s.Length - 3).Trim();
+
+                // снять кавычки, если есть
+                if (s.Length >= 2 && ((s[0] == '"' && s[^1] == '"') || (s[0] == '\'' && s[^1] == '\'')))
+                    s = s[1..^1].Trim();
+            }
+
+            return s;
+        }
     }
 }

@@ -111,8 +111,8 @@ namespace TechEquipments
         {
             if (reset)
             {
-                // 1) Сбрасываем окно отображения на дефолт (60 минут)
-                _vm.WindowMinutes = 60;
+                // 1) Сбрасываем окно отображения на дефолт (30 минут)
+                _vm.WindowMinutes = 30;
 
                 // 2) Полный reset: Live + оси + (опционально) очистка точек
                 Reset(clearPoints: true);
@@ -205,45 +205,6 @@ namespace TechEquipments
         /// Вызывается из View при Scroll/Zoom DevExpress.
         /// Переключает в History, сохраняет VisualRange и запускает автоподгрузку слева.
         /// </summary>
-        //public void OnUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
-        //{
-        //    // 0) игнорируем range changes, вызванные нашим кодом (Live pinned)
-        //    if (IsNavSuppressed)
-        //        return;
-
-        //    // 1) debounce
-        //    var nowUtc = DateTime.UtcNow;
-        //    if (nowUtc - _lastNavUtc < NavDebounce)
-        //        return;
-        //    _lastNavUtc = nowUtc;
-
-        //    // 2) текущий масштаб (ширина окна)
-        //    var span = newMaxLocal - newMinLocal;
-        //    if (span <= TimeSpan.FromSeconds(1))
-        //        span = TimeSpan.FromMinutes(Math.Max(1, _vm.WindowMinutes));
-
-        //    // 3) если пользователь дотянул вправо почти до "now" -> Live с сохранением масштаба
-        //    if (ShouldSnapToLive(newMaxLocal, span))
-        //    {
-        //        // сохраняем масштаб (через пресеты, чтобы ComboBox синхронизировался)
-        //        _vm.WindowMinutes = NormalizeWindowMinutes(span.TotalMinutes);
-
-        //        // включаем Live без полного reset
-        //        SetLiveMode(resetPoints: false);
-        //        return;
-        //    }
-
-        //    // 4) иначе это History
-        //    _vm.IsLiveMode = false;
-
-        //    _ui.InvokeAsync(() =>
-        //    {
-        //        _vm.AxisXMin = newMinLocal;
-        //        _vm.AxisXMax = newMaxLocal;
-        //    });
-
-        //    _ = MaybeLoadMoreHistoryAsync(newMinLocal, newMaxLocal);
-        //}
         public void OnUserRangeChanged(DateTime newMinLocal, DateTime newMaxLocal)
         {
             // 0) игнорируем RangeChanged, вызванные нами при SetLiveMode
@@ -740,7 +701,7 @@ namespace TechEquipments
         private static int NormalizeWindowMinutes(double minutes)
         {
             if (double.IsNaN(minutes) || double.IsInfinity(minutes))
-                return 60;
+                return 30;
 
             var m = Math.Max(1, minutes);
 

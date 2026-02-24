@@ -17,7 +17,7 @@ namespace TechEquipments
     {
         private readonly ICtApiService _ctApiService;
         private readonly IConfiguration _config;
-        private const int windowMinutes = 60;
+        private const int windowMinutes = 30;
 
         // Кешируем “реальное” имя тега, которое возвращает TagInfo(...,0), чтобы не дергать Cicode каждый раз.
         private readonly ConcurrentDictionary<string, string> _tagNameCache = new(StringComparer.OrdinalIgnoreCase);
