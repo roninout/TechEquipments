@@ -2,6 +2,18 @@
 
 namespace TechEquipments
 {
+    [TrendItem("Man", YMin = 0, YMax = 1.2)]
+    [TrendSeriesStyle("Man", "CornflowerBlue", transparency: 0.7)]
+
+    [TrendItem("Mode", YMin = 0, YMax = 2)]
+    [TrendSeriesStyle("Mode", "Green", transparency: 0.7)]
+
+    [TrendItem("AlarmOpen", YMin = 0, YMax = 3)]
+    [TrendSeriesStyle("AlarmOpen", "Red", transparency: 0.7)]
+
+    [TrendItem("AlarmClose", YMin = 0, YMax = 4)]
+    [TrendSeriesStyle("AlarmClose", "Orange", transparency: 0.7)]
+
     public class VGDParam
     {
         public bool Mode { get; set; }

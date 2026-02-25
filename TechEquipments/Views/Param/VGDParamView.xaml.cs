@@ -13,9 +13,9 @@ namespace TechEquipments.Views.Param
     /// <summary>
     /// Interaction logic for VGAParamView.xaml
     /// </summary>
-    public partial class VGAParamView : UserControl
+    public partial class VGDParamView : UserControl
     {
-        public VGAParamView()
+        public VGDParamView()
         {
             InitializeComponent();
 

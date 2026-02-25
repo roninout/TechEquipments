@@ -32,6 +32,10 @@
             <local:VGAParamView />
         </DataTemplate>
 
+        <DataTemplate DataType="{x:Type models:VGDParam}">
+            <local:VGDParamView />
+        </DataTemplate>
+
         <!--<DataTemplate DataType="{x:Type models:MotorParam}">
             <local:MotorParamView />
         </DataTemplate>
@@ -54,7 +58,7 @@
         <Grid Margin="12,0,0,0">
 
             <Grid.ColumnDefinitions >
-                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="70"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -84,7 +88,7 @@
             <TextBlock Grid.Row="1" Grid.Column="0" Padding="0, 4" Text="Type: " FontWeight="SemiBold" />
             <TextBlock Grid.Row="1" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Type, TargetNullValue='-'}" />
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Chanel: " FontWeight="SemiBold" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Location: " FontWeight="SemiBold" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
             <TextBlock Grid.Row="2" Grid.Column="1" Padding="0,4" Text="{Binding CurrentParamChanel}" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
 
 

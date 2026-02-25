@@ -619,7 +619,8 @@ namespace TechEquipments
         /// Chanel из модели, если модель поддерживает IHasChanel.
         /// Если не поддерживает — пустая строка.
         /// </summary>
-        public string CurrentParamChanel => (CurrentParamModel as IHasChanel)?.Chanel ?? "";
+        //public string CurrentParamChanel => (CurrentParamModel as IHasChanel)?.Chanel ?? "";
+        public string CurrentParamChanel => FormatChanelForHeader((CurrentParamModel as IHasChanel)?.Chanel);
 
         /// <summary>
         /// Показывать строку Chanel только если:
@@ -2316,6 +2317,39 @@ namespace TechEquipments
 
         private void OnPropertyChanged([CallerMemberName] string? name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        #endregion
+
+        #region Helpers
+
+        /// <summary>
+        /// Приводит строку канала к формату: "module: X, chanel: Y".
+        /// Ожидаемый исходный формат: "X.Y.Z" или "X.Y".
+        /// - Берём только первые два сегмента (X и Y).
+        /// - Остальные сегменты отбрасываем.
+        /// Если формат неожиданный — возвращаем исходную строку (trim).
+        /// </summary>
+        private static string FormatChanelForHeader(string? raw)
+        {
+            raw = (raw ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+                return "";
+
+            if (raw.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                return raw;
+
+            // Разделяем по точке
+            var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2)
+            {
+                var module = parts[0];
+                var chanel = parts[1];
+                return $"module: {module}, chanel: {chanel}";
+            }
+
+            // Если точек нет/меньше двух — оставляем как есть
+            return raw;
+        }
 
         #endregion
     }

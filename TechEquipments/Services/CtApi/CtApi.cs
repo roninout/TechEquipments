@@ -316,7 +316,7 @@ namespace CtApi
             {
                 var error = new Win32Exception(Marshal.GetLastWin32Error());
                 //Logger.Error($"Citect.CtApi > Find, tableName={tableName}, filter={filter}, cluster={cluster}, propertiesName={string.Join("|", propertiesName)}, error={error.Message}");
-                throw error;
+                //throw error;
             }
 
             var items = new List<Dictionary<string, string>>();
