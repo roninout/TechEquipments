@@ -102,7 +102,7 @@
 
         <StackPanel Grid.Row="0" Orientation="Vertical" Margin="0,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Right">
             <!--✅ Строка состояния именно для Param-->
-            <TextBlock Grid.Row="0" Margin="0,0,0,0" Text="{Binding ParamStatusText}" Style="{StaticResource AppTextStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" />
+            <TextBlock Grid.Row="0" Margin="0,0,13,0" Text="{Binding ParamStatusText}" Style="{StaticResource AppTextStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" />
 
             <dx:SimpleButton Grid.Row="0" Width="60" Height="60" Margin="0,8,13,0" HorizontalAlignment="Right"
                              Padding="0" GlyphWidth="40" GlyphHeight="40"

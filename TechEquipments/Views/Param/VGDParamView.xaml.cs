@@ -65,18 +65,6 @@ namespace TechEquipments.Views.Param
         }
 
         /// <summary>
-        /// Show the chart panel (optionally reset points).
-        /// </summary>
-        private void ShowChartButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (DesignerProperties.GetIsInDesignMode(this))
-                return;
-
-            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
-            host?.ShowParamChart(reset: true); // поставь true если хочешь сбрасывать график
-        }
-
-        /// <summary>
         /// Show the settings panel.
         /// </summary>
         private void ShowParamsButton_Click(object sender, RoutedEventArgs e)
@@ -135,7 +123,6 @@ namespace TechEquipments.Views.Param
             }
         }
 
-
         /// <summary>
         /// Switches the trend chart back to Live mode (pin the visible window to "now").
         /// </summary>
@@ -174,6 +161,123 @@ namespace TechEquipments.Views.Param
         {
             if (e.OldFocus is TextBox && e.OldFocus is not CheckEdit)
                 (System.Windows.Application.Current.MainWindow as MainWindow)?.EndParamFieldEdit();
+        }
+
+        private void Man_Open_Click(object sender, RoutedEventArgs e)
+        {
+            WriteManValue(true);
+        }
+
+        private void Man_Close_Click(object sender, RoutedEventArgs e)
+        {
+            WriteManValue(false);
+        }
+
+        /// <summary>
+        /// Пишет Man (1/0) через MainWindow общий метод записи по Tag.
+        /// </summary>
+        private void WriteManValue(bool man)
+        {
+            // ВАЖНО: DataContext у View = модель, MainWindow берём через Window.GetWindow(this)
+            var mw = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            if (mw == null)
+                return;
+
+            // TagName должен совпадать с EquipItem в SCADA
+            mw.ParamEditable_WriteFromUi("Man", man);
+        }
+
+        #region Buttons
+
+        /// <summary>
+        /// Какие настройки показываем в панели Settings.
+        /// </summary>
+        private enum SettingsSection
+        {
+            Plc,
+            DiDo,
+            Alarm
+        }
+
+        /// <summary>
+        /// Показать Settings-панель и включить нужную секцию.
+        /// </summary>
+        private void ShowSettingsSection(SettingsSection section)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+
+            // 1) гарантируем, что видна панель Settings (а не Chart)
+            host?.ShowParamSettings();
+
+            // 2) показываем ровно один блок
+            PlcSettingsGroup.Visibility = section == SettingsSection.Plc ? Visibility.Visible : Visibility.Collapsed;
+            DiSettingsGroup.Visibility = section == SettingsSection.DiDo ? Visibility.Visible : Visibility.Collapsed;
+            DoSettingsGroup.Visibility = section == SettingsSection.DiDo ? Visibility.Visible : Visibility.Collapsed;
+            AlarmSettingsGroup.Visibility = section == SettingsSection.Alarm ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Show the chart panel (optionally reset points).
+        /// </summary>
+        private void ShowChartButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            var mw = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            mw?.SetParamSettingsPage(ParamSettingsPage.None);
+
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            host?.ShowParamChart(reset: true); // поставь true если хочешь сбрасывать график
+        }
+
+        /// <summary>Кнопка PLC settings</summary>
+        private void PLCButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowSettingsSection(SettingsSection.Plc);
+
+            var mw = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            mw?.SetParamSettingsPage(ParamSettingsPage.Plc);
+        }
+
+        /// <summary>Кнопка DI/DO settings</summary>
+        private void DI_DOButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowSettingsSection(SettingsSection.DiDo);
+
+            var mw = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            mw?.SetParamSettingsPage(ParamSettingsPage.DiDo);
+        }
+
+        /// <summary>Кнопка Alarm settings</summary>
+        private void AlarmSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowSettingsSection(SettingsSection.Alarm);
+
+            var mw = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            mw?.SetParamSettingsPage(ParamSettingsPage.Alarm);
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Клик по Value (DI/DO) — перейти к связанному оборудованию (выделить в ListBox и открыть Param).
+        /// </summary>
+        private void DiDoValue_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe)
+                return;
+
+            if (fe.DataContext is not DiDoRefRow row)
+                return;
+
+            var mw = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            mw?.Param_NavigateToLinkedEquip(row);
+
+            e.Handled = true;
         }
     }
 }

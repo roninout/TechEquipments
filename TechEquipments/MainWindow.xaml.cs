@@ -662,6 +662,29 @@ namespace TechEquipments
         private readonly IQrScannerService _qrScannerService;
         #endregion
 
+        #region VGD ref
+
+        // ====== VGD DI/DO refs (dynamic UI) ======
+
+        /// <summary>
+        /// Строки для VGD -> DI/DO связей (отображаются в VGDParamView/DiDoSettingsGroup).
+        /// </summary>
+        public ObservableCollection<DiDoRefRow> ParamDiRows { get; } = new();
+        public ObservableCollection<DiDoRefRow> ParamDoRows { get; } = new();
+
+        private ParamSettingsPage _currentParamSettingsPage = ParamSettingsPage.None;
+        public ParamSettingsPage CurrentParamSettingsPage
+        {
+            get => _currentParamSettingsPage;
+            private set { _currentParamSettingsPage = value; OnPropertyChanged(); }
+        }
+
+        // Последняя группа параметров, которую показывали на вкладке Param
+        private EquipTypeGroup _lastParamTypeGroup = EquipTypeGroup.All;
+        private bool _hasLastParamTypeGroup;
+
+        #endregion
+
         public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
         {
             InitializeComponent();
@@ -1416,6 +1439,9 @@ namespace TechEquipments
                 {
                     await PollParamOnceSafeAsync(ct);
 
+                    // обновляем активную секцию (DI/DO или PLC) каждые 5 секунд
+                    await RefreshActiveParamSectionAsync(ct);
+
                     // это для трендов
                     if (Trend.IsChartVisible)
                         await _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
@@ -1510,6 +1536,9 @@ namespace TechEquipments
 
             await Dispatcher.InvokeAsync(() =>
             {
+                // Сброс области при смене типа группы
+                Param_ResetAreaIfTypeGroupChanged(TypeGroup);
+
                 _suppressParamWritesFromPolling = true;
 
                 try
@@ -1523,12 +1552,7 @@ namespace TechEquipments
                     }
 
                     ApplyParamModelToUi(model);
-
-                    // Chanel (если модель поддерживает)
-                    //CurrentParamChanel = (model as IHasChanel)?.Chanel?.Trim() ?? "";
-
                     _paramReadCycles++;
-
                     ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_paramReadCycles} cycles";
                 }
                 finally
@@ -2349,6 +2373,263 @@ namespace TechEquipments
 
             // Если точек нет/меньше двух — оставляем как есть
             return raw;
+        }
+
+        #endregion
+
+        #region VGD refs
+
+        /// <summary>
+        /// Вызывается из VGDParamView при нажатии PLC/DI_DO/Alarm/Chart.
+        /// </summary>
+        public void SetParamSettingsPage(ParamSettingsPage page)
+        {
+            CurrentParamSettingsPage = page;
+        }
+
+        /// <summary>
+        /// Вызывается из StartParamPolling каждые 5 секунд.
+        /// Обновляет только ту секцию Settings, которая сейчас активна.
+        /// </summary>
+        private async Task RefreshActiveParamSectionAsync(CancellationToken ct)
+        {
+            // только на вкладке Param
+            if (SelectedMainTab != MainTabKind.Param)
+                return;
+
+            // если пользователь смотрит Chart — ничего не обновляем
+            if (CurrentParamSettingsPage == ParamSettingsPage.None)
+                return;
+
+            // список оборудования должен быть загружен
+            if (Equipments.Count == 0)
+                return;
+
+            // пока нас интересует только VGD (DI/DO refs)
+            if (CurrentParamModel is not VGDParam)
+                return;
+
+            switch (CurrentParamSettingsPage)
+            {
+                case ParamSettingsPage.DiDo:
+                    await RefreshVgdDiDoSectionAsync(ct);
+                    break;
+
+                case ParamSettingsPage.Plc:
+                    // заглушка: позже сюда добавим refresh PLC секции
+                    // await RefreshVgdPlcSectionAsync(ct);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Обновляет DI/DO секции для VGD:
+        /// - читает EquipRef(category="TabDIDO")
+        /// - находит DI/DO в общем Equipments
+        /// - перечитывает DIParam/DOParam (Value может меняться)
+        /// - синхронизирует ObservableCollection без мигания (update in-place)
+        /// </summary>
+        private async Task RefreshVgdDiDoSectionAsync(CancellationToken ct)
+        {
+            var (equipName, _) = ResolveSelectedEquipForParam();
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            // сериализуем с Param чтением/записью (CtApi не любит параллельность)
+            await _paramRwGate.WaitAsync(ct);
+            try
+            {
+                // 1) refs
+                var refs = await _equipmentService.GetEquipRef(equipName, "TabDIDO", "State") ?? new List<string>();
+                var refNames = refs
+                    .Where(s => !string.IsNullOrWhiteSpace(s) && !s.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    .Select(s => s.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                // 2) build new sets
+                var diNew = new Dictionary<string, DiDoRefRow>(StringComparer.OrdinalIgnoreCase);
+                var doNew = new Dictionary<string, DiDoRefRow>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var refName in refNames)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var equip = Equipments.FirstOrDefault(x =>
+                        string.Equals((x.Equipment ?? "").Trim(), refName, StringComparison.OrdinalIgnoreCase));
+
+                    if (equip == null)
+                        continue;
+
+                    var grp = EquipTypeRegistry.GetGroup(equip.Type ?? "");
+
+                    if (grp == EquipTypeGroup.DI)
+                    {
+                        var diParam = await _equipmentService.ReadEquipParamsAsync<DIParam>(equip.Equipment.Trim(), ct);
+                        if (diParam != null)
+                            diNew[equip.Equipment.Trim()] = new DiDoRefRow(equip, diParam);
+                    }
+                    else if (grp == EquipTypeGroup.DO)
+                    {
+                        var doParam = await _equipmentService.ReadEquipParamsAsync<DOParam>(equip.Equipment.Trim(), ct);
+                        if (doParam != null)
+                            doNew[equip.Equipment.Trim()] = new DiDoRefRow(equip, doParam);
+                    }
+                }
+
+                // 3) sync collections on UI thread
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    SyncRows(ParamDiRows, diNew);
+                    SyncRows(ParamDoRows, doNew);
+                });
+            }
+            finally
+            {
+                _paramRwGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Синхронизация ObservableCollection без полного Clear/Add (меньше мигания):
+        /// - удаляем отсутствующие
+        /// - обновляем существующие (Update)
+        /// - добавляем новые
+        /// </summary>
+        private static void SyncRows(ObservableCollection<DiDoRefRow> target, Dictionary<string, DiDoRefRow> newMap)
+        {
+            // remove missing
+            for (int i = target.Count - 1; i >= 0; i--)
+            {
+                var key = target[i].EquipName;
+                if (!newMap.ContainsKey(key))
+                    target.RemoveAt(i);
+            }
+
+            // update existing + mark
+            var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kv in newMap)
+            {
+                if (existing.TryGetValue(kv.Key, out var row))
+                {
+                    // update values/model
+                    row.Update(kv.Value.EquipItem, kv.Value.ParamModel);
+                }
+                else
+                {
+                    target.Add(kv.Value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Переход по клику из DI/DO списка:
+        /// - гарантируем видимость в ListBox (если фильтры прячут — подстроим)
+        /// - подставим EquipName
+        /// - выделим в ListBox
+        /// - откроем вкладку Param
+        /// </summary>
+        public void Param_NavigateToLinkedEquip(DiDoRefRow? row)
+        {
+            if (row == null)
+                return;
+
+            var it = row.EquipItem;
+            if (it == null)
+                return;
+
+            var targetName = (it.Equipment ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(targetName))
+                return;
+
+            // 1) Если текущие фильтры прячут элемент — подстраиваем фильтры так, чтобы он стал виден
+            EnsureEquipmentVisibleInList(it);
+
+            // 2) Подставляем текст поиска (это же ключ для DoIncrementalSearch)
+
+            // если прыгаем на оборудование другого типа — показываем Chart по умолчанию сразу (без ожидания 5 сек)
+            var newGroup = EquipTypeRegistry.GetGroup(row.EquipItem?.Type ?? "");
+            Param_ResetAreaIfTypeGroupChanged(newGroup);
+
+            EquipName = targetName;
+
+            // 3) Выделяем в ListBox
+            DoIncrementalSearch(targetName);
+
+            // 4) Открываем вкладку Param (DI/DO экран появится автоматически по типу)
+            if (SelectedMainTab != MainTabKind.Param)
+            {
+                SelectedMainTabIndex = (int)MainTabKind.Param;
+                return;
+            }
+
+            // Если уже на Param — просто обновим polling
+            StartParamPolling();
+        }
+
+        /// <summary>
+        /// Если элемент скрыт фильтрами Station/Type — меняем фильтры так, чтобы элемент был видим.
+        /// </summary>
+        private void EnsureEquipmentVisibleInList(EquipListBoxItem it)
+        {
+            try
+            {
+                // если уже видим — ничего не делаем
+                if (FilterEquipment(it))
+                    return;
+
+                // Station
+                if (!string.IsNullOrWhiteSpace(it.Station))
+                    SelectedStation = it.Station.Trim();
+                else
+                    SelectedStation = "All";
+
+                // TypeGroup (DI/DO)
+                var grp = EquipTypeRegistry.GetGroup(it.Type ?? "");
+                SelectedTypeFilter = grp != EquipTypeGroup.All ? grp : EquipTypeGroup.All;
+
+                ApplyFilters();
+            }
+            catch
+            {
+                // best-effort: даже если что-то пошло не так, просто не ломаем навигацию
+            }
+        }
+
+        /// <summary>
+        /// Если группа оборудования изменилась (например VGD -> DI), сбрасываем UI Param на дефолт:
+        /// - показываем Chart
+        /// - сбрасываем активную секцию настроек (PLC/DI_DO/Alarm) = None
+        /// Это устраняет баг "открылась не та область" и "после возврата на VGD нет активной области".
+        /// </summary>
+        private void Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup)
+        {
+            if (!_hasLastParamTypeGroup)
+            {
+                _hasLastParamTypeGroup = true;
+                _lastParamTypeGroup = newGroup;
+                return;
+            }
+
+            if (_lastParamTypeGroup == newGroup)
+                return;
+
+            _lastParamTypeGroup = newGroup;
+
+            // 1) Сбрасываем выбранную секцию Settings (для VGD-кнопок)
+            SetParamSettingsPage(ParamSettingsPage.None);
+
+            // 2) Показываем Chart по умолчанию
+            ShowParamChart(reset: false);
+
+            // 3) (опционально) очистить DI/DO списки, чтобы не светились чужие данные
+            ParamDiRows.Clear();
+            ParamDoRows.Clear();
         }
 
         #endregion

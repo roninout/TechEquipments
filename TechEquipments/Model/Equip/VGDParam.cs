@@ -2,16 +2,16 @@
 
 namespace TechEquipments
 {
-    [TrendItem("Man", YMin = 0, YMax = 1.2)]
+    [TrendItem("Man", YMin = 0, YMax = 1.1)]
     [TrendSeriesStyle("Man", "CornflowerBlue", transparency: 0.7)]
 
-    [TrendItem("Mode", YMin = 0, YMax = 2)]
+    [TrendItem("Mode", YMin = 0, YMax = 1.5)]
     [TrendSeriesStyle("Mode", "Green", transparency: 0.7)]
 
-    [TrendItem("AlarmOpen", YMin = 0, YMax = 3)]
+    [TrendItem("AlarmOpen", YMin = 0, YMax = 2)]
     [TrendSeriesStyle("AlarmOpen", "Red", transparency: 0.7)]
 
-    [TrendItem("AlarmClose", YMin = 0, YMax = 4)]
+    [TrendItem("AlarmClose", YMin = 0, YMax = 2.5)]
     [TrendSeriesStyle("AlarmClose", "Orange", transparency: 0.7)]
 
     public class VGDParam
