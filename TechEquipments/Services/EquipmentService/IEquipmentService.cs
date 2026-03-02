@@ -16,6 +16,7 @@ namespace TechEquipments
         Task<List<EquipmentSOEDto>> GetTrnByEquipment(EquipRefModel equipment, IProgress<int>? progress = null, CancellationToken ct = default, int maxRows = 2000);
 
         Task<List<string>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem ="STW");
+        Task<List<PlcRefRow>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem, string sCustField = "CUSTOM1");
         Task<EquipRefModel> GetEquipData(string sEquipName, string sEquipItem = "STW");
         Task<EquipModel> GetEquipModelWithRef(string sEquipName, string sEquipItem = "STW");
 

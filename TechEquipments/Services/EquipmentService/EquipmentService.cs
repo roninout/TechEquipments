@@ -174,6 +174,7 @@ namespace TechEquipments
                     while (Convert.ToInt32(nReturn) == 0)
                     {
                         var sEquip = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sField}\")");
+
                         if (sEquip != null && sEquip != "Unknown")
                             listEquip.Add(sEquip);
 
@@ -184,6 +185,47 @@ namespace TechEquipments
             }
 
             return listEquip;
+        }
+
+        // возвращает PLC refs (теги), с CUSTOM + COMMENT
+        public async Task<List<PlcRefRow>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem, string sCustField = "CUSTOM1")
+        {
+            var sField = "REFEQUIP";
+            var sFieldComment = "COMMENT";
+            var list = new List<PlcRefRow>();
+
+            // cluster по любому tag внутри equipment (как у тебя)
+            var sCluster = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.{sEquipItem}\", 17)");
+            var sConnect = "CLUSTER=" + sCluster + ";EQUIP=" + sEquipName + ";REFCAT=" + sCategory;
+
+            var hSession = await _ctApiService.CicodeAsync($"EquipRefBrowseOpen(\"{sConnect}\",\"\")");
+
+            if (Convert.ToInt32(hSession) == -1)
+                return list;
+
+            var nNumRecords = await _ctApiService.CicodeAsync($"EquipRefBrowseNumRecords({hSession})");
+            if (Convert.ToInt32(nNumRecords) <= 0)
+                return list;
+
+            var nReturn = await _ctApiService.CicodeAsync($"EquipRefBrowseFirst({hSession})");
+
+            while (Convert.ToInt32(nReturn) == 0)
+            {
+                var sEquip = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sField}\")");
+                var sCustom = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sCustField}\")");
+                var sComment = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldComment}\")");
+
+                if (!string.IsNullOrWhiteSpace(sEquip) && !string.Equals(sEquip, "Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    var type = PlcRefRow.ParseCustom(sCustom);
+                    list.Add(new PlcRefRow(sEquip, type, sComment ?? ""));
+                }
+
+                nReturn = await _ctApiService.CicodeAsync($"EquipRefBrowseNext({hSession})");
+            }
+
+            return list;
+            
         }
 
         // проверка на существования тега

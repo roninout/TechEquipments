@@ -2,7 +2,6 @@
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
 using DevExpress.Xpf.Editors;
-using DevExpress.XtraRichEdit.Import.Html;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -16,10 +15,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using System.Windows.Media;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using TechEquipments.Services.QR;
 using System.IO;
 using static TechEquipments.IEquipmentService;
 
@@ -671,6 +667,7 @@ namespace TechEquipments
         /// </summary>
         public ObservableCollection<DiDoRefRow> ParamDiRows { get; } = new();
         public ObservableCollection<DiDoRefRow> ParamDoRows { get; } = new();
+        public ObservableCollection<PlcRefRow> ParamPlcRows { get; } = new();
 
         private ParamSettingsPage _currentParamSettingsPage = ParamSettingsPage.None;
         public ParamSettingsPage CurrentParamSettingsPage
@@ -1695,6 +1692,18 @@ namespace TechEquipments
             if (e.Key != System.Windows.Input.Key.Enter && e.Key != System.Windows.Input.Key.Return)
                 return;
 
+            // PLC ветка: если Tag = PlcRefRow, то пишем через TagInfo/TagWrite
+            if (sender is FrameworkElement fePlc && fePlc.Tag is PlcRefRow plcRow)
+            {
+                var edit = sender as DevExpress.Xpf.Editors.BaseEdit;
+                var newVal = edit?.EditValue;
+
+                e.Handled = true;
+
+                await Plc_WriteValueAsync(plcRow, newVal);
+                return;
+            }
+
             // 1) Не пишем, если это обновление прилетело из polling-READ
             if (_suppressParamWritesFromPolling)
                 return;
@@ -1771,6 +1780,9 @@ namespace TechEquipments
             {
                 s = s.Trim();
                 if (s.Length == 0) return false;
+
+                // просто замена запятой на точку
+                s = s.Replace(',', '.');
 
                 // Разрешаем только число (под твои поля)
                 if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
@@ -2412,12 +2424,14 @@ namespace TechEquipments
             switch (CurrentParamSettingsPage)
             {
                 case ParamSettingsPage.DiDo:
+                    if (Equipments.Count == 0)
+                        return;
+
                     await RefreshVgdDiDoSectionAsync(ct);
                     break;
 
                 case ParamSettingsPage.Plc:
-                    // заглушка: позже сюда добавим refresh PLC секции
-                    // await RefreshVgdPlcSectionAsync(ct);
+                    await RefreshVgdPlcSectionAsync(ct);
                     break;
 
                 default:
@@ -2527,6 +2541,167 @@ namespace TechEquipments
             }
         }
 
+        private async Task RefreshVgdPlcSectionAsync(CancellationToken ct)
+        {
+            // PLC refs сейчас нужны только для VGD
+            if (CurrentParamModel is not VGDParam)
+                return;
+
+            var (equipName, _) = ResolveSelectedEquipForParam();
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            const string category = "TabPLC";
+            const string clusterEquipItem = "State";
+
+            await _paramRwGate.WaitAsync(ct);
+            try
+            {
+                // 1) refs
+                var fresh = await _equipmentService.GetEquipRef(equipName, category, clusterEquipItem, "CUSTOM1")
+                           ?? new List<PlcRefRow>();
+
+                // 2) sync списка (чтобы не пересоздавать)
+                await Dispatcher.InvokeAsync(() => SyncPlcRows(ParamPlcRows, fresh));
+
+                // 3) snapshot
+                var snapshot = await Dispatcher.InvokeAsync(() => ParamPlcRows.ToList());
+
+                // 4) I/O: TagInfo -> Unit -> TagRead
+                var updates = new List<(PlcRefRow row, string tagName, string unit, double? value)>(snapshot.Count);
+
+                foreach (var row in snapshot)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    // --- resolve TagName (кэш) ---
+                    var tagName = row.TagName;
+                    if (string.IsNullOrWhiteSpace(tagName))
+                    {
+                        tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.Value\", 0)") ?? "").Trim();
+                    }
+
+                    // --- resolve Unit (кэш) ---
+                    var unit = row.Unit;
+
+                    if (string.IsNullOrWhiteSpace(unit) &&
+                        !string.IsNullOrWhiteSpace(tagName) &&
+                        !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            unit = (await _ctApiService.CicodeAsync($"TagInfo(\"{tagName}\", 1)") ?? "").Trim();
+                        }
+                        catch
+                        {
+                            unit = "";
+                        }
+                    }
+
+                    // --- read Value ---
+                    double? val = null;
+
+                    if (!string.IsNullOrWhiteSpace(tagName) &&
+                        !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            var raw = await _ctApiService.CicodeAsync($"TagRead(\"{tagName}\")");
+                            val = TryParseDouble(raw);
+                        }
+                        catch
+                        {
+                            val = null;
+                        }
+                    }
+
+                    updates.Add((row, tagName, unit, val));
+                }
+
+                // 5) apply UI
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    foreach (var u in updates)
+                    {
+                        if (!string.IsNullOrWhiteSpace(u.tagName))
+                            u.row.TagName = u.tagName;
+
+                        if (!string.IsNullOrWhiteSpace(u.unit) && !u.unit.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                            u.row.Unit = u.unit;
+
+                        u.row.UpdateValue(u.value);
+                    }
+                });
+            }
+            finally
+            {
+                _paramRwGate.Release();
+            }
+        }
+
+        private static double? TryParseDouble(string? s)
+        {
+            s = (s ?? "").Trim();
+            if (s.Length == 0 || s.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+                return d;
+
+            if (double.TryParse(s, NumberStyles.Float, CultureInfo.GetCultureInfo("ru-RU"), out d))
+                return d;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Синхронизация PLC rows без затирания кэша TagName/Value.
+        /// - удаляем отсутствующие
+        /// - обновляем мета-данные у существующих
+        /// - добавляем новые
+        /// </summary>
+        private static void SyncPlcRows(ObservableCollection<PlcRefRow> target, List<PlcRefRow> fresh)
+        {
+            // key = EquipName (то, что приходит из REFEQUIP)
+            var freshMap = fresh
+                .Where(x => !string.IsNullOrWhiteSpace(x.EquipName))
+                .ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+
+            // remove missing
+            for (int i = target.Count - 1; i >= 0; i--)
+            {
+                if (!freshMap.ContainsKey(target[i].EquipName))
+                    target.RemoveAt(i);
+            }
+
+            // update existing + add new
+            var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kv in freshMap)
+            {
+                var freshRow = kv.Value;
+
+                if (existing.TryGetValue(kv.Key, out var row))
+                {
+                    // обновляем только мета (Type/Comment/Title)
+                    // (подстрой под твой PlcRefRow: если UpdateMeta принимает другие аргументы — поменяй)
+                    row.UpdateMeta(freshRow.Type, freshRow.Comment);
+
+                    // TagName НЕ затираем пустым (кэш)
+                    if (!string.IsNullOrWhiteSpace(freshRow.TagName) &&
+                        !freshRow.TagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    {
+                        row.TagName = freshRow.TagName;
+                    }
+                }
+                else
+                {
+                    target.Add(freshRow);
+                }
+            }
+        }
+
         /// <summary>
         /// Переход по клику из DI/DO списка:
         /// - гарантируем видимость в ListBox (если фильтры прячут — подстроим)
@@ -2630,6 +2805,59 @@ namespace TechEquipments
             // 3) (опционально) очистить DI/DO списки, чтобы не светились чужие данные
             ParamDiRows.Clear();
             ParamDoRows.Clear();
+            ParamPlcRows.Clear();
+        }
+
+        /// <summary>
+        /// PLC write: пишет Value для PlcRefRow через:
+        /// TagInfo("{EquipName}.Value",0) -> TagWrite(tagName, value)
+        /// </summary>
+        private async Task Plc_WriteValueAsync(PlcRefRow row, object? newValue)
+        {
+            if (row == null)
+                return;
+
+            if (!row.IsWritable)
+                return;
+
+            // нормализуем (bool->1/0, string->double/int)
+            if (!TryNormalizeWriteValue(newValue, out var writeValueStr))
+                return;
+
+            // чтобы polling-read/write не пересекались (как у тебя в Param)
+            await _paramRwGate.WaitAsync(CancellationToken.None);
+            try
+            {
+                // 1) получить реальное имя тега (кэшируем)
+                var tagName = (row.TagName ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.Value\", 0)") ?? "").Trim();
+                    row.TagName = tagName;
+                }
+
+                if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                // 2) запись
+                await _ctApiService.CicodeAsync($"TagWrite(\"{tagName}\", {writeValueStr})");
+
+                // 3) (опционально) сразу перечитать и обновить row.Value, чтобы UI мгновенно обновился
+                var raw = await _ctApiService.CicodeAsync($"TagRead(\"{tagName}\")");
+                var dv = TryParseDouble(raw);
+
+                // обновление row.Value делай на UI-потоке
+                await Dispatcher.InvokeAsync(() => row.UpdateValue(dv));
+            }
+            catch (Exception ex)
+            {
+                // по желанию: показать в строке/лог
+                // await Dispatcher.InvokeAsync(() => row.LastWriteError = ex.Message);
+            }
+            finally
+            {
+                _paramRwGate.Release();
+            }
         }
 
         #endregion

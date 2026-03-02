@@ -279,6 +279,7 @@ namespace TechEquipments.Views.Param
 
             e.Handled = true;
         }
+        
     }
 }
 

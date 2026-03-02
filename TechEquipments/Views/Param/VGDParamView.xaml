@@ -376,7 +376,45 @@
 
                             <!-- ====== PLC settings ====== -->
                             <dxlc:LayoutGroup x:Name="PlcSettingsGroup" Header="PLC settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" Visibility="Collapsed">
+                                
+                                <dxlc:LayoutItem>
+                                    <ScrollViewer Height="220" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamPlcRows, RelativeSource={RelativeSource AncestorType=Window}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="120"/>
+                                                            <ColumnDefinition Width="30"/>
+                                                        </Grid.ColumnDefinitions>
 
+                                                        <!-- Title -->
+                                                        <TextBlock Grid.Column="0" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Style="{StaticResource AppTextBlockStyle}"/>
+
+                                                        <!-- Value -->
+                                                        <dxe:TextEdit Grid.Column="1"  Tag="{Binding}"
+                                                                      Width="80" HorizontalAlignment="Right"
+                                                                      HorizontalContentAlignment="Center"
+                                                                      EditValue="{Binding Value, Mode=OneWay}"                                                                      
+                                                                      Style="{StaticResource AppBaseEditStyle}"
+                                                                      PreviewKeyDown="ParamEditable_EditValueChanged">
+                                                        </dxe:TextEdit>
+
+                                                        <!-- Unit -->
+                                                        <TextBlock Grid.Column="2" Margin="6,0,0,0"
+                                                                   Text="{Binding Unit}"
+                                                                   VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Left"
+                                                                   Style="{StaticResource AppTextBlockStyle}"/>
+
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </dxlc:LayoutItem>
+                                
                             </dxlc:LayoutGroup>
 
                             <!-- ====== DI settings ====== -->
@@ -566,7 +604,7 @@
                                  Padding="0" GlyphWidth="40" GlyphHeight="40"
                                  Click="PLCButton_Click"
                                  ToolTip="PLC settings"
-                                 Glyph="{dx:DXImage 'SvgImages/Scheduling/ViewSettings.svg'}"
+                                 Glyph="{dx:DXImage 'SvgImages/Outlook Inspired/TaskList.svg'}"
                                  Style="{StaticResource AppButtonStyle}" />
 
                             <!-- DI/DO settings -->
