@@ -17,8 +17,6 @@ namespace TechEquipments
         EqCheckRW,
         EqCheckDisplay,
 
-        EqEnum,
-        EqEnumDisplay,
         EqNumR,
         EqNumW,
 

@@ -279,7 +279,23 @@ namespace TechEquipments.Views.Param
 
             e.Handled = true;
         }
-        
+
+        /// <summary>
+        /// Для EqButton/EqButtonUp/... : пока пишем "1" в Value (как команда).
+        /// Если понадобится "pulse 1->0" или разные значения для Up/Down — сделаем позже.
+        /// </summary>
+        private void Plc_SimpleButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            if (sender is not FrameworkElement fe || fe.Tag is not PlcRefRow row)
+                return;
+
+            var host = Window.GetWindow(this) as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+            host?.ParamPlc_WriteFromUi(row, 1); // команда
+        }
+
     }
 }
 

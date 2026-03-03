@@ -1621,6 +1621,14 @@ namespace TechEquipments
 
         #region Param Write
 
+        /// <summary>
+        /// PLC: запись значения из UI (для SimpleButton и т.п.).
+        /// </summary>
+        public async void ParamPlc_WriteFromUi(PlcRefRow row, object? newValue)
+        {
+            await Plc_WriteValueAsync(row, newValue);
+        }
+
         // для checkBox
         public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
         {
@@ -1644,6 +1652,17 @@ namespace TechEquipments
             // 4) Определяем EquipItem из Tag
             if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
                 return;
+
+            // ветка: ToggleSwitchEdit (Tag = PlcRefRow)
+            if (sender is FrameworkElement fePlc && fePlc.Tag is PlcRefRow plcRow)
+            {
+                // блокируем “ложные” вызовы, если нужно (например при массовом обновлении из polling)
+                if (_suppressParamWritesFromPolling)
+                    return;
+
+                await Plc_WriteValueAsync(plcRow, e.NewValue);
+                return;
+            }
 
             // Confirm только при включении ForceCmd (false -> true).
             if (equipItem.Equals("ForceCmd", StringComparison.OrdinalIgnoreCase))
@@ -2569,7 +2588,8 @@ namespace TechEquipments
                 var snapshot = await Dispatcher.InvokeAsync(() => ParamPlcRows.ToList());
 
                 // 4) I/O: TagInfo -> Unit -> TagRead
-                var updates = new List<(PlcRefRow row, string tagName, string unit, double? value)>(snapshot.Count);
+                //var updates = new List<(PlcRefRow row, string tagName, string unit, double? value)>(snapshot.Count);
+                var updates = new List<(PlcRefRow row, string tagName, double? value, string unit, bool? forced)>(snapshot.Count);
 
                 foreach (var row in snapshot)
                 {
@@ -2579,7 +2599,8 @@ namespace TechEquipments
                     var tagName = row.TagName;
                     if (string.IsNullOrWhiteSpace(tagName))
                     {
-                        tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.Value\", 0)") ?? "").Trim();
+                        var equipItem = GetPlcEquipItemForTagInfo(row);
+                        tagName = await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.{equipItem}\", 0)");
                     }
 
                     // --- resolve Unit (кэш) ---
@@ -2616,7 +2637,33 @@ namespace TechEquipments
                         }
                     }
 
-                    updates.Add((row, tagName, unit, val));
+                    bool? forced = null;
+
+                    if (row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
+                    {
+                        try
+                        {
+                            // ⚠️ Имя equipItem для forced — предполагаю "ValueForced".
+                            // Если у тебя другое имя — скажи, заменим.
+                            var forcedTag = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.ValueForced\", 0)") ?? "").Trim();
+
+                            if (!string.IsNullOrWhiteSpace(forcedTag) && !forcedTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var forcedRaw = await _ctApiService.CicodeAsync($"TagRead(\"{forcedTag}\")");
+
+                                // forced может быть "0/1" или "True/False" — обработаем оба
+                                forced = forcedRaw != null &&
+                                         (forcedRaw.Trim().Equals("1") ||
+                                          forcedRaw.Trim().Equals("True", StringComparison.OrdinalIgnoreCase));
+                            }
+                        }
+                        catch
+                        {
+                            forced = null;
+                        }
+                    }
+
+                    updates.Add((row, tagName, val, unit, forced));
                 }
 
                 // 5) apply UI
@@ -2631,6 +2678,12 @@ namespace TechEquipments
                             u.row.Unit = u.unit;
 
                         u.row.UpdateValue(u.value);
+
+                        // ✅ forced
+                        if (u.forced.HasValue)
+                            u.row.ValueForced = u.forced.Value;
+                        else if (u.row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
+                            u.row.ValueForced = false; // если не прочитали — считаем не forced
                     }
                 });
             }
@@ -2824,6 +2877,9 @@ namespace TechEquipments
             if (!TryNormalizeWriteValue(newValue, out var writeValueStr))
                 return;
 
+            // какой equipItem брать для TagInfo: Value или State
+            var equipItem = GetPlcEquipItemForTagInfo(row);
+
             // чтобы polling-read/write не пересекались (как у тебя в Param)
             await _paramRwGate.WaitAsync(CancellationToken.None);
             try
@@ -2832,7 +2888,7 @@ namespace TechEquipments
                 var tagName = (row.TagName ?? "").Trim();
                 if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                 {
-                    tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.Value\", 0)") ?? "").Trim();
+                    tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.{equipItem}\", 0)") ?? "").Trim();
                     row.TagName = tagName;
                 }
 
@@ -2858,6 +2914,18 @@ namespace TechEquipments
             {
                 _paramRwGate.Release();
             }
+        }
+
+        /// <summary>
+        /// Для PLC-строк по умолчанию используем ".Value".
+        /// Для статусов (Motor/Valve) вместо Value используем ".State".
+        /// </summary>
+        private static string GetPlcEquipItemForTagInfo(PlcRefRow row)
+        {
+            if (row.Type is PlcTypeCustom.EqMotorStatus or PlcTypeCustom.EqValveStatus)
+                return "State";
+
+            return "Value";
         }
 
         #endregion

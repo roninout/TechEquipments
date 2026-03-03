@@ -215,4 +215,159 @@
         </Style.Triggers>
     </Style>
 
+    <!-- VGD: State TextEdit style (color + blink) -->
+    <Style x:Key="StateTextEditStyle"
+       TargetType="{x:Type dxe:TextEdit}"
+       BasedOn="{StaticResource AppBaseEditStyle}">
+
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="BorderBrush" Value="Black"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="Black"/>
+
+        <Setter Property="Background">
+            <Setter.Value>
+                <SolidColorBrush Color="#FFE6E6E6"/>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+
+            <DataTrigger Binding="{Binding State}" Value="0">
+                <Setter Property="Background" Value="#FFD6D6D6"/>
+                <Setter Property="BorderBrush" Value="Black"/>
+            </DataTrigger>
+
+            <DataTrigger Binding="{Binding State}" Value="1">
+                <Setter Property="Background" Value="#FFB7F2B7"/>
+                <Setter Property="BorderBrush" Value="Black"/>
+            </DataTrigger>
+
+            <DataTrigger Binding="{Binding State}" Value="2">
+                <Setter Property="Background" Value="#FFFFD0D0"/>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="BlinkAlarmOpen">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="BlinkAlarmOpen"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <DataTrigger Binding="{Binding State}" Value="3">
+                <Setter Property="Background" Value="#FFFFD0D0"/>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="BlinkAlarmClose">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="BlinkAlarmClose"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <DataTrigger Binding="{Binding State}" Value="4">
+                <Setter Property="Background" Value="#FFD6FFD6"/>
+                <Setter Property="BorderBrush" Value="#FF007A00"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="BlinkOpening">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="BlinkOpening"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <DataTrigger Binding="{Binding State}" Value="5">
+                <Setter Property="Background" Value="#FFEDEDED"/>
+                <Setter Property="BorderBrush" Value="#FF606060"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="BlinkClosing">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFEDEDED" To="#FFB0B0B0" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="BlinkClosing"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+        </Style.Triggers>
+    </Style>
+
+    <!-- Man==true => зелёная подложка, иначе прозрачная/серая -->
+    <Style x:Key="ManStationBackgroundStyle" TargetType="{x:Type Border}">
+        <!--<Setter Property="Background" Value="#40A0A0A0"/>-->
+        <!-- серый полупрозрачный -->
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Man}" Value="True">
+                <Setter Property="Background" Value="#97DC74"/>
+                <!-- зелёный полупрозрачный -->
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Общий стиль кнопок Man/Auto -->
+    <Style x:Key="ManStationButtonStyle" TargetType="{x:Type dx:SimpleButton}">
+        <Setter Property="Width" Value="Auto"/>
+        <Setter Property="Height" Value="Auto"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="8"/>
+        <Setter Property="BorderBrush" Value="Black"/>
+        <!--<Setter Property="BorderThickness" Value="1"/>-->
+        <!--<Setter Property="Background" Value="#FFD6D6D6"/>-->
+        <Setter Property="Foreground" Value="Black"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- Forced label: по умолчанию скрыт, при ValueForced=True показывает и мигает -->
+    <Style x:Key="DIDOForcedBlinkTextStyle"
+       TargetType="{x:Type TextBlock}"
+       BasedOn="{StaticResource AppTextBlockStyle}">
+        <Setter Property="Text" Value="Forced"/>
+        <Setter Property="Foreground" Value="Orange"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Opacity" Value="1"/>
+        <Setter Property="Visibility" Value="Collapsed"/>
+
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding ValueForced}" Value="True">
+                <Setter Property="Visibility" Value="Visible"/>
+
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="ForcedBlinkStoryboard">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <!-- мигание: 1.0 -> 0.25 -> 1.0 -->
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="1.0" To="0.25"
+                                         Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="ForcedBlinkStoryboard"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
 </ResourceDictionary>

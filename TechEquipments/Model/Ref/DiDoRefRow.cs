@@ -20,10 +20,29 @@ namespace TechEquipments
         public EquipListBoxItem EquipItem { get; private set; }
         public object ParamModel { get; private set; }
 
+        private bool _valueForced;
+        /// <summary>
+        /// True если канал форсирован (DIParam.ValueForced / DOParam.ValueForced).
+        /// Используется для надписи "Forced" перед зелёным квадратом.
+        /// </summary>
+        public bool ValueForced
+        {
+            get => _valueForced;
+            private set
+            {
+                if (_valueForced == value) return;
+                _valueForced = value;
+                OnPropertyChanged();
+            }
+        }
+
         public DiDoRefRow(EquipListBoxItem equipItem, object paramModel)
         {
             EquipItem = equipItem ?? throw new ArgumentNullException(nameof(equipItem));
             ParamModel = paramModel ?? throw new ArgumentNullException(nameof(paramModel));
+
+            // первичная инициализация
+            ValueForced = ExtractValueForced(paramModel);
         }
 
         /// <summary>
@@ -69,6 +88,9 @@ namespace TechEquipments
             EquipItem = equipItem;
             ParamModel = paramModel;
 
+            // обновляем forced-флаг
+            ValueForced = ExtractValueForced(paramModel);
+
             OnPropertyChanged(nameof(EquipItem));
             OnPropertyChanged(nameof(ParamModel));
             OnPropertyChanged(nameof(Title));
@@ -93,6 +115,20 @@ namespace TechEquipments
             if (raw.Length == 0) return "";
             var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             return parts.Length >= 2 ? $"{parts[0]}.{parts[1]}" : raw;
+        }
+
+        /// <summary>
+        /// Достаём ValueForced из DIParam/DOParam.
+        /// </summary>
+        private static bool ExtractValueForced(object? model)
+        {
+            if (model is DIParam di)
+                return di.ValueForced;
+
+            if (model is DOParam dout)
+                return dout.ValueForced;
+
+            return false;
         }
     }
 }

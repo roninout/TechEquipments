@@ -15,130 +15,7 @@
         <conv:VGDStateToTextConverter x:Key="StateToText"/>
         <conv:DiDoValueToBrushConverter x:Key="DiDoValueToBrush"/>
         <conv:DiDoValueToTextConverter x:Key="DiDoValueToText"/>
-
-        <!-- Man==true => зелёная подложка, иначе прозрачная/серая -->
-        <Style x:Key="ManStationBackgroundStyle" TargetType="{x:Type Border}">
-            <!--<Setter Property="Background" Value="#40A0A0A0"/>-->
-            <!-- серый полупрозрачный -->
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Man}" Value="True">
-                    <Setter Property="Background" Value="#97DC74"/>
-                    <!-- зелёный полупрозрачный -->
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- Общий стиль кнопок станции -->
-        <Style x:Key="ManStationButtonStyle" TargetType="{x:Type dx:SimpleButton}">
-            <Setter Property="Width" Value="Auto"/>
-            <Setter Property="Height" Value="Auto"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="8"/>
-            <Setter Property="BorderBrush" Value="Black"/>
-            <!--<Setter Property="BorderThickness" Value="1"/>-->
-            <!--<Setter Property="Background" Value="#FFD6D6D6"/>-->
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-        </Style>
-
-        <!-- State TextEdit style: color + blink -->
-        <Style x:Key="StateTextEditStyle" TargetType="{x:Type dxe:TextEdit}" BasedOn="{StaticResource AppBaseEditStyle}">
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="BorderBrush" Value="Black"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="Black"/>
-
-            <!-- default background -->
-            <Setter Property="Background">
-                <Setter.Value>
-                    <SolidColorBrush Color="#FFE6E6E6"/>
-                </Setter.Value>
-            </Setter>
-
-            <Style.Triggers>
-
-                <!-- 0: closed (solid gray) -->
-                <DataTrigger Binding="{Binding State}" Value="0">
-                    <Setter Property="Background" Value="#FFD6D6D6"/>
-                    <Setter Property="BorderBrush" Value="Black"/>
-                </DataTrigger>
-
-                <!-- 1: opened (solid green) -->
-                <DataTrigger Binding="{Binding State}" Value="1">
-                    <Setter Property="Background" Value="#FFB7F2B7"/>
-                    <Setter Property="BorderBrush" Value="Black"/>
-                </DataTrigger>
-
-                <!-- 2: alarm opening (blink red) -->
-                <DataTrigger Binding="{Binding State}" Value="2">
-                    <Setter Property="Background" Value="#FFFFD0D0"/>
-                    <Setter Property="BorderBrush" Value="#FFB00000"/>
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="BlinkAlarmOpen">
-                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                <ColorAnimation Storyboard.TargetProperty="Background.Color" From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="BlinkAlarmOpen"/>
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-
-                <!-- 3: alarm closure (blink red) -->
-                <DataTrigger Binding="{Binding State}" Value="3">
-                    <Setter Property="Background" Value="#FFFFD0D0"/>
-                    <Setter Property="BorderBrush" Value="#FFB00000"/>
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="BlinkAlarmClose">
-                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                <ColorAnimation Storyboard.TargetProperty="Background.Color" From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="BlinkAlarmClose"/>
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-
-                <!-- 4: opening (blink green) -->
-                <DataTrigger Binding="{Binding State}" Value="4">
-                    <Setter Property="Background" Value="#FFD6FFD6"/>
-                    <Setter Property="BorderBrush" Value="#FF007A00"/>
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="BlinkOpening">
-                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                <ColorAnimation Storyboard.TargetProperty="Background.Color" From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="BlinkOpening"/>
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-
-                <!-- 5: closing (blink gray) -->
-                <DataTrigger Binding="{Binding State}" Value="5">
-                    <Setter Property="Background" Value="#FFEDEDED"/>
-                    <Setter Property="BorderBrush" Value="#FF606060"/>
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="BlinkClosing">
-                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                <ColorAnimation Storyboard.TargetProperty="Background.Color" From="#FFEDEDED" To="#FFB0B0B0" Duration="0:0:0.45"/>
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="BlinkClosing"/>
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-
-            </Style.Triggers>
-        </Style>
-
+        <conv:PlcDouble01ToBoolConverter x:Key="PlcDouble01ToBool"/>
     </UserControl.Resources>
 
 
@@ -378,7 +255,7 @@
                             <dxlc:LayoutGroup x:Name="PlcSettingsGroup" Header="PLC settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" Visibility="Collapsed">
                                 
                                 <dxlc:LayoutItem>
-                                    <ScrollViewer Height="220" VerticalScrollBarVisibility="Auto">
+                                    <ScrollViewer Height="482" VerticalScrollBarVisibility="Auto">
                                         <ItemsControl ItemsSource="{Binding DataContext.ParamPlcRows, RelativeSource={RelativeSource AncestorType=Window}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
@@ -392,14 +269,10 @@
                                                         <!-- Title -->
                                                         <TextBlock Grid.Column="0" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Style="{StaticResource AppTextBlockStyle}"/>
 
-                                                        <!-- Value -->
-                                                        <dxe:TextEdit Grid.Column="1"  Tag="{Binding}"
-                                                                      Width="80" HorizontalAlignment="Right"
-                                                                      HorizontalContentAlignment="Center"
-                                                                      EditValue="{Binding Value, Mode=OneWay}"                                                                      
-                                                                      Style="{StaticResource AppBaseEditStyle}"
-                                                                      PreviewKeyDown="ParamEditable_EditValueChanged">
-                                                        </dxe:TextEdit>
+                                                        <!-- Value (dynamic by PlcTypeCustom) -->
+                                                        <ContentControl Grid.Column="1"
+                                                                        Content="{Binding}"
+                                                                        ContentTemplateSelector="{StaticResource PlcTypeTemplateSelector}"/>
 
                                                         <!-- Unit -->
                                                         <TextBlock Grid.Column="2" Margin="6,0,0,0"
@@ -428,7 +301,7 @@
                                                     <Grid Margin="2">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="55"/>
+                                                            <ColumnDefinition Width="105"/>
                                                             <ColumnDefinition Width="55"/>
                                                         </Grid.ColumnDefinitions>
 
@@ -439,23 +312,32 @@
                                                                    TextWrapping="Wrap"
                                                                    Style="{StaticResource AppTextBlockStyle}"/>
 
-                                                        <!-- прямоугольник Value -->
-                                                        <Border Grid.Column="1"
-                                                                Width="54"
-                                                                Height="24"
-                                                                Margin="0,2,0,0"
-                                                                BorderBrush="Black"
-                                                                BorderThickness="1"
-                                                                Background="{Binding Value, Converter={StaticResource DiDoValueToBrush}}"
-                                                                VerticalAlignment="Center"
-                                                                Cursor="Hand"
-                                                                ToolTip="Go to this equipment"
-                                                                MouseLeftButtonUp="DiDoValue_MouseLeftButtonUp">
-                                                            <TextBlock Text="{Binding Value, Converter={StaticResource DiDoValueToText}}"
-                                                                HorizontalAlignment="Center"
-                                                                VerticalAlignment="Center"
-                                                                FontWeight="SemiBold"/>
-                                                        </Border>
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+
+                                                            <!-- Forced label -->
+                                                            <TextBlock Margin="0,0,6,0"
+                                                                       VerticalAlignment="Center"
+                                                                       Style="{StaticResource DIDOForcedBlinkTextStyle}"/>
+
+                                                            <!-- прямоугольник Value -->
+                                                            <Border Grid.Column="1"
+                                                                    Width="54"
+                                                                    Height="24"
+                                                                    Margin="0,2,0,0"
+                                                                    BorderBrush="Black"
+                                                                    BorderThickness="1"
+                                                                    Background="{Binding Value, Converter={StaticResource DiDoValueToBrush}}"
+                                                                    VerticalAlignment="Center"
+                                                                    Cursor="Hand"
+                                                                    ToolTip="Go to this equipment"
+                                                                    MouseLeftButtonUp="DiDoValue_MouseLeftButtonUp">
+                                                                <TextBlock Text="{Binding Value, Converter={StaticResource DiDoValueToText}}"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    FontWeight="SemiBold"/>
+                                                            </Border>
+
+                                                        </StackPanel>
 
                                                         <!-- chanel -->
                                                         <TextBlock Grid.Column="2"
@@ -482,7 +364,7 @@
                                                     <Grid Margin="2">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="55"/>
+                                                            <ColumnDefinition Width="105"/>
                                                             <ColumnDefinition Width="55"/>
                                                         </Grid.ColumnDefinitions>
 
@@ -493,23 +375,32 @@
                                                                    TextWrapping="Wrap"
                                                                    Style="{StaticResource AppTextBlockStyle}"/>
 
-                                                        <!-- прямоугольник Value -->
-                                                        <Border Grid.Column="1"
-                                                                Width="54"
-                                                                Height="25"
-                                                                Margin="0,2,0,0"
-                                                                BorderBrush="Black"
-                                                                BorderThickness="1"
-                                                                Background="{Binding Value, Converter={StaticResource DiDoValueToBrush}}"
-                                                                VerticalAlignment="Center"
-                                                                Cursor="Hand"
-                                                                ToolTip="Go to this equipment"
-                                                                MouseLeftButtonUp="DiDoValue_MouseLeftButtonUp">
-                                                            <TextBlock Text="{Binding Value, Converter={StaticResource DiDoValueToText}}"
-                                                                       HorizontalAlignment="Center"
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+
+                                                            <!-- Forced label -->
+                                                            <TextBlock Margin="0,0,6,0"
                                                                        VerticalAlignment="Center"
-                                                                       FontWeight="SemiBold"/>
-                                                        </Border>
+                                                                       Style="{StaticResource DIDOForcedBlinkTextStyle}"/>
+
+                                                                <!-- прямоугольник Value -->
+                                                            <Border Grid.Column="1"
+                                                                    Width="54"
+                                                                    Height="25"
+                                                                    Margin="0,2,0,0"
+                                                                    BorderBrush="Black"
+                                                                    BorderThickness="1"
+                                                                    Background="{Binding Value, Converter={StaticResource DiDoValueToBrush}}"
+                                                                    VerticalAlignment="Center"
+                                                                    Cursor="Hand"
+                                                                    ToolTip="Go to this equipment"
+                                                                    MouseLeftButtonUp="DiDoValue_MouseLeftButtonUp">
+                                                                <TextBlock Text="{Binding Value, Converter={StaticResource DiDoValueToText}}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"
+                                                                           FontWeight="SemiBold"/>
+                                                            </Border>
+
+                                                        </StackPanel>
 
                                                         <!-- chanel -->
                                                         <TextBlock Grid.Column="2"

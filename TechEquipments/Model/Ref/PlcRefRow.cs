@@ -52,7 +52,7 @@ namespace TechEquipments
         public double? Value
         {
             get => _value;
-            private set
+            set
             {
                 if (_value == value) return;
                 _value = value;
@@ -60,11 +60,31 @@ namespace TechEquipments
             }
         }
 
+        private bool _valueForced;
+        /// <summary>
+        /// True => показываем "Forced" перед квадратом (для EqDigital/EqDigitalInOut).
+        /// </summary>
+        public bool ValueForced
+        {
+            get => _valueForced;
+            set
+            {
+                if (_valueForced == value) return;
+                _valueForced = value;
+                OnPropertyChanged();
+            }
+        }
+
         /// <summary>Какие типы разрешаем редактировать (можно расширять).</summary>
-        public bool IsWritable =>
-            Type is PlcTypeCustom.EqCheckRW
+        public bool IsWritable => Type is
+                   PlcTypeCustom.EqCheck
+                or PlcTypeCustom.EqCheckRW
                 or PlcTypeCustom.EqNumW
-                or PlcTypeCustom.EqEnum;
+                or PlcTypeCustom.EqButton
+                or PlcTypeCustom.EqButtonUp
+                or PlcTypeCustom.EqButtonDown
+                or PlcTypeCustom.EqButtonMode
+                or PlcTypeCustom.EqButtonStartStop;
 
         /// <summary>Текст слева.</summary>
         public string Title => string.IsNullOrWhiteSpace(Comment) ? EquipName : $"{EquipName}:    {Comment}";
