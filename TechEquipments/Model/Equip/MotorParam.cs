@@ -2,6 +2,15 @@
 
 namespace TechEquipments
 {
+    [TrendItem("Man", YMin = 0, YMax = 1.1)]
+    [TrendSeriesStyle("Man", "CornflowerBlue", transparency: 0.7)]
+
+    [TrendItem("Mode", YMin = 0, YMax = 1.5)]
+    [TrendSeriesStyle("Mode", "Green", transparency: 0.7)]
+
+    [TrendItem("AlarmA", YMin = 0, YMax = 2)]
+    [TrendSeriesStyle("AlarmA", "Red", transparency: 0.7)]
+
     public class MotorParam
     {
         public bool Mode { get; set; }

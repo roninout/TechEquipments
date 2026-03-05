@@ -68,5 +68,32 @@ namespace TechEquipments.Styles
             // ✅ пишем 1/0
             host.ParamPlc_WriteFromUi(row, newState);
         }
+
+        /// <summary>
+        /// Клик по PLC digital “квадрату” (EqDigital / EqDigitalInOut):
+        /// - вытаскиваем EquipName из PlcRefRow
+        /// - просим Host (MainWindow) выполнить навигацию на это оборудование
+        /// </summary>
+        private void PlcDigital_GoToEquip_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe)
+                return;
+
+            if (fe.DataContext is not PlcRefRow row)
+                return;
+
+            var equipName = (row.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            // ВАЖНО: в этом словаре уже есть GetHost(...) — используем его (как в DiDoValue_MouseLeftButtonUp)
+            var host = GetHost(fe);
+            if (host == null)
+                return;
+
+            host.Param_NavigateToLinkedEquip(equipName);
+
+            e.Handled = true;
+        }
     }
 }

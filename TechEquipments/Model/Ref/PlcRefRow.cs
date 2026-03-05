@@ -75,6 +75,19 @@ namespace TechEquipments
             }
         }
 
+        private string _forcedTagName = "";
+        public string ForcedTagName
+        {
+            get => _forcedTagName;
+            set
+            {
+                value = (value ?? "").Trim();
+                if (_forcedTagName == value) return;
+                _forcedTagName = value;
+                OnPropertyChanged();
+            }
+        }
+
         /// <summary>Какие типы разрешаем редактировать (можно расширять).</summary>
         public bool IsWritable => Type is
                    PlcTypeCustom.EqCheck

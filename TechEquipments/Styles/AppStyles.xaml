@@ -311,6 +311,147 @@
         </Style.Triggers>
     </Style>
 
+    <!-- MotorParam.State status style (0..6)
+     ВАЖНО: этот стиль читает State (а не Value), поэтому используем его ТОЛЬКО в MotorParamView.
+     Старый PlcMotorStatusTextEditStyle (под Value) оставляем для PLC settings (PlcRefRow.Value). -->
+    <Style x:Key="PlcMotorStatusStateTextEditStyle"
+       TargetType="{x:Type dxe:TextEdit}"
+       BasedOn="{StaticResource AppBaseEditStyle}">
+
+        <!-- ReadOnly поле статуса -->
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="BorderBrush" Value="Black"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="Black"/>
+
+        <!-- дефолтный фон -->
+        <Setter Property="Background">
+            <Setter.Value>
+                <SolidColorBrush Color="#FFE6E6E6"/>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+
+            <!-- 0 stop -->
+            <DataTrigger Binding="{Binding State}" Value="0">
+                <Setter Property="Background" Value="#FFD6D6D6"/>
+            </DataTrigger>
+
+            <!-- 1 run -->
+            <DataTrigger Binding="{Binding State}" Value="1">
+                <Setter Property="Background" Value="#FFB7F2B7"/>
+            </DataTrigger>
+
+            <!-- 2 alarm (blink red) -->
+            <DataTrigger Binding="{Binding State}"  Value="2">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFFFD0D0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink2_State">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink2_State"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 3 alarm (blink red) -->
+            <DataTrigger Binding="{Binding State}"  Value="3">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFFFD0D0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FFB00000"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink3_State">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFFFD0D0" To="#FFFF4D4D" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink3_State"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 4 starting (blink green) -->
+            <DataTrigger Binding="{Binding State}"  Value="4">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFD6FFD6"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF007A00"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink4_State">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink4_State"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 5 stopping (blink gray) -->
+            <DataTrigger Binding="{Binding State}"  Value="5">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFEDEDED"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF606060"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink5_State">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFEDEDED" To="#FFB0B0B0" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink5_State"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+            <!-- 6 waiting (blink green) -->
+            <DataTrigger Binding="{Binding State}"  Value="6">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <SolidColorBrush Color="#FFD6FFD6"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#FF007A00"/>
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="PlcMotorBlink6_State">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <ColorAnimation Storyboard.TargetProperty="Background.Color"
+                                        From="#FFD6FFD6" To="#FF2ECC71" Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="PlcMotorBlink6_State"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+
+        </Style.Triggers>
+    </Style>
+
     <!-- Man==true => зелёная подложка, иначе прозрачная/серая -->
     <Style x:Key="ManStationBackgroundStyle" TargetType="{x:Type Border}">
         <!--<Setter Property="Background" Value="#40A0A0A0"/>-->

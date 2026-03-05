@@ -30,5 +30,9 @@ namespace TechEquipments
 
         Task WriteEquipItemAsync<T>(string equipName, string equipItem, T value, CancellationToken ct = default);
 
+
+        Task<string> ResolveTagNameAsync(string equipName, string equipItem, CancellationToken ct = default);
+        Task WriteTagNameAsync(string tagName, string value, CancellationToken ct = default);
+
     }
 }

@@ -28,73 +28,48 @@ namespace TechEquipments
     /// - Нижняя панель прогресса: используется для загрузки списка оборудования и DB (индетерминантно).
     /// - Overlay: используется для загрузки SOE (тренды).
     /// </summary>
-    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged
+    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged, IParamHost, IDbHost, IQrHost, ISoeHost, IUiStateHost
     {
+        private ParamController _paramController;
+        private ParamWriteController _paramWriteController;
+        private readonly DbController _dbController;
+        private readonly QrController _qrController;
+        private readonly SoeController _soeController;
+        private readonly UiStateController _uiState;
+
+        #region Fields
+
         #region Services
-
-        /// <summary>
-        /// Сервис для получения списка оборудования и SOE (CtApi / тренды).
-        /// </summary>
         private readonly IEquipmentService _equipmentService;
-
-        /// <summary>
-        /// Сервис для доступа к PostgreSQL (Operation actions / Alarm history).
-        /// </summary>
-        private readonly IDbService _dbService;
-
         private readonly ICtApiService _ctApiService;
+        private readonly IConfiguration _config;
+        private readonly IUserStateService _stateService;
 
         #endregion
 
         #region UI Collections (data sources)
 
-        /// <summary>
-        /// Строки SOE (вкладка SOE).
-        /// </summary>
+        /// <summary>Строки SOE (вкладка SOE).</summary>
         public ObservableCollection<EquipmentSOEDto> equipmentSOEDtos { get; } = new();
 
-        /// <summary>
-        /// Список оборудования (левая панель).
-        /// </summary>
+        /// <summary>Список оборудования (левая панель).</summary>
         public ObservableCollection<EquipListBoxItem> Equipments { get; } = new();
 
-        /// <summary>
-        /// Список станций для фильтра (Station).
-        /// </summary>
+        /// <summary>Список станций для фильтра (Station).</summary>
         public ObservableCollection<string> Stations { get; } = new();
 
-        /// <summary>
-        /// Данные вкладки "Operation actions".
-        /// </summary>
+        /// <summary>Данные вкладки "Operation actions".</summary>
         public ObservableCollection<OperatorActDTO> OperatorActRows { get; } = new();
 
-        /// <summary>
-        /// Данные вкладки "Alarm history".
-        /// </summary>
+        /// <summary>Данные вкладки "Alarm history".</summary>
         public ObservableCollection<AlarmHistoryDTO> AlarmHistoryRows { get; } = new();
 
         /// <summary>Параметры AIParam для вкладки Param (TextBox -> Name)</summary>
         public ObservableCollection<ParamItem> ParamItems { get; } = new();
 
-        /// <summary>
-        /// TrendPoint для вкладки Param
-        /// </summary>
-        public ObservableCollection<TrendPoint> ParamTrendPoints { get; } = new();
-
         #endregion
 
         #region SOE Loading (overlay) state
-
-        /// <summary>
-        /// Семафор: не допускаем параллельные загрузки SOE.
-        /// </summary>
-        private readonly SemaphoreSlim _loadGate = new(1, 1);
-
-        /// <summary>
-        /// CTS для отмены текущей загрузки SOE.
-        /// </summary>
-        private CancellationTokenSource? _loadCts;
-
         /// <summary>
         /// Флаг: показывать overlay загрузки SOE.
         /// </summary>
@@ -216,7 +191,7 @@ namespace TechEquipments
                 OnPropertyChanged();
 
                 ScheduleSearch(_equipName);     // твой debounce поиска
-                ScheduleStateSave();            // debounce сохранения состояния
+                _uiState.ScheduleSave();            // debounce сохранения состояния
                 NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
         }
@@ -228,7 +203,8 @@ namespace TechEquipments
         public EquipListBoxItem? SelectedListBoxEquipment
         {
             get => _selectedListBoxEquipment;
-            set {
+            set
+            {
                 _selectedListBoxEquipment = value;
                 OnPropertyChanged();
                 NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
@@ -256,7 +232,7 @@ namespace TechEquipments
                 OnPropertyChanged();
                 ApplyFilters();
 
-                ScheduleStateSave();
+                _uiState.ScheduleSave();
 
                 NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
@@ -275,7 +251,7 @@ namespace TechEquipments
                 OnPropertyChanged();
                 ApplyFilters();
 
-                ScheduleStateSave();
+                _uiState.ScheduleSave();
                 NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
         }
@@ -369,16 +345,6 @@ namespace TechEquipments
 
         #region DB loading (bottom bar indeterminate)
 
-        /// <summary>
-        /// Семафор: не допускаем параллельные DB-загрузки.
-        /// </summary>
-        private readonly SemaphoreSlim _dbGate = new(1, 1);
-
-        /// <summary>
-        /// CTS для отмены текущей DB-загрузки.
-        /// </summary>
-        private CancellationTokenSource? _dbCts;
-
         private bool _isDbConnected;
         public bool IsDbConnected
         {
@@ -423,7 +389,7 @@ namespace TechEquipments
         public string BottomText
         {
             get => IsEquipListLoading ? EquipListText : _bottomText;
-            private set
+            set
             {
                 _bottomText = value;
                 OnPropertyChanged();
@@ -448,16 +414,15 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(IsBottomLoading));
 
                 // ВАЖНО: во время восстановления состояния никаких автодействий
-                if (_isRestoringState)
-                    return;
+                if (_uiState.IsRestoringState) return;                
 
-                _dbCts?.Cancel(); // отменяем предыдущую DB-загрузку при смене вкладки
+                _dbController.CancelCurrentLoad(); // отменяем предыдущую DB-загрузку при смене вкладки
 
-                ScheduleStateSave(); // сохраняем состояние (debounce)
+                _uiState.ScheduleSave(); // сохраняем состояние (debounce)
 
                 // при переходе на DB-вкладки — делаем "как будто нажали Search"
                 //if (IsDbTabSelected)
-                    _ = OnTabActivatedLikeSearchAsync(force: true); //_ = LoadCurrentDbTabAsync(force: true);              
+                _ = OnTabActivatedLikeSearchAsync(force: true);              
 
             }
         }
@@ -473,20 +438,17 @@ namespace TechEquipments
                 OnPropertyChanged();
 
                 // Если мы на DB вкладке и есть коннект — планируем авто-загрузку (debounce)
-                ScheduleDbReload();
+                _dbController.ScheduleReload();
 
-                ScheduleStateSave();
+                _uiState.ScheduleSave();
             }
         }
-
-        // Дебаунс-таймер автоперезагрузки DB при смене даты (как поиск)
-        private DispatcherTimer _dbReloadTimer;
 
         /// <summary>Текущая вкладка как enum (задел на будущие вкладки)</summary>
         public MainTabKind SelectedMainTab => (MainTabKind)SelectedMainTabIndex;
 
         /// <summary>Показывать DateEdit только на DB вкладках</summary>
-        public bool IsDbTabSelected =>SelectedMainTab is MainTabKind.OperationActions or MainTabKind.AlarmHistory;
+        public bool IsDbTabSelected => SelectedMainTab is MainTabKind.OperationActions or MainTabKind.AlarmHistory;
 
         /// <summary>Текст основной кнопки (одна на все режимы)</summary>
         public string MainActionButtonText => SelectedMainTab switch
@@ -520,27 +482,6 @@ namespace TechEquipments
         /// <summary>Текущее значение для нижнего прогресса</summary>
         public int BottomProgressValue => IsEquipListLoading ? EquipListDone : 0;
 
-        /// <summary>
-        /// Ключ “что именно загружали” для DB-вкладок: дата + строка поиска.
-        /// </summary>
-        private readonly record struct DbQueryKey(DateTime Date, string Filter);
-
-        /// <summary>Последний успешно загруженный запрос для Operation actions.</summary>
-        private DbQueryKey? _lastOpActsQuery;
-
-        /// <summary>Последний успешно загруженный запрос для Alarm history.</summary>
-        private DbQueryKey? _lastAlarmQuery;
-
-        /// <summary>
-        /// Нормализуем фильтр (убираем пробелы). Тут можно расширять логику, если нужно.
-        /// </summary>
-        private string GetDbFilter() => (EquipName ?? "").Trim();
-
-        /// <summary>
-        /// Текущий запрос DB из UI: выбранная дата + текущий фильтр.
-        /// </summary>
-        private DbQueryKey GetCurrentDbQuery() => new(DbDate.Date, GetDbFilter());
-
         #endregion
 
         #region Left pane toggle state
@@ -550,42 +491,24 @@ namespace TechEquipments
 
         #endregion
 
-        #region UI state persistence
-
-        private readonly IUserStateService _stateService;
-
-        // debounce для сохранения состояния
-        private DispatcherTimer _stateSaveTimer = null!;
-        private bool _isRestoringState;
-
-        // Если true — на старте использовали ExternalTag как источник состояния
-        private bool _startupUsedExternalTag;
-
-        // Значение ExternalTag, которое использовали на старте (для применения Station/Type после загрузки Equipments)
-        private string _startupExternalTag = "";
-
-        #endregion
-
         #region Params
 
         // Строка состояния на вкладке Param
         private string _paramStatusText = "";
-        
+
         public string ParamStatusText
         {
             get => _paramStatusText;
-            private set { _paramStatusText = value; OnPropertyChanged(); }
+            set { _paramStatusText = value; OnPropertyChanged(); }
         }
-
-        // Что сейчас отображаем (чтобы понимать: перестраивать список или только обновить значения)
-        private Type _currentParamModelType;
 
         // Текущая модель параметров (AIParam / DIParam / MotorParam / ...)
         private object _currentParamModel;
         public object CurrentParamModel
         {
             get => _currentParamModel;
-            set {
+            set
+            {
                 _currentParamModel = value;
                 OnPropertyChanged();
 
@@ -596,7 +519,6 @@ namespace TechEquipments
         }
 
         // polling
-        private CancellationTokenSource _paramPollCts;
         private int _paramReadCycles;
 
         // 1) Общий “замок” на чтение/запись Param (чтение и запись не пересекаются)
@@ -649,13 +571,9 @@ namespace TechEquipments
         #region Trend
 
         public ParamTrendVm Trend { get; }
+
         private ParamTrendController _trendCtl;
 
-        #endregion
-
-        #region QR
-        private readonly IQrCodeService _qrCodeService;
-        private readonly IQrScannerService _qrScannerService;
         #endregion
 
         #region VGD ref
@@ -682,20 +600,24 @@ namespace TechEquipments
 
         #endregion
 
+        #endregion
+
         public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
         {
             InitializeComponent();
 
             _equipmentService = equipmentService;
-            _dbService = dbService;
             _stateService = stateService;
             _ctApiService = ctApiService;
-            _qrCodeService = qrCodeService;
-            _qrScannerService = qrScannerService;
+            _config = config;
+            _dbController = new DbController(dbService, this);
+            _qrController = new QrController(_equipmentService, qrCodeService, qrScannerService, this);
+            _soeController = new SoeController(_equipmentService, this);
+            _uiState = new UiStateController(_stateService, _equipmentService, this);
 
             // Vm + Controller
             Trend = new ParamTrendVm();
-            Trend.AutoLive = config.GetValue("Trend:AutoLive", true);
+            Trend.AutoLive = _config.GetValue("Trend:AutoLive", true);
 
             _trendCtl = new ParamTrendController(
                 Trend,
@@ -707,12 +629,26 @@ namespace TechEquipments
                 getParamCycles: () => _paramReadCycles             // счетчик циклов
             );
 
+            _paramController = new ParamController(_equipmentService, this);
+
+            _paramWriteController = new ParamWriteController(
+                equipmentService: _equipmentService,
+                getSelectedTab: () => SelectedMainTab,
+                resolveSelectedEquip: ResolveSelectedEquipForParam,
+                getSuppressWritesFromPolling: () => _suppressParamWritesFromPolling,
+                getSuppressWritesFromUiRollback: () => _suppressParamWritesFromUiRollback,
+                setSuppressWritesFromUiRollback: v => _suppressParamWritesFromUiRollback = v,
+                paramRwGate: _paramRwGate,
+                setParamReadResumeAtUtc: dt => _paramReadResumeAtUtc = dt,
+                setBottomText: txt => ParamStatusText = txt,
+                getOwnerWindow: () => this,
+                endParamFieldEdit: EndParamFieldEdit
+            );
+
             DataContext = this; // DataContext на себя: используется во всём XAML (binding)
 
             InitEquipmentsView();
             InitSearchTimer();
-            InitDbReloadTimer();
-            InitStateSaveTimer();
 
             Loaded += async (_, __) =>
             {
@@ -721,13 +657,13 @@ namespace TechEquipments
 
                 // 1) ExternalTag имеет приоритет над user-state.json
                 //    Если ExternalTag пустой -> восстановим с файла
-                var usedExt = await TryApplyStartupStateFromExternalTagAsync();
+                var usedExt = await _uiState.TryApplyStartupStateFromExternalTagAsync();
                 if (!usedExt)
-                    await RestoreStateAsync();
+                    await _uiState.RestoreStateAsync();
 
                 // 2) Параллельные загрузки
                 await LoadEquipmentsListAsync();
-                await CheckDbAsync();
+                await _dbController.CheckDbAsync();
 
                 // 3) И как будто нажали “поиск/лоад” на текущей вкладке
                 await OnTabActivatedLikeSearchAsync(force: true);
@@ -792,9 +728,9 @@ namespace TechEquipments
                 ApplyFilters();
 
                 // Если на старте использовали ExternalTag — выставляем Station/TypeGroup по найденному оборудованию
-                if (_startupUsedExternalTag && !string.IsNullOrWhiteSpace(_startupExternalTag))
+                if (_uiState.StartupUsedExternalTag && !string.IsNullOrWhiteSpace(_uiState.StartupExternalTag))
                 {
-                    TryApplyStationTypeFiltersFromQr(_startupExternalTag);
+                    _qrController.TryApplyStationTypeFiltersFromQr(_uiState.StartupExternalTag);
 
                     // После смены фильтров — снова выделим оборудование
                     if (!string.IsNullOrWhiteSpace(EquipName))
@@ -824,39 +760,32 @@ namespace TechEquipments
                 if (!string.IsNullOrWhiteSpace(EquipName))
                     DoIncrementalSearch(EquipName);
             }
-        }   
+        }
 
         #endregion
 
         #region Left pane init
 
-        /// <summary>
-        /// Начальное состояние: левая панель скрыта.
-        /// </summary>
+        /// <summary>Начальное состояние: левая панель скрыта.</summary>
         private void InitLeftPaneState()
         {
             LeftPaneToggle.IsChecked = false;
             ApplyLeftPane(false);
         }
 
-        /// <summary>
-        /// Создаёт ICollectionView для Equipments и вешает фильтр/сортировку.
-        /// </summary>
+        /// <summary>Создаёт ICollectionView для Equipments и вешает фильтр/сортировку.</summary>
         private void InitEquipmentsView()
         {
             EquipmentsView = CollectionViewSource.GetDefaultView(Equipments);
             EquipmentsView.Filter = FilterEquipment;
 
             EquipmentsView.SortDescriptions.Clear();
-            EquipmentsView.SortDescriptions.Add(
-                new SortDescription(nameof(EquipListBoxItem.Equipment), ListSortDirection.Ascending));
+            EquipmentsView.SortDescriptions.Add(new SortDescription(nameof(EquipListBoxItem.Equipment), ListSortDirection.Ascending));
 
-            OnPropertyChanged(nameof(EquipmentsView)); // ✅ важно, если метод вызвали после того как UI уже связан
+            OnPropertyChanged(nameof(EquipmentsView)); // важно, если метод вызвали после того как UI уже связан
         }
 
-        /// <summary>
-        /// Таймер для посимвольного поиска (debounce 150мс).
-        /// </summary>
+        /// <summary>Таймер для посимвольного поиска (debounce 150мс).</summary>
         private void InitSearchTimer()
         {
             _searchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -871,9 +800,7 @@ namespace TechEquipments
 
         #region Search
 
-        /// <summary>
-        /// Запускает отложенный поиск (debounce).
-        /// </summary>
+        /// <summary>Запускает отложенный поиск (debounce).</summary>
         private void ScheduleSearch(string text)
         {
             _pendingSearch = text ?? "";
@@ -881,9 +808,7 @@ namespace TechEquipments
             _searchTimer.Start();
         }
 
-        /// <summary>
-        /// Ищет элемент в EquipmentsView и выделяет его в ListBox.
-        /// </summary>
+        /// <summary>Ищет элемент в EquipmentsView и выделяет его в ListBox.</summary>
         private void DoIncrementalSearch(string text)
         {
             if (EquipmentsView == null) return;
@@ -922,9 +847,7 @@ namespace TechEquipments
 
         #region Filters
 
-        /// <summary>
-        /// Фильтр для EquipmentsView: Station + Type.
-        /// </summary>
+        /// <summary>Фильтр для EquipmentsView: Station + Type.</summary>
         private bool FilterEquipment(object obj)
         {
             if (obj is not EquipListBoxItem it) return false;
@@ -944,9 +867,7 @@ namespace TechEquipments
             return EquipTypeRegistry.GetGroup(it.Type) == SelectedTypeFilter;
         }
 
-        /// <summary>
-        /// Применяет фильтры (перерисовка представления).
-        /// </summary>
+        /// <summary>Применяет фильтры (перерисовка представления).</summary>
         private void ApplyFilters()
         {
             EquipmentsView.Refresh();
@@ -954,11 +875,46 @@ namespace TechEquipments
 
         #endregion
 
-        #region ListBox events
+        #region Tab
 
         /// <summary>
-        /// Клик по списку: подставляет оборудование в поле поиска (если сейчас не печатаем).
+        /// При активации вкладки делаем действие как по кнопке:
+        /// SOE -> Load SOE,
+        /// DB вкладки -> Search/Load DB.
         /// </summary>
+        private async Task OnTabActivatedLikeSearchAsync(bool force)
+        {
+            // стопаем Param чтение, если уходим
+            if ((MainTabKind)SelectedMainTabIndex != MainTabKind.Param)
+                StopParamPolling();
+
+            switch ((MainTabKind)SelectedMainTabIndex)
+            {
+                case MainTabKind.Param:
+                    StartParamPolling();
+                    break;
+
+                case MainTabKind.OperationActions:
+                case MainTabKind.AlarmHistory:
+                    await _dbController.LoadCurrentTabAsync(force);
+                    break;
+
+                case MainTabKind.SOE:
+                    // Обычно SOE не надо автoload при каждом клике по вкладке
+                    // но если хочешь — можно включить:
+                    await LoadSoeFromUiAsync();
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        #endregion
+
+        #region ListBox
+
+        /// <summary>Клик по списку: подставляет оборудование в поле поиска (если сейчас не печатаем).</summary>
         private void Equipments_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             // Защита от “программного” выделения при поиске/скролле
@@ -970,7 +926,7 @@ namespace TechEquipments
                 return;
 
             // Во время восстановления состояния — не запускаем автодействия
-            if (_isRestoringState)
+            if (_uiState.IsRestoringState)
                 return;
 
             // Подставляем выбранное оборудование в строку поиска (EquipName)
@@ -986,99 +942,6 @@ namespace TechEquipments
 
             // Если Param уже открыт — делаем "мгновенное обновление"
             StartParamPolling();
-        }
-
-        /// <summary>
-        /// Двойной клик по списку: сразу загружает SOE.
-        /// </summary>
-        //private async void Equipments_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        //{
-        //    if (IsLoading) return;
-
-        //    if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
-        //    {
-        //        EquipName = eq;
-        //        await LoadAndShowEquipDataAsync(eq);
-        //    }
-        //}
-
-        #endregion
-
-        #region SOE load
-
-        /// <summary>
-        /// Загружает SOE по выбранному оборудованию.
-        /// Показывает overlay и прогресс (Current/Rows).
-        /// </summary>
-        private async Task LoadAndShowEquipDataAsync(string equipName)
-        {
-            var name = (equipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(name))
-                return;
-
-            // Отменяем предыдущую загрузку SOE (если была)
-            try { _loadCts?.Cancel(); } catch { }
-
-            await _loadGate.WaitAsync();
-
-            CancellationTokenSource? myCts = null;
-
-            try
-            {
-                _loadCts?.Dispose();
-                myCts = new CancellationTokenSource();
-                _loadCts = myCts;
-                var ct = myCts.Token;
-
-                IsLoading = true;
-
-                LoadedCount = 0;
-                CurrentCount = 0;
-                CurrentTrendIndex = 0;
-                CurrentTrendName = "";
-                TotalTrends = 0;
-
-                await Dispatcher.Yield(DispatcherPriority.Render);
-
-                var progress = new Progress<LoadingProgress>(p =>
-                {
-                    TotalTrends = p.TotalTrends;
-                    CurrentTrendIndex = p.CurrentTrendIndex;
-                    CurrentTrendName = p.CurrentTrendName;
-                    CurrentCount = p.CurrentTrendCount;
-                    LoadedCount = p.TotalLoaded;
-                });
-
-                var rows = await _equipmentService.GetDataFromEquipAsync(
-                    name, progress, ct, perTrendMax: PerTrendMax, totalMax: TotalMax);
-
-                ct.ThrowIfCancellationRequested();
-
-                equipmentSOEDtos.Clear();
-                foreach (var r in rows)
-                    equipmentSOEDtos.Add(r);
-            }
-            catch (OperationCanceledException)
-            {
-                CurrentTrendName = "Cancelled";
-            }
-            catch (Exception ex)
-            {
-                DXMessageBox.Show(this, ex.ToString(), "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                // Выключаем overlay только если это всё ещё “наша” актуальная загрузка
-                if (ReferenceEquals(_loadCts, myCts))
-                {
-                    IsLoading = false;
-                    _loadCts?.Dispose();
-                    _loadCts = null;
-                }
-
-                _loadGate.Release();
-            }
         }
 
         #endregion
@@ -1098,7 +961,7 @@ namespace TechEquipments
             if (!string.IsNullOrWhiteSpace(sel))
                 text = sel;
 
-            await LoadAndShowEquipDataAsync(text);
+            await _soeController.LoadAndShowAsync(text);
         }
 
         /// <summary>
@@ -1106,7 +969,7 @@ namespace TechEquipments
         /// </summary>
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
-            _loadCts?.Cancel();
+            _soeController.Cancel();
         }
 
         /// <summary>
@@ -1160,12 +1023,12 @@ namespace TechEquipments
 
                 case MainTabKind.OperationActions:
                 case MainTabKind.AlarmHistory:
-                    await LoadCurrentDbTabAsync(force: true);
+                    await _dbController.LoadCurrentTabAsync(force: true);
                     break;
 
                 default:
                     // на будущие вкладки
-                    await LoadCurrentDbTabAsync(force: true);
+                    await _dbController.LoadCurrentTabAsync(force: true);
                     break;
             }
         }
@@ -1184,236 +1047,9 @@ namespace TechEquipments
             if (!string.IsNullOrWhiteSpace(sel))
                 text = sel;
 
-            await LoadAndShowEquipDataAsync(text);
+            await _soeController.LoadAndShowAsync(text);
         }
 
-
-        #endregion
-
-        #region Tab
-
-        /// <summary>
-        /// При активации вкладки делаем действие как по кнопке:
-        /// SOE -> Load SOE,
-        /// DB вкладки -> Search/Load DB.
-        /// </summary>
-        private async Task OnTabActivatedLikeSearchAsync(bool force)
-        {
-            // стопаем Param чтение, если уходим
-            if ((MainTabKind)SelectedMainTabIndex != MainTabKind.Param)
-                StopParamPolling();
-
-            switch ((MainTabKind)SelectedMainTabIndex)
-            {
-                case MainTabKind.Param:
-                    StartParamPolling();
-                    break;
-
-                case MainTabKind.OperationActions:
-                case MainTabKind.AlarmHistory:
-                    await LoadCurrentDbTabAsync(force);
-                    break;
-
-                case MainTabKind.SOE:
-                    // Обычно SOE не надо автoload при каждом клике по вкладке
-                    // но если хочешь — можно включить:
-                    await LoadSoeFromUiAsync();
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        #endregion
-
-        #region DB
-
-        /// <summary>
-        /// Проверяет подключение к БД и обновляет IsDbConnected.
-        /// </summary>
-        private async Task CheckDbAsync()
-        {
-            try
-            {
-                IsDbConnected = await _dbService.CanConnectAsync();
-            }
-            catch
-            {
-                IsDbConnected = false;
-            }
-        }
-
-        /// <summary>
-        /// Загружает данные вкладки Operation actions.
-        /// Нижняя панель показывает индикатор DB (крутилка).
-        /// </summary>
-        private async Task LoadOperatorActsAsync()
-        {
-            await _dbGate.WaitAsync();
-            CancellationTokenSource? myCts = null;
-
-            try
-            {
-                _dbCts?.Cancel();
-                _dbCts?.Dispose();
-                myCts = new CancellationTokenSource();
-                _dbCts = myCts;
-                var ct = myCts.Token;
-
-                IsDbLoading = true;
-                BottomText = "Loading DB (Operator actions)...";
-                await Dispatcher.Yield(DispatcherPriority.Render);
-
-                var filter = (EquipName ?? "").Trim();
-                var rows = await _dbService.GetOperatorActsAsync(DbDate, filter, ct);
-
-                OperatorActRows.Clear();
-                foreach (var r in rows) OperatorActRows.Add(r);
-
-                BottomText = $"DB Operator actions: {OperatorActRows.Count}";
-            }
-            catch (OperationCanceledException)
-            {
-                BottomText = "DB cancelled";
-            }
-            catch (Exception ex)
-            {
-                BottomText = $"DB Error: {ex.Message}";
-            }
-            finally
-            {
-                IsDbLoading = false;
-
-                if (ReferenceEquals(_dbCts, myCts))
-                {
-                    _dbCts?.Dispose();
-                    _dbCts = null;
-                }
-
-                _dbGate.Release();
-            }
-        }
-
-        /// <summary>
-        /// Загружает данные вкладки Alarm history.
-        /// Нижняя панель показывает индикатор DB (крутилка).
-        /// </summary>
-        private async Task LoadAlarmHistoryAsync()
-        {
-            await _dbGate.WaitAsync();
-            CancellationTokenSource? myCts = null;
-
-            try
-            {
-                _dbCts?.Cancel();
-                _dbCts?.Dispose();
-                myCts = new CancellationTokenSource();
-                _dbCts = myCts;
-                var ct = myCts.Token;
-
-                IsDbLoading = true;
-                BottomText = "Loading DB (Alarm history)...";
-                await Dispatcher.Yield(DispatcherPriority.Render);
-
-                var filter = (EquipName ?? "").Trim();
-                var rows = await _dbService.GetAlarmHistoryAsync(DbDate, filter, ct);
-
-                AlarmHistoryRows.Clear();
-                foreach (var r in rows) AlarmHistoryRows.Add(r);
-
-                BottomText = $"DB Alarm history: {AlarmHistoryRows.Count}";
-            }
-            catch (OperationCanceledException)
-            {
-                BottomText = "DB cancelled";
-            }
-            catch (Exception ex)
-            {
-                BottomText = $"DB Error: {ex.Message}";
-            }
-            finally
-            {
-                IsDbLoading = false;
-
-                if (ReferenceEquals(_dbCts, myCts))
-                {
-                    _dbCts?.Dispose();
-                    _dbCts = null;
-                }
-
-                _dbGate.Release();
-            }
-        }
-
-        /// <summary>
-        /// Загружает данные текущей DB-вкладки (Operation actions / Alarm history).
-        /// Если force=false — грузим только если изменились дата/фильтр по сравнению с прошлой загрузкой этой вкладки.
-        /// </summary>
-        private async Task LoadCurrentDbTabAsync(bool force)
-        {
-            if (!IsDbConnected) return;
-
-            // Текущие параметры поиска/даты
-            var current = GetCurrentDbQuery();
-
-            // 0 = SOE, 1 = Operation actions, 2 = Alarm history
-            if (SelectedMainTabIndex == 1)
-            {
-                // Если ничего не поменялось и не force — пропускаем
-                if (!force && _lastOpActsQuery.HasValue && _lastOpActsQuery.Value.Equals(current))
-                    return;
-
-                await LoadOperatorActsAsync();
-
-                // Важно: фиксируем “последний загруженный запрос” только после попытки загрузки
-                // (у тебя LoadOperatorActsAsync внутри ловит исключения и не бросает их наружу)
-                _lastOpActsQuery = current;
-            }
-            else if (SelectedMainTabIndex == 2)
-            {
-                if (!force && _lastAlarmQuery.HasValue && _lastAlarmQuery.Value.Equals(current))
-                    return;
-
-                await LoadAlarmHistoryAsync();
-                _lastAlarmQuery = current;
-            }
-        }
-
-        /// <summary>
-        /// Кнопка "Load DB": принудительная перезагрузка активной DB-вкладки.
-        /// </summary>
-        //private async void LoadDb_Click(object sender, RoutedEventArgs e)
-        //{
-        //    await LoadCurrentDbTabAsync(force: true);
-        //}
-
-        /// <summary>Инициализация debounce-таймера DB</summary>
-        private void InitDbReloadTimer()
-        {
-            _dbReloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-            _dbReloadTimer.Tick += async (_, __) =>
-            {
-                _dbReloadTimer.Stop();
-
-                // Загружаем только если реально на DB вкладке и DB доступна
-                if (!IsDbTabSelected || !IsDbConnected) return;
-
-                await LoadCurrentDbTabAsync(force: true);
-            };
-        }
-
-        /// <summary>Планирование авто-перезагрузки DB (debounce)</summary>
-        private void ScheduleDbReload()
-        {
-            if (_dbReloadTimer == null) return;
-            _dbReloadTimer.Stop();
-
-            // Не трогаем DB, если мы в SOE
-            if (!IsDbTabSelected) return;
-
-            _dbReloadTimer.Start();
-        }
 
         #endregion
 
@@ -1421,70 +1057,12 @@ namespace TechEquipments
 
         private void StartParamPolling()
         {
-            StopParamPolling();
-
-            _paramReadCycles = 0;
-            ParamStatusText = "Param: starting...";
-
-            _paramPollCts = new CancellationTokenSource();
-            var ct = _paramPollCts.Token;
-
-            // 1-й цикл сразу, потом каждые 5 секунд
-            _ = Task.Run(async () =>
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    await PollParamOnceSafeAsync(ct);
-
-                    // обновляем активную секцию (DI/DO или PLC) каждые 5 секунд
-                    await RefreshActiveParamSectionAsync(ct);
-
-                    // это для трендов
-                    if (Trend.IsChartVisible)
-                        await _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
-
-                    await Task.Delay(TimeSpan.FromSeconds(5), ct);
-                }
-            }, ct);
+            _paramController?.Start();
         }
 
         private void StopParamPolling()
         {
-            try { _paramPollCts?.Cancel(); } catch { }
-            _paramPollCts?.Dispose();
-            _paramPollCts = null;
-
-            //ResetTrendState();
-        }
-
-        private async Task PollParamOnceSafeAsync(CancellationToken ct)
-        {
-            try
-            {
-                // Если недавно писали — подождем чуть-чуть
-                if (DateTime.UtcNow < _paramReadResumeAtUtc)
-                    return;
-
-                // если пользователь сейчас вводит значение — НЕ читаем, чтобы не затирать ввод
-                if (IsEditingField)
-                    return;
-
-                await _paramRwGate.WaitAsync(ct);
-                try
-                {
-                    await PollParamOnceAsync(ct);
-                }
-                finally
-                {
-                    //_suppressParamWritesFromPolling = false;
-                    _paramRwGate.Release();
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                BottomText = $"Param read error: {ex.Message}";
-            }
+            _paramController?.Stop();
         }
 
         private (string equipName, string equipType) ResolveSelectedEquipForParam()
@@ -1499,113 +1077,6 @@ namespace TechEquipments
             return ((EquipName ?? "").Trim(), "");
         }
 
-        private async Task PollParamOnceAsync(CancellationToken ct)
-        {
-            var (equipName, equipType) = ResolveSelectedEquipForParam();
-
-            if (string.IsNullOrWhiteSpace(equipName))
-            {
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    ParamStatusText = "Param: select equipment";
-                    ParamItems.Clear();
-                    _currentParamModelType = null;
-                });
-                return;
-            }
-
-            var TypeGroup = EquipTypeRegistry.GetGroup(equipType ?? "");
-
-            object model = TypeGroup switch
-            {
-                EquipTypeGroup.AI => await _equipmentService.ReadEquipParamsAsync<AIParam>(equipName, ct),
-                EquipTypeGroup.DI => await _equipmentService.ReadEquipParamsAsync<DIParam>(equipName, ct),
-                EquipTypeGroup.DO => await _equipmentService.ReadEquipParamsAsync<DOParam>(equipName, ct),
-                EquipTypeGroup.Atv => await _equipmentService.ReadEquipParamsAsync<AtvParam>(equipName, ct),
-                EquipTypeGroup.Motor => await _equipmentService.ReadEquipParamsAsync<MotorParam>(equipName, ct),
-                EquipTypeGroup.VGA_EL => await _equipmentService.ReadEquipParamsAsync<VGA_ElParam>(equipName, ct),
-                EquipTypeGroup.VGA => await _equipmentService.ReadEquipParamsAsync<VGAParam>(equipName, ct),
-                EquipTypeGroup.VGD => await _equipmentService.ReadEquipParamsAsync<VGDParam>(equipName, ct),
-                _ => null
-            };
-
-            ct.ThrowIfCancellationRequested();
-
-            await Dispatcher.InvokeAsync(() =>
-            {
-                // Сброс области при смене типа группы
-                Param_ResetAreaIfTypeGroupChanged(TypeGroup);
-
-                _suppressParamWritesFromPolling = true;
-
-                try
-                {
-                    if (model == null)
-                    {
-                        ParamStatusText = "Updating ...";
-                        ParamItems.Clear();
-                        _currentParamModelType = null;
-                        return;
-                    }
-
-                    ApplyParamModelToUi(model);
-                    _paramReadCycles++;
-                    ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_paramReadCycles} cycles";
-                }
-                finally
-                {
-                    // Снимаем подавление ПОСЛЕ того, как UI применит биндинги/создаст визуальные элементы
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        _suppressParamWritesFromPolling = false;
-                    }), DispatcherPriority.ContextIdle); // можно Background, но ContextIdle обычно надежнее
-                }
-            });
-        }
-
-        private void ApplyParamModelToUi(object model)
-        {
-            CurrentParamModel = model;
-            var modelType = model.GetType();
-
-            // Если модель поменялась (например AI -> DI), пересоздаём строки
-            if (_currentParamModelType != modelType)
-            {
-                ParamItems.Clear();
-
-                var props = modelType
-                    .GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
-                    .Where(p => p.CanRead)
-                    .OrderBy(p => p.MetadataToken) // обычно сохраняет порядок объявления в классе
-                    .ToList();
-
-                foreach (var p in props)
-                {
-                    ParamItems.Add(new ParamItem
-                    {
-                        Name = p.Name,
-                        Value = p.GetValue(model)
-                    });
-                }
-
-                _currentParamModelType = modelType;
-                return;
-            }
-
-            // Та же модель — просто обновляем значения
-            var map = modelType
-                .GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
-                .Where(p => p.CanRead)
-                .ToDictionary(p => p.Name, p => p, StringComparer.Ordinal);
-
-            foreach (var row in ParamItems)
-            {
-                if (map.TryGetValue(row.Name, out var prop))
-                    row.Value = prop.GetValue(model);
-            }
-        }
-
-        // Взводим, когда пользователь начал редактировать поле (focus в TextEdit)
         public void BeginParamFieldEdit()
         {
             Interlocked.Exchange(ref _isEditingField, 1);
@@ -1620,261 +1091,49 @@ namespace TechEquipments
         #endregion
 
         #region Param Write
-
         /// <summary>
-        /// PLC: запись значения из UI (для SimpleButton и т.п.).
+        /// PLC: запись значения из UI (SimpleButton и т.п.).
+        /// Теперь вся логика в ParamWriteController.
         /// </summary>
         public async void ParamPlc_WriteFromUi(PlcRefRow row, object? newValue)
         {
-            await Plc_WriteValueAsync(row, newValue);
-        }
-
-        // для checkBox
-        public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
-        {
-            // 0) подавляем записи, если это откат значения из UI (Cancel в confirm)
-            if (_suppressParamWritesFromUiRollback)
+            if (_paramWriteController == null)
                 return;
 
-            // 1) Не пишем, если это обновление прилетело из polling-READ
-            if (_suppressParamWritesFromPolling)
-                return;
-
-            // 2) Пишем только на вкладке Param
-            if (SelectedMainTab != MainTabKind.Param)
-                return;
-
-            // 3) Нужно имя оборудования
-            var equip = (EquipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(equip))
-                return;
-
-            // 4) Определяем EquipItem из Tag
-            if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
-                return;
-
-            // ветка: ToggleSwitchEdit (Tag = PlcRefRow)
-            if (sender is FrameworkElement fePlc && fePlc.Tag is PlcRefRow plcRow)
-            {
-                // блокируем “ложные” вызовы, если нужно (например при массовом обновлении из polling)
-                if (_suppressParamWritesFromPolling)
-                    return;
-
-                await Plc_WriteValueAsync(plcRow, e.NewValue);
-                return;
-            }
-
-            // Confirm только при включении ForceCmd (false -> true).
-            if (equipItem.Equals("ForceCmd", StringComparison.OrdinalIgnoreCase))
-            {
-                // Важно: e.OldValue/e.NewValue обычно bool? для CheckEdit
-                bool oldVal = ToBool(e.OldValue);
-                bool newVal = ToBool(e.NewValue);
-
-                // Показываем окно ТОЛЬКО при включении форса
-                if (!oldVal && newVal)
-                {
-                    var res = DXMessageBox.Show(this,"Do you really want to enable channel forcing?","Attention!!!",MessageBoxButton.OKCancel,MessageBoxImage.Warning);
-
-                    if (res != MessageBoxResult.OK)
-                    {
-                        // Cancel -> откатить чекбокс и не писать в SCADA
-                        _suppressParamWritesFromUiRollback = true;
-                        try
-                        {
-                            // откатываем именно IsChecked
-                            if (sender is CheckEdit ce)
-                                ce.IsChecked = (e.OldValue as bool?) ?? oldVal;
-                        }
-                        finally
-                        {
-                            _suppressParamWritesFromUiRollback = false;
-                        }
-
-                        return;
-                    }
-                }
-            }
-
-            // 5) Пытаемся нормализовать значение (у тебя эти поля int)
-            //    e.NewValue может быть string/null в процессе набора — аккуратно.
-            if (!TryNormalizeWriteValue(e.NewValue, out string writeValue))
-                return;
-
-            await WriteParamAsync(equip, equipItem, writeValue);
-        }
-
-        // по нажатию кнопки Еnter
-        public async void ParamEditable_EditValueChanged(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            // пишем только по Enter
-            if (e.Key != System.Windows.Input.Key.Enter && e.Key != System.Windows.Input.Key.Return)
-                return;
-
-            // PLC ветка: если Tag = PlcRefRow, то пишем через TagInfo/TagWrite
-            if (sender is FrameworkElement fePlc && fePlc.Tag is PlcRefRow plcRow)
-            {
-                var edit = sender as DevExpress.Xpf.Editors.BaseEdit;
-                var newVal = edit?.EditValue;
-
-                e.Handled = true;
-
-                await Plc_WriteValueAsync(plcRow, newVal);
-                return;
-            }
-
-            // 1) Не пишем, если это обновление прилетело из polling-READ
-            if (_suppressParamWritesFromPolling)
-                return;
-
-            // 2) Пишем только на вкладке Param
-            if (SelectedMainTab != MainTabKind.Param)
-                return;
-
-            // 3) Нужно имя оборудования
-            var equip = (EquipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(equip))
-                return;
-
-            // 4) Определяем EquipItem из Tag
-            if (sender is not FrameworkElement fe || fe.Tag is not string equipItem || string.IsNullOrWhiteSpace(equipItem))
-                return;
-
-            // 5) Берём текущее значение из редактора
-            object? newValue = (sender as DevExpress.Xpf.Editors.BaseEdit)?.EditValue;
-
-            if (!TryNormalizeWriteValue(newValue, out string writeValue))
-                return;
-
-            e.Handled = true; // чтобы Enter не "пищал" / не делал лишнего
-
-            // закончили ввод
-            EndParamFieldEdit();
-
-            await WriteParamAsync(equip, equipItem, writeValue);
+            await _paramWriteController.WritePlcFromUiAsync(row, newValue);
         }
 
         /// <summary>
-        /// Универсальная запись параметра по equipItem (Tag) и значению из UI.
-        /// Используется ToggleButton/кастомными контролами без DevExpress EditValueChanged.
+        /// DevExpress EditValueChanged (CheckEdit и др.) -> запись параметров.
+        /// </summary>
+        public async void ParamEditable_EditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        {
+            if (_paramWriteController == null)
+                return;
+
+            await _paramWriteController.OnEditValueChangedAsync(sender, e);
+        }
+
+        /// <summary>
+        /// KeyDown/PreviewKeyDown: запись по Enter.
+        /// </summary>
+        public async void ParamEditable_EditValueChanged(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (_paramWriteController == null)
+                return;
+
+            await _paramWriteController.OnPreviewKeyDownAsync(sender, e);
+        }
+
+        /// <summary>
+        /// Универсальная запись параметра (если не DevExpress событие).
         /// </summary>
         public async void ParamEditable_WriteFromUi(string? equipItem, object? newValue)
         {
-            if (_suppressParamWritesFromPolling)
+            if (_paramWriteController == null)
                 return;
 
-            if (SelectedMainTab != MainTabKind.Param)
-                return;
-
-            var (equipName, _) = ResolveSelectedEquipForParam();
-            var equip = (equipName ?? "").Trim();
-
-            if (string.IsNullOrWhiteSpace(equip))
-                return;
-
-            if (string.IsNullOrWhiteSpace(equipItem))
-                return;
-
-            if (!TryNormalizeWriteValue(newValue, out string writeValue))
-                return;
-
-            await WriteParamAsync(equip, equipItem, writeValue);
-        }
-
-        private static bool TryNormalizeWriteValue(object? newValue, out string str)
-        {
-            str = "";
-
-            if (newValue == null)
-                return false;
-
-            if (newValue is bool b)
-            {
-                str = b ? "1" : "0";
-                return true;
-            }
-
-            // DevExpress иногда дает string во время набора
-            if (newValue is string s)
-            {
-                s = s.Trim();
-                if (s.Length == 0) return false;
-
-                // просто замена запятой на точку
-                s = s.Replace(',', '.');
-
-                // Разрешаем только число (под твои поля)
-                if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
-                {
-                    str = i.ToString(CultureInfo.InvariantCulture);
-                    return true;
-                }
-
-                if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
-                {
-                    str = d.ToString(CultureInfo.InvariantCulture);
-                    return true;
-                }
-
-                return false;
-            }
-
-            // Если пришло число напрямую
-            if (newValue is int i2) { str = i2.ToString(CultureInfo.InvariantCulture); return true; }
-            if (newValue is double d2) { str = d2.ToString(CultureInfo.InvariantCulture); return true; }
-
-            // Фоллбек
-            str = Convert.ToString(newValue, CultureInfo.InvariantCulture) ?? "";
-            return str.Length > 0;
-        }
-
-        private async Task WriteParamAsync(string equipName, string equipItem, string writeValue)
-        {
-            try
-            {
-                // Запись должна “победить” чтение: берем тот же gate, что и polling
-                await _paramRwGate.WaitAsync(CancellationToken.None);
-                try
-                {
-                    // Пауза чтения на время записи + чуть после
-                    _paramReadResumeAtUtc = DateTime.UtcNow.AddMilliseconds(400);
-
-                    BottomText = $"Write: {equipItem}={writeValue} ...";
-                    await Dispatcher.Yield(DispatcherPriority.Render);
-
-                    // Пишем через сервис
-                    await _equipmentService.WriteEquipItemAsync(equipName, equipItem, writeValue);
-
-                    BottomText = $"Wrote: {equipItem}={writeValue} at {DateTime.Now:HH:mm:ss}";
-
-                    // После записи можно сделать быстрый перечит (по желанию):
-                    // await PollParamOnceSafeAsync(CancellationToken.None);
-                }
-                finally
-                {
-                    _paramRwGate.Release();
-                }
-            }
-            catch (Exception ex)
-            {
-                BottomText = $"Write error ({equipItem}): {ex.Message}";
-            }
-        }
-
-        // helper: безопасно привести object? к bool
-        private static bool ToBool(object? v)
-        {
-            try
-            {
-                if (v is bool b) return b;
-                //if (v is bool? bn) return bn.GetValueOrDefault(false);
-                if (v == null) return false;
-                return Convert.ToBoolean(v);
-            }
-            catch
-            {
-                return false;
-            }
+            await _paramWriteController.WriteFromUiAsync(equipItem, newValue);
         }
 
         #endregion
@@ -1908,58 +1167,7 @@ namespace TechEquipments
         /// Param tab: генерирует QR по текущему тексту поиска (EquipName) или выбранному оборудованию.
         /// Автосохраняет в .\QRCodes\Station\Type\*.png и показывает DevExpress окно об успехе.
         /// </summary>
-        public async Task Param_GenerateQrAsync()
-        {
-            var text = string.Empty;
-            var outputDir = string.Empty;
-            var path = string.Empty;
-
-            try
-            {
-                // 0) Если файл уже существует — не генерируем дубликаты (UI может не успеть скрыть кнопку)
-                if (Param_IsQrAlreadyGenerated())
-                {
-                    text = GetQrTextOrEmpty();
-                    outputDir = GetQrOutputDirectory(text);
-                    path = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
-
-                    DXMessageBox.Show(this, $"QR уже существует:\n{path}", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
-                    NotifyParamQrUiChanged();
-
-                    return;
-                }
-
-                // 1) Берём текст: сначала поле поиска, если пусто — выбранное оборудование
-                text = (EquipName ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(text))
-                    text = (SelectedListBoxEquipment?.Equipment ?? "").Trim();
-
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    DXMessageBox.Show(this, "Нет текста для QR.\nВведи имя в поиск или выбери оборудование в списке.", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                // 2) Авто-папка: Station\Type
-                outputDir = GetQrOutputDirectory(text);
-
-                // 3) Генерация PNG
-                path = await _qrCodeService.GenerateQrPngAsync(text, outputDirectory: outputDir);
-
-                // 4) UI-статусы (по желанию)
-                ParamStatusText = $"QR saved: {System.IO.Path.GetFileName(path)}";
-                //BottomText = $"QR saved: {path}";
-
-                // 5) DevExpress модалка об успехе
-                DXMessageBox.Show(this, $"QR-код успешно сохранён:\n{path}","QR",MessageBoxButton.OK,MessageBoxImage.Information);
-                // после сохранения файл появился -> кнопку нужно спрятать
-                NotifyParamQrUiChanged();
-            }
-            catch (Exception ex)
-            {
-                DXMessageBox.Show(this,ex.ToString(),"QR generate error",MessageBoxButton.OK,MessageBoxImage.Error);
-            }
-        }
+        public Task Param_GenerateQrAsync() => _qrController.GenerateQrAsync();
 
         /// <summary>
         /// Param tab: сканирует QR с камеры.
@@ -1970,218 +1178,20 @@ namespace TechEquipments
         /// 4) выделяет оборудование,
         /// 5) переключает на Param и запускает polling.
         /// </summary>
-        public async Task Param_ScanQrToExternalTagAndSearchAsync()
-        {
-            try
-            {
-                // 1) Сканируем камерой (модально)
-                var text = await _qrScannerService.ScanFromCameraAsync(this);
-                if (string.IsNullOrWhiteSpace(text))
-                    return;
-
-                text = text.Trim();
-
-                // 2) Ставим фильтры Station/Type по данным оборудования (если найдём)
-                // Важно: это нужно сделать ДО DoIncrementalSearch, иначе элемент может быть "за фильтром".
-                TryApplyStationTypeFiltersFromQr(text);
-
-                // 3) Пишем в внешний тег (best-effort: если не выйдет — не мешаем поиску)
-                try
-                {
-                    await _equipmentService.SetExternalTagAsync(text);
-                }
-                catch
-                {
-                    // Не критично
-                }
-
-                // 4) Подставляем в поле поиска
-                EquipName = text;
-
-                // 5) Выделяем элемент в ListBox (уже с правильными фильтрами)
-                DoIncrementalSearch(text);
-
-                // 6) Переключаем на Param + запускаем polling
-                if (SelectedMainTab != MainTabKind.Param)
-                    SelectedMainTabIndex = (int)MainTabKind.Param;
-
-                StartParamPolling();
-
-                ParamStatusText = $"QR scanned: {text}";
-            }
-            catch (Exception ex)
-            {
-                DXMessageBox.Show(this, ex.ToString(), "QR scan error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        /// <summary>
-        /// Делает безопасную часть пути (для папок Station/Type).
-        /// </summary>
-        private static string MakeSafePathPart(string? s)
-        {
-            s = (s ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(s))
-                return "Unknown";
-
-            var invalid = System.IO.Path.GetInvalidFileNameChars();
-            var safe = new string(s.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
-
-            // дополнительно: чтобы не было точек/пробелов в конце
-            safe = safe.Trim().TrimEnd('.', ' ');
-
-            if (safe.Length == 0)
-                safe = "Unknown";
-
-            // чтобы папки не были супер-длинными
-            if (safe.Length > 60)
-                safe = safe.Substring(0, 60);
-
-            return safe;
-        }
-
-        /// <summary>
-        /// Ищет оборудование по тексту QR в ПОЛНОМ списке (без учёта фильтров).
-        /// Сначала точное совпадение, затем StartsWith/Contains по Equipment и Tag.
-        /// </summary>
-        private EquipListBoxItem? FindEquipmentForQrText(string qrText)
-        {
-            qrText = (qrText ?? "").Trim();
-            if (qrText.Length == 0)
-                return null;
-
-            // 1) exact Equipment
-            var it =
-                Equipments.FirstOrDefault(x => string.Equals(x.Equipment, qrText, StringComparison.OrdinalIgnoreCase))
-                ?? Equipments.FirstOrDefault(x => string.Equals(x.Tag, qrText, StringComparison.OrdinalIgnoreCase));
-
-            if (it != null)
-                return it;
-
-            // 2) startswith Equipment, then Tag
-            it =
-                Equipments.FirstOrDefault(x => (x.Equipment ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase))
-                ?? Equipments.FirstOrDefault(x => (x.Tag ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase));
-
-            if (it != null)
-                return it;
-
-            // 3) contains Equipment, then Tag
-            it =
-                Equipments.FirstOrDefault(x => (x.Equipment ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase))
-                ?? Equipments.FirstOrDefault(x => (x.Tag ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase));
-
-            return it;
-        }
-
-        /// <summary>
-        /// Определяет папку для сохранения QR: .\QRCodes\Station\TypeGroup
-        /// Логика:
-        /// - если найдено оборудование по тексту -> берём Station из него и TypeGroup из его Type
-        /// - иначе -> берём текущий фильтр SelectedStation и SelectedTypeFilter (TypeGroup)
-        /// </summary>
-        private string GetQrOutputDirectory(string qrText)
-        {
-            var baseDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "QRCodes");
-
-            var match = FindEquipmentForQrText(qrText);
-
-            // --- Station ---
-            string stationPart =
-                !string.IsNullOrWhiteSpace(match?.Station) ? match!.Station :
-                !string.IsNullOrWhiteSpace(SelectedStation) ? SelectedStation :
-                "All";
-
-            // --- TypeGroup ---
-            // Если нашли оборудование -> вычисляем группу по его Type
-            // Иначе берём текущий выбранный фильтр-группу
-            EquipTypeGroup group =
-                match != null
-                    ? EquipTypeRegistry.GetGroup(match.Type ?? "")
-                    : SelectedTypeFilter;
-
-            string groupPart =
-                group != EquipTypeGroup.All
-                    ? group.ToString()      // например "AI", "DI", ...
-                    : "All";
-
-            stationPart = MakeSafePathPart(stationPart);
-            groupPart = MakeSafePathPart(groupPart);
-
-            return System.IO.Path.Combine(baseDir, stationPart, groupPart);
-        }
-
-        /// <summary>
-        /// Применяет фильтры Station/Type по найденному элементу оборудования.
-        /// Возвращает true, если удалось найти и применить.
-        /// </summary>
-        private bool TryApplyStationTypeFiltersFromQr(string qrText)
-        {
-            var match = FindEquipmentForQrText(qrText);
-            if (match == null)
-                return false;
-
-            // 1) Station
-            if (!string.IsNullOrWhiteSpace(match.Station))
-                SelectedStation = match.Station.Trim();
-
-            // 2) TypeFilter (группа по match.Type)
-            var grp = EquipTypeRegistry.GetGroup(match.Type ?? "");
-            SelectedTypeFilter = grp;
-
-            return true;
-        }
-
-        /// <summary>
-        /// Возвращает текст, по которому сейчас будет генерироваться QR:
-        /// сначала EquipName, если пусто — выбранное оборудование.
-        /// </summary>
-        private string GetQrTextOrEmpty()
-        {
-            var text = (EquipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(text))
-                text = (SelectedListBoxEquipment?.Equipment ?? "").Trim();
-
-            return text ?? "";
-        }
+        public Task Param_ScanQrToExternalTagAndSearchAsync() => _qrController.ScanQrToExternalTagAndSearchAsync();
 
         /// <summary>
         /// Проверяет, существует ли уже QR PNG файл для текущего текста (с учётом Station\TypeGroup папки).
         /// Это используется для скрытия кнопки Generate QR.
         /// </summary>
-        public bool Param_IsQrAlreadyGenerated()
-        {
-            var text = GetQrTextOrEmpty();
-            if (string.IsNullOrWhiteSpace(text))
-                return false;
-
-            var outputDir = GetQrOutputDirectory(text); // у тебя уже есть Station\TypeGroup логика
-            var expectedPath = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
-
-            return File.Exists(expectedPath);
-        }
+        public bool Param_IsQrAlreadyGenerated() => _qrController.IsQrAlreadyGenerated();
 
         /// <summary>
         /// True => показываем кнопку Generate QR.
         /// False => прячем (нет текста для QR или файл уже существует).
         /// Используется в XAML через BoolToVis.
         /// </summary>
-        public bool Param_ShowGenerateQrButton => GetParamShowGenerateQrButton();
-
-        /// <summary>
-        /// Реальная логика показа кнопки (вынесена в метод, чтобы было удобно отлаживать).
-        /// </summary>
-        private bool GetParamShowGenerateQrButton()
-        {
-            var text = GetQrTextOrEmpty();
-            if (string.IsNullOrWhiteSpace(text))
-                return false;
-
-            var outputDir = GetQrOutputDirectory(text); // Station\TypeGroup
-            var expectedPath = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
-
-            return !File.Exists(expectedPath);
-        }
+        public bool Param_ShowGenerateQrButton => _qrController.ShowGenerateQrButton;
 
         /// <summary>
         /// Уведомляет UI, что нужно пересчитать Visibility кнопки Generate QR.
@@ -2193,176 +1203,171 @@ namespace TechEquipments
 
         #endregion
 
-        #region UiStatePersistence
+        #region IDbHost
 
-        /// <summary>
-        /// Пытается восстановить стартовое состояние из ExternalTag.
-        /// Правила:
-        /// - если ExternalTag НЕ пустой и НЕ "Unknown":
-        ///     EquipName = ExternalTag
-        ///     SelectedTab = 0 (Param)
-        ///     DbDate = Today
-        ///     SelectedStation/SelectedTypeFilter выставим позже (после загрузки Equipments)
-        /// - если пустой: возвращаем false (тогда восстановим user-state.json)
-        /// </summary>
-        private async Task<bool> TryApplyStartupStateFromExternalTagAsync()
+        Dispatcher IDbHost.Dispatcher => Dispatcher;
+
+        bool IDbHost.IsDbConnected => IsDbConnected;
+        void IDbHost.SetDbConnected(bool value) => IsDbConnected = value;
+
+        bool IDbHost.IsDbLoading => IsDbLoading;
+        void IDbHost.SetDbLoading(bool value) => IsDbLoading = value;
+
+        string IDbHost.BottomText
         {
-            try
-            {
-                var ext = await _equipmentService.GetExternalTagAsync(CancellationToken.None);
-
-                if (string.IsNullOrWhiteSpace(ext) ||
-                    ext.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                {
-                    _startupUsedExternalTag = false;
-                    _startupExternalTag = "";
-                    return false;
-                }
-
-                _startupUsedExternalTag = true;
-                _startupExternalTag = ext.Trim();
-
-                // Сразу очищаем ExternalTag, чтобы не конфликтовал при следующем запуске
-                // Best-effort: не ломаем старт, если запись не удалась
-                try
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                    await _equipmentService.SetExternalTagAsync("", cts.Token);
-                }
-                catch
-                {
-                    // ignore
-                }
-
-
-                // Важно: чтобы не запускались автодействия/автосейв во время проставления
-                _isRestoringState = true;
-                try
-                {
-                    // 1) Берём имя из ExternalTag
-                    EquipName = _startupExternalTag;
-
-                    // 2) Всегда Param tab
-                    SelectedMainTabIndex = (int)MainTabKind.Param;
-
-                    // 3) Дата = сегодня
-                    DbDate = DateTime.Today;
-
-                    // 4) Фильтры Station/TypeGroup выставим после загрузки Equipments,
-                    //    пока ставим безопасные значения
-                    SelectedStation = "All";
-                    SelectedTypeFilter = EquipTypeGroup.All;
-                }
-                finally
-                {
-                    _isRestoringState = false;
-                }
-
-                return true;
-            }
-            catch
-            {
-                // Если что-то пошло не так — просто откатываемся на восстановление из файла
-                _startupUsedExternalTag = false;
-                _startupExternalTag = "";
-                return false;
-            }
+            get => BottomText;
+            set => BottomText = value;
         }
 
-        /// <summary>
-        /// Восстанавливает UI-состояние из user-state.json.
-        /// Важно: защищаемся флагом _isRestoringState, чтобы не запускать автосейв во время восстановления.
-        /// </summary>
-        private async Task RestoreStateAsync()
+        MainTabKind IDbHost.SelectedMainTab => SelectedMainTab;
+
+        bool IDbHost.IsDbTabSelected => IsDbTabSelected;
+
+        DateTime IDbHost.DbDate => DbDate;
+
+        string IDbHost.DbFilter => (EquipName ?? "").Trim();
+
+        System.Collections.ObjectModel.ObservableCollection<OperatorActDTO> IDbHost.OperatorActRows => OperatorActRows;
+        System.Collections.ObjectModel.ObservableCollection<AlarmHistoryDTO> IDbHost.AlarmHistoryRows => AlarmHistoryRows;
+
+        #endregion
+
+        #region IQrHost
+
+        System.Windows.Window IQrHost.OwnerWindow => this;
+
+        System.Collections.ObjectModel.ObservableCollection<EquipListBoxItem> IQrHost.Equipments => Equipments;
+
+        EquipListBoxItem? IQrHost.SelectedListBoxEquipment => SelectedListBoxEquipment;
+
+        string IQrHost.EquipName
         {
-            _isRestoringState = true;
-            try
-            {
-                var state = await _stateService.LoadAsync();
-                if (state == null) return;
-
-                EquipName = state.LastEquipName ?? "";
-                DbDate = state.DbDate.Date;
-
-                SelectedStation = state.SelectedStation ?? "All";
-                SelectedTypeFilter = state.SelectedTypeFilter;
-
-                SelectedMainTabIndex = (int)state.SelectedTab;
-            }
-            finally
-            {
-                _isRestoringState = false;
-            }
+            get => EquipName;
+            set => EquipName = value;
         }
 
-        /// <summary>
-        /// Если внешний тег (ExternalTag) содержит оборудование — он имеет приоритет.
-        /// Если пустой/Unknown — оставляем восстановленное состояние.
-        /// </summary>
-        private async Task ApplyExternalTagIfAnyAsync()
+        string IQrHost.SelectedStation
         {
-            try
-            {
-                var ext = await _equipmentService.GetExternalTagAsync(CancellationToken.None);
-
-                if (string.IsNullOrWhiteSpace(ext) ||
-                    ext.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                // ExternalTag найден -> используем его
-                EquipName = ext.Trim();
-
-                // Обычно логично на первую вкладку, но можно оставить как есть:
-                //SelectedMainTabIndex = (int)MainTabKind.SOE;
-            }
-            catch
-            {
-                // ExternalTag не критичен
-            }
+            get => SelectedStation;
+            set => SelectedStation = value;
         }
 
-        /// <summary>
-        /// Сохранение состояния (debounce)
-        /// </summary>
-        private void InitStateSaveTimer()
+        EquipTypeGroup IQrHost.SelectedTypeFilter
         {
-            _stateSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-            _stateSaveTimer.Tick += async (_, __) =>
-            {
-                _stateSaveTimer.Stop();
-                await SaveStateAsync();
-            };
+            get => SelectedTypeFilter;
+            set => SelectedTypeFilter = value;
         }
 
-        /// <summary>
-        /// Планирование сохранения (вызов из setter’ов или централизованно)
-        /// </summary>
-        private void ScheduleStateSave()
-        {
-            if (_isRestoringState) return;
+        MainTabKind IQrHost.SelectedMainTab => SelectedMainTab;
 
-            _stateSaveTimer.Stop();
-            _stateSaveTimer.Start();
+        int IQrHost.SelectedMainTabIndex
+        {
+            get => SelectedMainTabIndex;
+            set => SelectedMainTabIndex = value;
         }
 
-        /// <summary>
-        /// Само сохранение
-        /// </summary>
-        private async Task SaveStateAsync()
+        void IQrHost.DoIncrementalSearch(string text) => DoIncrementalSearch(text);
+
+        void IQrHost.StartParamPolling() => StartParamPolling();
+
+        void IQrHost.NotifyParamQrUiChanged() => NotifyParamQrUiChanged();
+
+        void IQrHost.SetParamStatusText(string text) => ParamStatusText = text;
+
+        #endregion
+
+        #region IParamHost
+
+        // ===== IParamHost implementation =====
+
+        Dispatcher IParamHost.Dispatcher => Dispatcher;
+
+        MainTabKind IParamHost.SelectedMainTab => SelectedMainTab;
+
+        bool IParamHost.TrendIsChartVisible => Trend.IsChartVisible;
+
+        bool IParamHost.IsEditingField => IsEditingField;
+
+        SemaphoreSlim IParamHost.ParamRwGate => _paramRwGate;
+
+        DateTime IParamHost.ParamReadResumeAtUtc
         {
-            if (_isRestoringState) return;
-
-            var state = new UserState
-            {
-                LastEquipName = (EquipName ?? "").Trim(),
-                DbDate = DbDate.Date,
-                SelectedTab = (MainTabKind)SelectedMainTabIndex,
-                SelectedStation = (SelectedStation ?? "All").Trim(),
-                SelectedTypeFilter = SelectedTypeFilter
-            };
-
-            await _stateService.SaveAsync(state);
+            get => _paramReadResumeAtUtc;
+            set => _paramReadResumeAtUtc = value;
         }
+
+        bool IParamHost.SuppressParamWritesFromPolling
+        {
+            get => _suppressParamWritesFromPolling;
+            set => _suppressParamWritesFromPolling = value;
+        }
+
+        int IParamHost.ParamReadCycles
+        {
+            get => _paramReadCycles;
+            set => _paramReadCycles = value;
+        }
+
+        string IParamHost.ParamStatusText
+        {
+            get => ParamStatusText;
+            set => ParamStatusText = value;
+        }
+
+        string IParamHost.BottomText
+        {
+            get => BottomText;
+            set => BottomText = value;
+        }
+
+        object IParamHost.CurrentParamModel
+        {
+            get => CurrentParamModel;
+            set => CurrentParamModel = value;
+        }
+
+        ObservableCollection<ParamItem> IParamHost.ParamItems => ParamItems;
+
+        (string equipName, string equipType) IParamHost.ResolveSelectedEquipForParam()
+            => ResolveSelectedEquipForParam();
+
+        void IParamHost.Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup)
+            => Param_ResetAreaIfTypeGroupChanged(newGroup);
+
+        Task IParamHost.RefreshActiveParamSectionAsync(CancellationToken ct)
+            => RefreshActiveParamSectionAsync(ct);
+
+        Task IParamHost.PollTrendOnceSafeAsync(CancellationToken ct)
+            => _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
+
+        #endregion
+
+        #region ISoeHost
+        Window ISoeHost.OwnerWindow => this;
+        Dispatcher ISoeHost.Dispatcher => Dispatcher;
+
+        bool ISoeHost.IsLoading { get => IsLoading; set => IsLoading = value; }
+        int ISoeHost.LoadedCount { get => LoadedCount; set => LoadedCount = value; }
+        int ISoeHost.CurrentCount { get => CurrentCount; set => CurrentCount = value; }
+        int ISoeHost.TotalTrends { get => TotalTrends; set => TotalTrends = value; }
+        int ISoeHost.CurrentTrendIndex { get => CurrentTrendIndex; set => CurrentTrendIndex = value; }
+        string ISoeHost.CurrentTrendName { get => CurrentTrendName; set => CurrentTrendName = value; }
+
+        int ISoeHost.PerTrendMax => PerTrendMax;
+        int ISoeHost.TotalMax => TotalMax;
+
+        System.Collections.ObjectModel.ObservableCollection<EquipmentSOEDto> ISoeHost.EquipmentSoeRows => equipmentSOEDtos;
+        #endregion
+
+        #region IUiStateHost
+
+        Dispatcher IUiStateHost.Dispatcher => Dispatcher;
+
+        string IUiStateHost.EquipName { get => EquipName; set => EquipName = value; }
+        DateTime IUiStateHost.DbDate { get => DbDate; set => DbDate = value; }
+        string IUiStateHost.SelectedStation { get => SelectedStation; set => SelectedStation = value; }
+        EquipTypeGroup IUiStateHost.SelectedTypeFilter { get => SelectedTypeFilter; set => SelectedTypeFilter = value; }
+        int IUiStateHost.SelectedMainTabIndex { get => SelectedMainTabIndex; set => SelectedMainTabIndex = value; }
 
         #endregion
 
@@ -2437,8 +1442,8 @@ namespace TechEquipments
                 return;
 
             // пока нас интересует только VGD (DI/DO refs)
-            if (CurrentParamModel is not VGDParam)
-                return;
+            //if (CurrentParamModel is not VGDParam)
+            //    return;
 
             switch (CurrentParamSettingsPage)
             {
@@ -2446,11 +1451,11 @@ namespace TechEquipments
                     if (Equipments.Count == 0)
                         return;
 
-                    await RefreshVgdDiDoSectionAsync(ct);
+                    await RefreshDiDoSectionAsync(ct);
                     break;
 
                 case ParamSettingsPage.Plc:
-                    await RefreshVgdPlcSectionAsync(ct);
+                    await RefreshPlcSectionAsync(ct);
                     break;
 
                 default:
@@ -2465,33 +1470,45 @@ namespace TechEquipments
         /// - перечитывает DIParam/DOParam (Value может меняться)
         /// - синхронизирует ObservableCollection без мигания (update in-place)
         /// </summary>
-        private async Task RefreshVgdDiDoSectionAsync(CancellationToken ct)
+        private async Task RefreshDiDoSectionAsync(CancellationToken ct)
         {
             var (equipName, _) = ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
 
-            // сериализуем с Param чтением/записью (CtApi не любит параллельность)
+            // сериализуем с Param чтением/записью (CtApi не любит параллельность на одном соединении)
             await _paramRwGate.WaitAsync(ct);
             try
             {
                 // 1) refs
                 var refs = await _equipmentService.GetEquipRef(equipName, "TabDIDO", "State") ?? new List<string>();
+
                 var refNames = refs
                     .Where(s => !string.IsNullOrWhiteSpace(s) && !s.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                     .Select(s => s.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)                    
                     .ToList();
 
-                // 2) build new sets
-                var diNew = new Dictionary<string, DiDoRefRow>(StringComparer.OrdinalIgnoreCase);
-                var doNew = new Dictionary<string, DiDoRefRow>(StringComparer.OrdinalIgnoreCase);
+                if (refNames.Count == 0)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        ParamDiRows.Clear();
+                        ParamDoRows.Clear();
+                    });
+                    return;
+                }
+
+                // 2) разложим refs на DI и DO по EquipTypeGroup
+                var diEquip = new List<EquipListBoxItem>();
+                var doEquip = new List<EquipListBoxItem>();
 
                 foreach (var refName in refNames)
                 {
                     ct.ThrowIfCancellationRequested();
 
+                    // Быстрый поиск в списке (если у тебя нет _equipIndex — можно оставить FirstOrDefault)
                     var equip = Equipments.FirstOrDefault(x =>
                         string.Equals((x.Equipment ?? "").Trim(), refName, StringComparison.OrdinalIgnoreCase));
 
@@ -2501,24 +1518,67 @@ namespace TechEquipments
                     var grp = EquipTypeRegistry.GetGroup(equip.Type ?? "");
 
                     if (grp == EquipTypeGroup.DI)
-                    {
-                        var diParam = await _equipmentService.ReadEquipParamsAsync<DIParam>(equip.Equipment.Trim(), ct);
-                        if (diParam != null)
-                            diNew[equip.Equipment.Trim()] = new DiDoRefRow(equip, diParam);
-                    }
+                        diEquip.Add(equip);
                     else if (grp == EquipTypeGroup.DO)
-                    {
-                        var doParam = await _equipmentService.ReadEquipParamsAsync<DOParam>(equip.Equipment.Trim(), ct);
-                        if (doParam != null)
-                            doNew[equip.Equipment.Trim()] = new DiDoRefRow(equip, doParam);
-                    }
+                        doEquip.Add(equip);
                 }
 
-                // 3) sync collections on UI thread
+                // helper: параллельное выполнение задач с лимитом
+                async Task<List<TResult>> RunLimitedAsync<TItem, TResult>(
+                    List<TItem> items,
+                    int maxConcurrency,
+                    Func<TItem, Task<TResult>> work,
+                    CancellationToken token)
+                {
+                    var results = new System.Collections.Concurrent.ConcurrentBag<TResult>();
+                    using var sem = new SemaphoreSlim(Math.Max(1, maxConcurrency), Math.Max(1, maxConcurrency));
+
+                    var tasks = items.Select(async it =>
+                    {
+                        await sem.WaitAsync(token);
+                        try
+                        {
+                            var r = await work(it);
+                            results.Add(r);
+                        }
+                        finally
+                        {
+                            sem.Release();
+                        }
+                    });
+
+                    await Task.WhenAll(tasks);
+                    return results.ToList();
+                }
+
+                var maxPar = _config.GetValue<int>("CtApi:TagReadParallelism", 1);
+                if (maxPar < 1) maxPar = 1;
+
+                // 3) читаем DI/DO параллельно, но с лимитом
+                var diRows = await RunLimitedAsync(diEquip, maxPar, async equip =>
+                {
+                    var model = await _equipmentService.ReadEquipParamsAsync<DIParam>(equip.Equipment.Trim(), ct);
+                    return model != null ? new DiDoRefRow(equip, model) : null;
+                }, ct);
+
+                var doRows = await RunLimitedAsync(doEquip, maxPar, async equip =>
+                {
+                    var model = await _equipmentService.ReadEquipParamsAsync<DOParam>(equip.Equipment.Trim(), ct);
+                    return model != null ? new DiDoRefRow(equip, model) : null;
+                }, ct);
+
+                // nulls убрать
+                var diNew = diRows.Where(x => x != null).ToDictionary(x => x!.EquipName, StringComparer.OrdinalIgnoreCase);
+                var doNew = doRows.Where(x => x != null).ToDictionary(x => x!.EquipName, StringComparer.OrdinalIgnoreCase);
+
+                // 4) sync collections on UI thread
                 await Dispatcher.InvokeAsync(() =>
                 {
                     SyncRows(ParamDiRows, diNew);
+                    SortRowsByChanel(ParamDiRows);
+
                     SyncRows(ParamDoRows, doNew);
+                    SortRowsByChanel(ParamDoRows);
                 });
             }
             finally
@@ -2560,11 +1620,62 @@ namespace TechEquipments
             }
         }
 
-        private async Task RefreshVgdPlcSectionAsync(CancellationToken ct)
+        /// <summary>
+        /// Возвращает числовой ключ сортировки по ChanelShort:
+        /// "6.3.4" -> 006_003_004
+        /// "6.3"   -> 006_003_000
+        /// Если канал пустой/непарсится -> уходит в конец.
+        /// </summary>
+        private static long GetChanelSortKey(DiDoRefRow row)
+        {
+            if (row == null) return long.MaxValue;
+
+            var raw = (row.ChanelShort ?? "").Trim();
+            if (raw.Length == 0) return long.MaxValue;
+
+            // Разбираем "A.B.C" (или "A.B"). Если вдруг формат другой - будет в конец.
+            var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            static int ParsePart(string? s)
+                => int.TryParse(s, out var v) ? v : int.MaxValue;
+
+            var a = parts.Length > 0 ? ParsePart(parts[0]) : int.MaxValue;
+            var b = parts.Length > 1 ? ParsePart(parts[1]) : int.MaxValue;
+            var c = parts.Length > 2 ? ParsePart(parts[2]) : 0;
+
+            return (long)a * 1_000_000L + (long)b * 1_000L + (long)c;
+        }
+
+        /// <summary>
+        /// Переупорядочивает ObservableCollection в нужном порядке (через Move),
+        /// чтобы UI не мигал и не терял выделение.
+        /// </summary>
+        private static void SortRowsByChanel(ObservableCollection<DiDoRefRow> rows)
+        {
+            if (rows == null || rows.Count <= 1)
+                return;
+
+            var sorted = rows
+                .OrderBy(GetChanelSortKey)
+                .ThenBy(r => r.EquipName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Переставляем существующие объекты через Move (минимально инвазивно для UI)
+            for (int targetIndex = 0; targetIndex < sorted.Count; targetIndex++)
+            {
+                var item = sorted[targetIndex];
+                var currentIndex = rows.IndexOf(item);
+                if (currentIndex >= 0 && currentIndex != targetIndex)
+                    rows.Move(currentIndex, targetIndex);
+            }
+        }
+
+
+        private async Task RefreshPlcSectionAsync(CancellationToken ct)
         {
             // PLC refs сейчас нужны только для VGD
-            if (CurrentParamModel is not VGDParam)
-                return;
+            //if (CurrentParamModel is not VGDParam)
+            //    return;
 
             var (equipName, _) = ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
@@ -2573,6 +1684,33 @@ namespace TechEquipments
 
             const string category = "TabPLC";
             const string clusterEquipItem = "State";
+
+            // локальный helper: параллельный TagRead с лимитом
+            async Task<Dictionary<string, string?>> TagReadManyAsync(List<string> tags, int maxConcurrency, CancellationToken token)
+            {
+                var result = new System.Collections.Concurrent.ConcurrentDictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+                using var sem = new SemaphoreSlim(Math.Max(1, maxConcurrency), Math.Max(1, maxConcurrency));
+
+                var tasks = tags.Select(async tag =>
+                {
+                    await sem.WaitAsync(token);
+                    try
+                    {
+                        result[tag] = await _ctApiService.TagReadAsync(tag);
+                    }
+                    catch
+                    {
+                        result[tag] = null;
+                    }
+                    finally
+                    {
+                        sem.Release();
+                    }
+                });
+
+                await Task.WhenAll(tasks);
+                return new Dictionary<string, string?>(result, StringComparer.OrdinalIgnoreCase);
+            }
 
             await _paramRwGate.WaitAsync(ct);
             try
@@ -2587,25 +1725,31 @@ namespace TechEquipments
                 // 3) snapshot
                 var snapshot = await Dispatcher.InvokeAsync(() => ParamPlcRows.ToList());
 
-                // 4) I/O: TagInfo -> Unit -> TagRead
-                //var updates = new List<(PlcRefRow row, string tagName, string unit, double? value)>(snapshot.Count);
-                var updates = new List<(PlcRefRow row, string tagName, double? value, string unit, bool? forced)>(snapshot.Count);
+                // 4) I/O: TagInfo (только при пустых кешах) -> TagRead пакетно
+                var meta = new List<(PlcRefRow row, string tagName, string unit, string forcedTag)>(snapshot.Count);
+                var tagsToRead = new List<string>(snapshot.Count * 2);
 
                 foreach (var row in snapshot)
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    // --- resolve TagName (кэш) ---
-                    var tagName = row.TagName;
+                    // --- resolve TagName (кэш в row.TagName) ---
+                    var tagName = (row.TagName ?? "").Trim();
                     if (string.IsNullOrWhiteSpace(tagName))
                     {
                         var equipItem = GetPlcEquipItemForTagInfo(row);
-                        tagName = await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.{equipItem}\", 0)");
+                        try
+                        {
+                            tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.{equipItem}\", 0)") ?? "").Trim();
+                        }
+                        catch
+                        {
+                            tagName = "";
+                        }
                     }
 
-                    // --- resolve Unit (кэш) ---
-                    var unit = row.Unit;
-
+                    // --- resolve Unit (кэш в row.Unit) ---
+                    var unit = (row.Unit ?? "").Trim();
                     if (string.IsNullOrWhiteSpace(unit) &&
                         !string.IsNullOrWhiteSpace(tagName) &&
                         !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
@@ -2620,70 +1764,104 @@ namespace TechEquipments
                         }
                     }
 
-                    // --- read Value ---
-                    double? val = null;
-
-                    if (!string.IsNullOrWhiteSpace(tagName) &&
-                        !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                    // --- resolve ForcedTagName (кэш в row.ForcedTagName) ---
+                    var forcedTag = "";
+                    if (row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
                     {
-                        try
+                        forcedTag = (row.ForcedTagName ?? "").Trim();
+                        if (string.IsNullOrWhiteSpace(forcedTag))
                         {
-                            var raw = await _ctApiService.CicodeAsync($"TagRead(\"{tagName}\")");
-                            val = TryParseDouble(raw);
+                            try
+                            {
+                                forcedTag = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.ValueForced\", 0)") ?? "").Trim();
+                            }
+                            catch
+                            {
+                                forcedTag = "";
+                            }
                         }
-                        catch
-                        {
-                            val = null;
-                        }
+                    }
+
+                    // сохраняем мета для UI (в UI-thread применим кеши)
+                    meta.Add((row, tagName, unit, forcedTag));
+
+                    // собираем теги на чтение (только валидные)
+                    if (!string.IsNullOrWhiteSpace(tagName) && !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                        tagsToRead.Add(tagName);
+
+                    if (!string.IsNullOrWhiteSpace(forcedTag) && !forcedTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                        tagsToRead.Add(forcedTag);
+                }
+
+                // ничего читать
+                tagsToRead = tagsToRead.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var rawMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+                if (tagsToRead.Count > 0)
+                {
+                    var maxPar = _config.GetValue<int>("CtApi:TagReadParallelism", 1);
+                    if (maxPar < 1) maxPar = 1;
+
+                    rawMap = await TagReadManyAsync(tagsToRead, maxPar, ct);
+                }
+
+                // 5) подготовка updates
+                var updates = new List<(PlcRefRow row, string tagName, double? value, string unit, bool? forced, string forcedTag)>(meta.Count);
+
+                foreach (var m in meta)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    double? val = null;
+                    if (!string.IsNullOrWhiteSpace(m.tagName) &&
+                        rawMap.TryGetValue(m.tagName, out var raw) &&
+                        raw != null)
+                    {
+                        val = TryParseDouble(raw);
                     }
 
                     bool? forced = null;
-
-                    if (row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
+                    if (m.row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
                     {
-                        try
+                        if (!string.IsNullOrWhiteSpace(m.forcedTag) &&
+                            rawMap.TryGetValue(m.forcedTag, out var fraw) &&
+                            fraw != null)
                         {
-                            // ⚠️ Имя equipItem для forced — предполагаю "ValueForced".
-                            // Если у тебя другое имя — скажи, заменим.
-                            var forcedTag = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.ValueForced\", 0)") ?? "").Trim();
-
-                            if (!string.IsNullOrWhiteSpace(forcedTag) && !forcedTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var forcedRaw = await _ctApiService.CicodeAsync($"TagRead(\"{forcedTag}\")");
-
-                                // forced может быть "0/1" или "True/False" — обработаем оба
-                                forced = forcedRaw != null &&
-                                         (forcedRaw.Trim().Equals("1") ||
-                                          forcedRaw.Trim().Equals("True", StringComparison.OrdinalIgnoreCase));
-                            }
+                            var s = fraw.Trim();
+                            forced = s == "1" || s.Equals("True", StringComparison.OrdinalIgnoreCase);
                         }
-                        catch
+                        else
                         {
-                            forced = null;
+                            forced = false;
                         }
                     }
 
-                    updates.Add((row, tagName, val, unit, forced));
+                    updates.Add((m.row, m.tagName, val, m.unit, forced, m.forcedTag));
                 }
 
-                // 5) apply UI
+                // 6) apply UI (одним заходом)
                 await Dispatcher.InvokeAsync(() =>
                 {
                     foreach (var u in updates)
                     {
+                        // кеши мета
                         if (!string.IsNullOrWhiteSpace(u.tagName))
                             u.row.TagName = u.tagName;
 
                         if (!string.IsNullOrWhiteSpace(u.unit) && !u.unit.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                             u.row.Unit = u.unit;
 
+                        if (!string.IsNullOrWhiteSpace(u.forcedTag) && !u.forcedTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                            u.row.ForcedTagName = u.forcedTag;
+
+                        // значение
                         u.row.UpdateValue(u.value);
 
-                        // ✅ forced
+                        // forced
                         if (u.forced.HasValue)
                             u.row.ValueForced = u.forced.Value;
                         else if (u.row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
-                            u.row.ValueForced = false; // если не прочитали — считаем не forced
+                            u.row.ValueForced = false;
                     }
                 });
             }
@@ -2801,6 +1979,51 @@ namespace TechEquipments
         }
 
         /// <summary>
+        /// Переход к оборудованию по имени (используется из PLC settings / ссылок).
+        /// НЕ зависит от QR-контроллера.
+        /// </summary>
+        public void Param_NavigateToLinkedEquip(string? equipName)
+        {
+            var key = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            // 1) Пытаемся найти оборудование в полном списке (чтобы корректно подстроить Station/Type фильтры)
+            var it =
+                Equipments.FirstOrDefault(x => string.Equals(x.Equipment, key, StringComparison.OrdinalIgnoreCase)) ??
+                Equipments.FirstOrDefault(x => string.Equals(x.Tag, key, StringComparison.OrdinalIgnoreCase));
+
+            if (it != null)
+            {
+                // Если текущие фильтры скрывают элемент — подстроим фильтры так, чтобы он стал видим
+                EnsureEquipmentVisibleInList(it);
+
+                // Если прыгаем на оборудование другой группы — сбросим область Param (как у тебя уже сделано)
+                var newGroup = EquipTypeRegistry.GetGroup(it.Type ?? "");
+                Param_ResetAreaIfTypeGroupChanged(newGroup);
+
+                // Нормализуем имя на реальное Equipment (а не Tag)
+                key = (it.Equipment ?? key).Trim();
+            }
+
+            // 2) Выставляем оборудование
+            EquipName = key;
+
+            // 3) Выделяем слева
+            DoIncrementalSearch(key);
+
+            // 4) Уводим на вкладку Param
+            if (SelectedMainTab != MainTabKind.Param)
+            {
+                SelectedMainTabIndex = (int)MainTabKind.Param;
+                return;
+            }
+
+            // 5) Если уже на Param — обновим polling (или твой новый механизм)
+            StartParamPolling();
+        }
+
+        /// <summary>
         /// Если элемент скрыт фильтрами Station/Type — меняем фильтры так, чтобы элемент был видим.
         /// </summary>
         private void EnsureEquipmentVisibleInList(EquipListBoxItem it)
@@ -2862,61 +2085,6 @@ namespace TechEquipments
         }
 
         /// <summary>
-        /// PLC write: пишет Value для PlcRefRow через:
-        /// TagInfo("{EquipName}.Value",0) -> TagWrite(tagName, value)
-        /// </summary>
-        private async Task Plc_WriteValueAsync(PlcRefRow row, object? newValue)
-        {
-            if (row == null)
-                return;
-
-            if (!row.IsWritable)
-                return;
-
-            // нормализуем (bool->1/0, string->double/int)
-            if (!TryNormalizeWriteValue(newValue, out var writeValueStr))
-                return;
-
-            // какой equipItem брать для TagInfo: Value или State
-            var equipItem = GetPlcEquipItemForTagInfo(row);
-
-            // чтобы polling-read/write не пересекались (как у тебя в Param)
-            await _paramRwGate.WaitAsync(CancellationToken.None);
-            try
-            {
-                // 1) получить реальное имя тега (кэшируем)
-                var tagName = (row.TagName ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                {
-                    tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.{equipItem}\", 0)") ?? "").Trim();
-                    row.TagName = tagName;
-                }
-
-                if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                // 2) запись
-                await _ctApiService.CicodeAsync($"TagWrite(\"{tagName}\", {writeValueStr})");
-
-                // 3) (опционально) сразу перечитать и обновить row.Value, чтобы UI мгновенно обновился
-                var raw = await _ctApiService.CicodeAsync($"TagRead(\"{tagName}\")");
-                var dv = TryParseDouble(raw);
-
-                // обновление row.Value делай на UI-потоке
-                await Dispatcher.InvokeAsync(() => row.UpdateValue(dv));
-            }
-            catch (Exception ex)
-            {
-                // по желанию: показать в строке/лог
-                // await Dispatcher.InvokeAsync(() => row.LastWriteError = ex.Message);
-            }
-            finally
-            {
-                _paramRwGate.Release();
-            }
-        }
-
-        /// <summary>
         /// Для PLC-строк по умолчанию используем ".Value".
         /// Для статусов (Motor/Valve) вместо Value используем ".State".
         /// </summary>
@@ -2929,5 +2097,6 @@ namespace TechEquipments
         }
 
         #endregion
+        
     }
 }
