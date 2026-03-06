@@ -10,6 +10,8 @@ namespace TechEquipments
         None = 0,
         Plc = 1,
         DiDo = 2,
-        Alarm = 3
+        Alarm = 3,
+        TimeWork = 4,
+        DryRun = 5
     }
 }

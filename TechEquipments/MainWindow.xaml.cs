@@ -576,9 +576,9 @@ namespace TechEquipments
 
         #endregion
 
-        #region VGD ref
+        #region Ref
 
-        // ====== VGD DI/DO refs (dynamic UI) ======
+        // ====== refs (dynamic UI) ======
 
         /// <summary>
         /// Строки для VGD -> DI/DO связей (отображаются в VGDParamView/DiDoSettingsGroup).
@@ -593,6 +593,9 @@ namespace TechEquipments
             get => _currentParamSettingsPage;
             private set { _currentParamSettingsPage = value; OnPropertyChanged(); }
         }
+
+        public string? DryRunEquipName { get; private set; }
+        public DryRunMotor? DryRunModel { get; private set; }
 
         // Последняя группа параметров, которую показывали на вкладке Param
         private EquipTypeGroup _lastParamTypeGroup = EquipTypeGroup.All;
@@ -1411,9 +1414,34 @@ namespace TechEquipments
             return raw;
         }
 
+        /// <summary>
+        /// Возвращает имя оборудования для записи.
+        /// По умолчанию пишем в текущее выбранное оборудование (EquipName).
+        /// Если отправитель находится в секции DryRun (DataContext = DryRunMotor),
+        /// то пишем в DryRunEquipName (найденный через WinOpened).
+        /// </summary>
+        private string ResolveEquipNameForWrite(object sender)
+        {
+            // по умолчанию
+            var equip = (EquipName ?? "").Trim();
+
+            // DryRun секция — DataContext другой (DryRunMotor)
+            if (sender is FrameworkElement fe && fe.DataContext is DryRunMotor)
+            {
+                var dry = (DryRunEquipName ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(dry))
+                    return dry;
+
+                // если вдруг DryRunEquipName ещё не найден — fallback на текущий мотор
+                return equip;
+            }
+
+            return equip;
+        }
+
         #endregion
 
-        #region VGD refs
+        #region Refs
 
         /// <summary>
         /// Вызывается из VGDParamView при нажатии PLC/DI_DO/Alarm/Chart.
@@ -1441,10 +1469,6 @@ namespace TechEquipments
             if (Equipments.Count == 0)
                 return;
 
-            // пока нас интересует только VGD (DI/DO refs)
-            //if (CurrentParamModel is not VGDParam)
-            //    return;
-
             switch (CurrentParamSettingsPage)
             {
                 case ParamSettingsPage.DiDo:
@@ -1456,6 +1480,10 @@ namespace TechEquipments
 
                 case ParamSettingsPage.Plc:
                     await RefreshPlcSectionAsync(ct);
+                    break;
+
+                case ParamSettingsPage.DryRun:
+                    await RefreshDryRunSectionAsync(ct);
                     break;
 
                 default:
@@ -2096,7 +2124,40 @@ namespace TechEquipments
             return "Value";
         }
 
+        /// <summary>
+        /// Обновляет DryRun секцию:
+        /// 1) находим ref equipment через WinOpened
+        /// 2) читаем DryRunMotor с найденного оборудования
+        /// </summary>
+        private async Task RefreshDryRunSectionAsync(CancellationToken ct)
+        {
+            var (equipName, _) = ResolveSelectedEquipForParam();
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            // 1) ищем "родителя" для DryRun через WinOpened
+            var winRef = await _equipmentService.GetWinOpenedRefAsync(equipName, sEquipItem: "State", sCategory: "WinOpened");
+            if (winRef == null || string.IsNullOrWhiteSpace(winRef.RefEquip))
+            {
+                DryRunEquipName = null;
+                DryRunModel = null;
+                OnPropertyChanged(nameof(DryRunEquipName));
+                OnPropertyChanged(nameof(DryRunModel));
+                return;
+            }
+
+            DryRunEquipName = winRef.RefEquip;
+
+            // 2) читаем DryRun теги уже с найденного оборудования (S17.P01.P01.*)
+            var model = await _equipmentService.ReadEquipParamsAsync<DryRunMotor>(DryRunEquipName);
+
+            DryRunModel = model;
+            OnPropertyChanged(nameof(DryRunEquipName));
+            OnPropertyChanged(nameof(DryRunModel));
+        }
+
         #endregion
-        
+
     }
 }

@@ -18,6 +18,8 @@
         <Setter Property="Height" Value="40"/>
         <Setter Property="FontSize" Value="14"/>
         <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
     </Style>
 
     <!-- ============ BUTTONS ============ -->
@@ -507,6 +509,92 @@
                 <DataTrigger.ExitActions>
                     <RemoveStoryboard BeginStoryboardName="ForcedBlinkStoryboard"/>
                 </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Мигающий текст для TimeWorkAlarmW -->
+    <Style x:Key="TimeWorkAlarmBlinkTextStyle"
+       TargetType="{x:Type TextBlock}"
+       BasedOn="{StaticResource AppTextBlockStyle}">
+
+        <!-- Внешний вид -->
+        <Setter Property="Text" Value="Time Work!"/>
+        <Setter Property="Foreground" Value="CornflowerBlue"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Opacity" Value="1"/>
+        <Setter Property="Visibility" Value="Collapsed"/>
+
+        <Style.Triggers>
+            <!-- Когда TimeWorkAlarmW=true -> показываем и запускаем мигание -->
+            <DataTrigger Binding="{Binding TimeWorkAlarmW}" Value="True">
+                <Setter Property="Visibility" Value="Visible"/>
+
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="TimeWorkAlarmBlinkBegin">
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="1.0" To="0.15"
+                                         Duration="0:0:0.45"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+
+                <DataTrigger.ExitActions>
+                    <RemoveStoryboard BeginStoryboardName="TimeWorkAlarmBlinkBegin"/>
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Мигающий синий Label (жирный + мигает), когда TimeWorkAlarmW=true -->
+    <DataTemplate x:Key="TimeWorkAlarmBlinkLabelTemplate">
+        <TextBlock Text="{Binding}"
+               Foreground="CornflowerBlue"
+               Opacity="1">
+            <TextBlock.Style>
+                <Style TargetType="{x:Type TextBlock}">
+                    <Setter Property="FontWeight" Value="Normal"/>
+
+                    <Style.Triggers>
+                        <!-- Берём флаг из DataContext LayoutControl (он точно в дереве) -->
+                        <DataTrigger Binding="{Binding DataContext.TimeWorkAlarmW, RelativeSource={RelativeSource AncestorType=dxlc:LayoutControl}}"
+                                 Value="True">
+
+                            <!-- ЖИРНЫЙ -->
+                            <Setter Property="FontWeight" Value="Bold"/>
+
+                            <!-- МИГАНИЕ -->
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard x:Name="TimeWorkAlarmLabelBlink">
+                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                     From="1.0" To="0.15"
+                                                     Duration="0:0:0.45"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+
+                            <DataTrigger.ExitActions>
+                                <RemoveStoryboard BeginStoryboardName="TimeWorkAlarmLabelBlink"/>
+                            </DataTrigger.ExitActions>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </DataTemplate>
+
+    <!-- LayoutItem: мигающий/жирный Label, когда TimeWorkAlarmW=true -->
+    <Style x:Key="TimeWorkAlarmBlinkLayoutItemStyle"
+       TargetType="{x:Type dxlc:LayoutItem}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.TimeWorkAlarmW, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                     Value="True">
+                <Setter Property="LabelTemplate" Value="{StaticResource TimeWorkAlarmBlinkLabelTemplate}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>

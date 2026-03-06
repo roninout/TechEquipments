@@ -64,6 +64,7 @@
                                    Style="{StaticResource AppLabelTextStyle}"/>
 
                         <dxe:ComboBoxEdit Grid.Row="1" Grid.Column="0"
+                                          HorizontalContentAlignment ="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Stations"
                                           IsTextEditable="False"
@@ -76,6 +77,7 @@
                                    Style="{StaticResource AppLabelTextStyle}"/>
 
                         <dxe:ComboBoxEdit Grid.Row="1" Grid.Column="2"
+                                          HorizontalContentAlignment ="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Types"
                                           IsTextEditable="False"
@@ -175,6 +177,7 @@
                     <dxe:TextEdit x:Name="SearchTextEdit"
                                   Width="240"
                                   Style="{StaticResource AppBaseEditStyle}"
+                                  HorizontalContentAlignment ="Left"
                                   NullText="Equipment name..."
                                   EditValue="{Binding EquipName, UpdateSourceTrigger=PropertyChanged}"/>
 

@@ -26,6 +26,11 @@
 
                 <dxlc:LayoutGroup Orientation="Vertical">
 
+                    <!-- Time Work AlarmW text -->
+                    <dxlc:LayoutGroup Header="LayoutGroup" View="Group">
+                        <TextBlock Style="{StaticResource TimeWorkAlarmBlinkTextStyle}"/>
+                    </dxlc:LayoutGroup>
+
                     <!-- State -->
                     <dxlc:LayoutGroup Header="LayoutGroup" View="Group">
                         <dxe:TextEdit Tag="State"
@@ -136,8 +141,7 @@
                                           Width="158" Height="40" Margin="0,8,0,0" FontWeight="Bold"
                                           HorizontalAlignment="Center"
                                           IsChecked="{Binding Mode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          Checked="ParamEditable_ToggleChanged"
-                                          Unchecked="ParamEditable_ToggleChanged">
+                                          Click="Mode_Click">
 
                                 <ToggleButton.Style>
                                     <Style TargetType="{x:Type ToggleButton}">
@@ -301,7 +305,7 @@
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="105"/>
-                                                            <ColumnDefinition Width="55"/>
+                                                            <ColumnDefinition Width="40"/>
                                                         </Grid.ColumnDefinitions>
 
                                                         <!-- "{Equipment}: {Description}" -->
@@ -364,7 +368,7 @@
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="105"/>
-                                                            <ColumnDefinition Width="55"/>
+                                                            <ColumnDefinition Width="40"/>
                                                         </Grid.ColumnDefinitions>
 
                                                         <!-- "{Equipment}: {Description}" -->
@@ -428,6 +432,189 @@
                                                           EditValueChanged="ParamEditable_EditValueChanged"
                                                           Style="{StaticResource AppBaseEditStyle}" />
                                 </dxlc:LayoutItem>
+
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== TimeWork (TOP) ====== -->
+                            <dxlc:LayoutGroup x:Name="TimeWorkInfoGroup"
+                                              Header="TimeWork"
+                                              View="GroupBox"
+                                              HorizontalAlignment="Stretch"
+                                              Orientation="Vertical"
+                                              Visibility="Collapsed"
+                                              Margin="0,0,0,8">
+
+                                <!-- TimeHmi (editable on Enter) -->
+                                <dxlc:LayoutItem Label="Time before switching">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <dxe:TextEdit IsReadOnly="True"
+                                                      Tag="TimeHmi"
+                                                      Width="80"
+                                                      HorizontalAlignment="Right"
+                                                      EditValue="{Binding TimeHmi, Mode=OneWay}"
+                                                      Style="{StaticResource AppBaseEditStyle}"
+                                                      PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                        <!-- unit -->
+                                        <TextBlock Text="h" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+                                    </StackPanel>
+
+                                </dxlc:LayoutItem>
+
+                                <!-- TimeWork (read-only) -->
+                                <dxlc:LayoutItem Label="Total time of the mechanism">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <dxe:TextEdit IsReadOnly="True"
+                                                      Width="80"
+                                                      HorizontalAlignment="Right"
+                                                      EditValue="{Binding TimeWork, Mode=OneWay}"
+                                                      Style="{StaticResource AppBaseEditStyle}"/>
+                                        <!-- unit -->
+                                        <TextBlock Text="h" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+                                    </StackPanel>
+                                </dxlc:LayoutItem>
+
+                                <!-- Ack: one-shot write 1 -> 0 -->
+                                <dxlc:LayoutItem Label="Confirmation of the operating time signal" Style="{StaticResource TimeWorkAlarmBlinkLayoutItemStyle}">
+                                    <dx:SimpleButton Width="80" HorizontalAlignment="Right" Margin="0,0,14,0"
+                                                     FontWeight="Bold"
+                                                     Tag="TimeWorkAlarmWAck"
+                                                     Click="Time_PulseButton_Click">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Content" Value="Ack"/>
+                                                <Setter Property="IsEnabled" Value="True"/>
+
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TimeWorkAlarmWAck, Converter={StaticResource PlcDouble01ToBool}}" Value="True">
+                                                        <Setter Property="Content" Value="Done"/>
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== TimeWork Settings (BOTTOM) ====== -->
+                            <dxlc:LayoutGroup x:Name="TimeWorkSettingsGroup"
+                                              Header="Settings"
+                                              View="GroupBox"
+                                              HorizontalAlignment="Stretch"
+                                              Orientation="Vertical"
+                                              Visibility="Collapsed">
+
+                                <!-- TimeSet (editable on Enter) -->
+                                <dxlc:LayoutItem Label="Setting the time before switching">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="TimeSet"
+                                                  Width="80"
+                                                  HorizontalAlignment="Right"
+                                                  EditValue="{Binding TimeSet, Mode=OneWay}"
+                                                  Style="{StaticResource AppBaseEditStyle}"
+                                                  PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                        <!-- unit -->
+                                        <TextBlock Text="h" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+                                    </StackPanel>
+                                </dxlc:LayoutItem>
+
+                                <!-- TimeWarn (editable on Enter) -->
+                                <dxlc:LayoutItem Label="Time of message issuance">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <dxe:TextEdit Tag="TimeWarn"
+                                                  Width="80"
+                                                  HorizontalAlignment="Right"
+                                                  EditValue="{Binding TimeWarn, Mode=OneWay}"
+                                                  Style="{StaticResource AppBaseEditStyle}"
+                                                  PreviewKeyDown="ParamEditable_EditValueChanged"/>
+                                        <!-- unit -->
+                                        <TextBlock Text="h" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+                                    </StackPanel>
+                                </dxlc:LayoutItem>
+
+                                <!-- Reset: one-shot write 1 -> 0 -->
+                                <dxlc:LayoutItem Label="Reset the operating time counter">
+                                    <dx:SimpleButton Width="80" HorizontalAlignment="Right" Margin="0,0,14,0"
+                                                     FontWeight="Bold"
+                                                     Tag="TimeReset"
+                                                     Click="Time_PulseButton_Click">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Content" Value="Reset"/>
+                                                <Setter Property="IsEnabled" Value="True"/>
+
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TimeReset, Converter={StaticResource PlcDouble01ToBool}}" Value="True">
+                                                        <Setter Property="Content" Value="Done"/>
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                            </dxlc:LayoutGroup>
+
+                            <!-- ====== DryRun settings ====== -->
+                            <dxlc:LayoutGroup x:Name="DryRunSettingsGroup"
+                                              Header="DryRun settings"
+                                              View="GroupBox"
+                                              HorizontalAlignment="Stretch"
+                                              Orientation="Vertical"
+                                              Visibility="Collapsed">
+
+                                <!-- ВАЖНО: данные берём не из MotorParam, а из MainWindow (DryRunModel) -->
+                                <StackPanel DataContext="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=Window}}">
+
+                                    <!-- Enable -->
+                                    <dxlc:LayoutItem Label="DryRun enable">
+                                        <dxe:ToggleSwitchEdit Tag="DryRunAEn"
+                                  Width="80"
+                                  HorizontalAlignment="Right"
+                                  IsChecked="{Binding DryRunAEn, Converter={StaticResource PlcDouble01ToBool}, Mode=TwoWay}"
+                                  EditValueChanged="ParamEditable_EditValueChanged"
+                                  Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+
+                                    <!-- Status -->
+                                    <dxlc:LayoutItem Label="DryRun alarm">
+                                        <dxe:CheckEdit IsReadOnly="True"
+                           Width="80"
+                           HorizontalAlignment="Right"
+                           IsChecked="{Binding DryRunA, Converter={StaticResource PlcDouble01ToBool}, Mode=OneWay}"
+                           Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="DryRunLimToOff">
+                                        <dxe:TextEdit Tag="DryRunLimToOff"
+                          Width="120"
+                          HorizontalAlignment="Right"
+                          EditValue="{Binding DryRunLimToOff, Mode=OneWay}"
+                          PreviewKeyDown="ParamEditable_EditValueChanged"
+                          Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="DryRunTimeToOn">
+                                        <dxe:TextEdit Tag="DryRunTimeToOn"
+                          Width="120"
+                          HorizontalAlignment="Right"
+                          EditValue="{Binding DryRunTimeToOn, Mode=OneWay}"
+                          PreviewKeyDown="ParamEditable_EditValueChanged"
+                          Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+
+                                    <dxlc:LayoutItem Label="DryRunTimeToOff">
+                                        <dxe:TextEdit Tag="DryRunTimeToOff"
+                          Width="120"
+                          HorizontalAlignment="Right"
+                          EditValue="{Binding DryRunTimeToOff, Mode=OneWay}"
+                          PreviewKeyDown="ParamEditable_EditValueChanged"
+                          Style="{StaticResource AppBaseEditStyle}" />
+                                    </dxlc:LayoutItem>
+
+                                </StackPanel>
 
                             </dxlc:LayoutGroup>
 
@@ -504,9 +691,9 @@
                                  Width="60" Height="60"
                                  Margin="0,8,0,0"
                                  Padding="0" GlyphWidth="40" GlyphHeight="40"
-                                 Click="AlarmSettingsButton_Click"
-                                 ToolTip="Alarm settings"
-                                 Glyph="{dx:DXImage 'SvgImages/XAF/State_Validation_Warning.svg'}"
+                                 Click="TimeSettingsButton_Click"
+                                 ToolTip="Time work settings"
+                                 Glyph="{dx:DXImage 'SvgImages/Scheduling/SwitchTimeScalesTo.svg'}"
                                  Style="{StaticResource AppButtonStyle}" />
 
                             <!-- DryRun settings -->
@@ -514,9 +701,9 @@
                                  Width="60" Height="60"
                                  Margin="0,8,0,0"
                                  Padding="0" GlyphWidth="40" GlyphHeight="40"
-                                 Click="AlarmSettingsButton_Click"
-                                 ToolTip="Alarm settings"
-                                 Glyph="{dx:DXImage 'SvgImages/XAF/State_Validation_Warning.svg'}"
+                                 Click="DryRunSettingsButton_Click"
+                                 ToolTip="DryRun settings"
+                                 Glyph="{dx:DXImage 'SvgImages/Icon Builder/Travel_Walk.svg'}"
                                  Style="{StaticResource AppButtonStyle}" />
 
                         </StackPanel>

@@ -17,6 +17,8 @@ namespace TechEquipments
 
         Task<List<string>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem ="STW");
         Task<List<PlcRefRow>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem, string sCustField = "CUSTOM1");
+        Task<WinOpenedRefResult?> GetWinOpenedRefAsync(string sEquipName, string sEquipItem, string sCategory = "WinOpened");
+
         Task<EquipRefModel> GetEquipData(string sEquipName, string sEquipItem = "STW");
         Task<EquipModel> GetEquipModelWithRef(string sEquipName, string sEquipItem = "STW");
 
