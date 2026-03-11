@@ -1,25 +1,36 @@
-﻿<UserControl x:Class="TechEquipments.Views.Param.VGDParamView"
+﻿<local:ParamViewBase x:Class="TechEquipments.Views.Param.VGDParamView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:TechEquipments.Views.Param"
              xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
              xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
              xmlns:dxc="http://schemas.devexpress.com/winfx/2008/xaml/charts"
              xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
              xmlns:dxch="clr-namespace:DevExpress.Xpf.Charts;assembly=DevExpress.Xpf.Charts.v21.2"
              xmlns:conv="clr-namespace:TechEquipments"
+             xmlns:common="clr-namespace:TechEquipments.Views.Common"
              MinHeight="260" MinWidth="520">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Конвертеры layout / секций -->
         <conv:BoolToGridLengthConverter x:Key="BoolToGridLength"/>
-        <conv:VGDStateToTextConverter x:Key="StateToText"/>
+        <conv:ParamSettingsPageToVisibilityConverter x:Key="ParamPageToVis"/>
+
+        <!-- Конвертеры DI/DO -->
         <conv:DiDoValueToBrushConverter x:Key="DiDoValueToBrush"/>
         <conv:DiDoValueToTextConverter x:Key="DiDoValueToText"/>
+
+        <!-- Конвертеры PLC -->
         <conv:PlcDouble01ToBoolConverter x:Key="PlcDouble01ToBool"/>
+
+        <!-- Конвертер текста состояния VGD -->
+        <conv:VGDStateToTextConverter x:Key="StateToText"/>
     </UserControl.Resources>
 
 
-    <dxlc:LayoutControl Margin="0">
+    <dxlc:LayoutControl Margin="0" DataContext="{Binding Param}">
         <dxlc:LayoutGroup Header="tryrtyr" View="Group" GroupBoxDisplayMode="Light">
 
             <!-- ================= LEFT BLOCK ================= -->
@@ -252,7 +263,15 @@
                         <dxlc:LayoutGroup Orientation="Vertical" View="Group" GroupBoxDisplayMode="Light">
 
                             <!-- ====== PLC settings ====== -->
-                            <dxlc:LayoutGroup x:Name="PlcSettingsGroup" Header="PLC settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" Visibility="Collapsed">
+                            <dxlc:LayoutGroup x:Name="PlcSettingsGroup"
+                                                Header="PLC settings"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=Plc}">
                                 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="482" VerticalScrollBarVisibility="Auto">
@@ -291,7 +310,15 @@
                             </dxlc:LayoutGroup>
 
                             <!-- ====== DI settings ====== -->
-                            <dxlc:LayoutGroup x:Name="DiSettingsGroup" Header="DI chanels" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" Visibility="Collapsed">
+                            <dxlc:LayoutGroup x:Name="DiSettingsGroup"
+                                                Header="DI chanels"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=DiDo}">
 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -354,7 +381,15 @@
                             </dxlc:LayoutGroup>
 
                             <!-- ====== DO settings ====== -->
-                            <dxlc:LayoutGroup x:Name="DoSettingsGroup" Header="DO chanels" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" Visibility="Collapsed">
+                            <dxlc:LayoutGroup x:Name="DoSettingsGroup"
+                                                Header="DO chanels"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=DiDo}">
 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -417,7 +452,15 @@
                             </dxlc:LayoutGroup>
 
                             <!-- ====== Alarm settings ====== -->
-                            <dxlc:LayoutGroup x:Name="AlarmSettingsGroup" Header="Alarm settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" Visibility="Collapsed">
+                            <dxlc:LayoutGroup x:Name="AlarmSettingsGroup"
+                                                Header="Alarm settings"
+                                                View="GroupBox"
+                                                HorizontalAlignment="Stretch"
+                                                Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    Converter={StaticResource ParamPageToVis},
+                                                                    ConverterParameter=Alarm}">
 
                                 <!--Alarm message signaling status-->
                                 <dxlc:LayoutItem Label="Alarm message signaling status" Margin="0,0,0,50">
@@ -477,48 +520,7 @@
                         </Grid.RowDefinitions>
 
                         <!-- Верх: Chart + Params -->
-                        <StackPanel Grid.Row="0" Orientation="Vertical" VerticalAlignment="Top">
-
-                            <!-- Chart -->
-                            <dx:SimpleButton x:Name="ChartButton"
-                                 Width="60" Height="60"
-                                 Padding="0" GlyphWidth="40" GlyphHeight="40"
-                                 Click="ShowChartButton_Click"
-                                 ToolTip="Chart"
-                                 Glyph="{dx:DXImage 'SvgImages/Chart/Chart.svg'}"
-                                 Style="{StaticResource AppButtonStyle}" />
-
-                            <!-- PLC settings -->
-                            <dx:SimpleButton x:Name="PLCButton"
-                                 Width="60" Height="60"
-                                 Margin="0,8,0,0"
-                                 Padding="0" GlyphWidth="40" GlyphHeight="40"
-                                 Click="PLCButton_Click"
-                                 ToolTip="PLC settings"
-                                 Glyph="{dx:DXImage 'SvgImages/Outlook Inspired/TaskList.svg'}"
-                                 Style="{StaticResource AppButtonStyle}" />
-
-                            <!-- DI/DO settings -->
-                            <dx:SimpleButton x:Name="DI_DOButton"
-                                 Width="60" Height="60"
-                                 Margin="0,8,0,0"
-                                 Padding="0" GlyphWidth="40" GlyphHeight="40"
-                                 Click="DI_DOButton_Click"
-                                 ToolTip="DI/DO settings"
-                                 Glyph="{dx:DXImage 'SvgImages/DiagramIcons/ChangeConnectorType.svg'}"
-                                 Style="{StaticResource AppButtonStyle}" />
-
-                            <!-- Alarm settings -->
-                            <dx:SimpleButton x:Name="AlarmSettingsButton"
-                                 Width="60" Height="60"
-                                 Margin="0,8,0,0"
-                                 Padding="0" GlyphWidth="40" GlyphHeight="40"
-                                 Click="AlarmSettingsButton_Click"
-                                 ToolTip="Alarm settings"
-                                 Glyph="{dx:DXImage 'SvgImages/XAF/State_Validation_Warning.svg'}"
-                                 Style="{StaticResource AppButtonStyle}" />
-
-                        </StackPanel>
+                        <common:ParamPageButtons Grid.Row="0"/>
 
                         <!-- Низ: Live/History (прилипает к низу автоматически) -->
                         <dx:SimpleButton Grid.Row="2"
@@ -555,4 +557,4 @@
 
     </dxlc:LayoutControl>
 
-</UserControl>
+</local:ParamViewBase>

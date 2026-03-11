@@ -17,6 +17,7 @@ namespace TechEquipments
         private readonly IEquipmentService _equipmentService;
         private readonly Func<MainTabKind> _getSelectedTab;
         private readonly Func<(string equipName, string equipType)> _resolveSelectedEquip;
+        private readonly Func<object, string> _resolveEquipNameForWrite;
         private readonly Func<bool> _getSuppressWritesFromPolling;
         private readonly Func<bool> _getSuppressWritesFromUiRollback;
         private readonly Action<bool> _setSuppressWritesFromUiRollback;
@@ -26,12 +27,24 @@ namespace TechEquipments
         private readonly Func<Window> _getOwnerWindow;
         private readonly Action _endParamFieldEdit;
 
-        public ParamWriteController(IEquipmentService equipmentService,Func<MainTabKind> getSelectedTab,Func<(string equipName, string equipType)> resolveSelectedEquip,Func<bool> getSuppressWritesFromPolling,
-            Func<bool> getSuppressWritesFromUiRollback,Action<bool> setSuppressWritesFromUiRollback,SemaphoreSlim paramRwGate,Action<DateTime> setParamReadResumeAtUtc,Action<string> setBottomText,Func<Window> getOwnerWindow,Action endParamFieldEdit)
+        public ParamWriteController(
+            IEquipmentService equipmentService,
+            Func<MainTabKind> getSelectedTab,
+            Func<(string equipName, string equipType)> resolveSelectedEquip,
+            Func<object, string> resolveEquipNameForWrite,
+            Func<bool> getSuppressWritesFromPolling,
+            Func<bool> getSuppressWritesFromUiRollback,
+            Action<bool> setSuppressWritesFromUiRollback,
+            SemaphoreSlim paramRwGate,
+            Action<DateTime> setParamReadResumeAtUtc,
+            Action<string> setBottomText,
+            Func<Window> getOwnerWindow,
+            Action endParamFieldEdit)
         {
             _equipmentService = equipmentService;
             _getSelectedTab = getSelectedTab;
             _resolveSelectedEquip = resolveSelectedEquip;
+            _resolveEquipNameForWrite = resolveEquipNameForWrite;
             _getSuppressWritesFromPolling = getSuppressWritesFromPolling;
             _getSuppressWritesFromUiRollback = getSuppressWritesFromUiRollback;
             _setSuppressWritesFromUiRollback = setSuppressWritesFromUiRollback;
@@ -79,8 +92,7 @@ namespace TechEquipments
                 return;
 
             // 3) Нужно имя оборудования
-            var (equipName, _) = _resolveSelectedEquip();
-            var equip = (equipName ?? "").Trim();
+            var equip = _resolveEquipNameForWrite(sender)?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(equip))
                 return;
 
@@ -170,8 +182,7 @@ namespace TechEquipments
                 return;
 
             // 3) Нужно имя оборудования
-            var (equipName, _) = _resolveSelectedEquip();
-            var equip = (equipName ?? "").Trim();
+            var equip = _resolveEquipNameForWrite(sender)?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(equip))
                 return;
 

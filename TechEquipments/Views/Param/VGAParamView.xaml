@@ -1,6 +1,7 @@
-﻿<UserControl x:Class="TechEquipments.Views.Param.VGAParamView"
+﻿<local:ParamViewBase x:Class="TechEquipments.Views.Param.VGAParamView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:TechEquipments.Views.Param"
              xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
              xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
              xmlns:dxc="http://schemas.devexpress.com/winfx/2008/xaml/charts"
@@ -15,7 +16,7 @@
     </UserControl.Resources>
 
 
-    <dxlc:LayoutControl Margin="0">
+    <dxlc:LayoutControl Margin="0" DataContext="{Binding Param}">
         <dxlc:LayoutGroup Header="tryrtyr" View="Group" GroupBoxDisplayMode="Light">
 
             <!-- ================= LEFT BLOCK ================= -->
@@ -510,4 +511,4 @@
 
     </dxlc:LayoutControl>
 
-</UserControl>
+</local:ParamViewBase>

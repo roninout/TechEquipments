@@ -17,7 +17,18 @@ namespace TechEquipments
 
         Task<List<string>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem ="STW");
         Task<List<PlcRefRow>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem, string sCustField = "CUSTOM1");
-        Task<WinOpenedRefResult?> GetWinOpenedRefAsync(string sEquipName, string sEquipItem, string sCategory = "WinOpened");
+        
+        /// <summary>
+        /// Ищет связанную equipment-ссылку в категории WinOpened.
+        /// 
+        /// Если assocExpected == null:
+        /// - возвращает первую валидную REFEQUIP
+        /// 
+        /// Если assocExpected задан:
+        /// - возвращает первую валидную REFEQUIP только для нужного ASSOC
+        ///   (например "_dryRunAI" или "_dryRunDI")
+        /// </summary>
+        Task<WinOpenedRefResult?> GetWinOpenedRefAsync(string sEquipName,string sEquipItem,string sCategory = "WinOpened",string? assocExpected = null);
 
         Task<EquipRefModel> GetEquipData(string sEquipName, string sEquipItem = "STW");
         Task<EquipModel> GetEquipModelWithRef(string sEquipName, string sEquipItem = "STW");

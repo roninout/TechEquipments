@@ -620,9 +620,11 @@ namespace TechEquipments
 
         private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
         {
-            if (model == null) return fallback;
+            var rawModel = ParamModelHelper.Unwrap(model);
+            if (rawModel == null)
+                return fallback;
 
-            var items = model.GetType()
+            var items = rawModel.GetType()
                 .GetCustomAttributes(typeof(TrendItemAttribute), inherit: true)
                 .OfType<TrendItemAttribute>()
                 .Select(a => a.Item)
@@ -636,15 +638,20 @@ namespace TechEquipments
 
         private static bool TryGetYRangeForItem(object? model, string item, out double yMin, out double yMax)
         {
-            yMin = 0; yMax = 1;
-            if (model == null) return false;
+            yMin = 0;
+            yMax = 1;
 
-            var a = model.GetType()
+            var rawModel = ParamModelHelper.Unwrap(model);
+            if (rawModel == null)
+                return false;
+
+            var a = rawModel.GetType()
                 .GetCustomAttributes(typeof(TrendItemAttribute), true)
                 .OfType<TrendItemAttribute>()
                 .FirstOrDefault(x => string.Equals(x.Item, item, StringComparison.OrdinalIgnoreCase));
 
-            if (a == null || !a.HasYRange) return false;
+            if (a == null || !a.HasYRange)
+                return false;
 
             yMin = Math.Min(a.YMin, a.YMax);
             yMax = Math.Max(a.YMin, a.YMax);
@@ -653,25 +660,86 @@ namespace TechEquipments
 
         private static bool TryGetModelScaleMinMax(object? model, out double scaleLo, out double scaleHi)
         {
-            scaleLo = 0; scaleHi = 1;
-            if (model == null) return false;
+            scaleLo = 0;
+            scaleHi = 1;
 
-            var t = model.GetType();
+            var rawModel = ParamModelHelper.Unwrap(model);
+            if (rawModel == null)
+                return false;
+
+            var t = rawModel.GetType();
             var pMinR = t.GetProperty("MinR");
             var pMaxR = t.GetProperty("MaxR");
-            if (pMinR == null || pMaxR == null) return false;
+            if (pMinR == null || pMaxR == null)
+                return false;
 
-            var vMin = pMinR.GetValue(model);
-            var vMax = pMaxR.GetValue(model);
-            if (vMin == null || vMax == null) return false;
+            var vMin = pMinR.GetValue(rawModel);
+            var vMax = pMaxR.GetValue(rawModel);
+            if (vMin == null || vMax == null)
+                return false;
 
-            var a = Convert.ToDouble(vMin, CultureInfo.InvariantCulture);
-            var b = Convert.ToDouble(vMax, CultureInfo.InvariantCulture);
+            var a = Convert.ToDouble(vMin, System.Globalization.CultureInfo.InvariantCulture);
+            var b = Convert.ToDouble(vMax, System.Globalization.CultureInfo.InvariantCulture);
 
             scaleLo = Math.Min(a, b);
             scaleHi = Math.Max(a, b);
             return true;
         }
+
+        //private static string[] GetTrendItemsFromModel(object? model, params string[] fallback)
+        //{
+        //    if (model == null) return fallback;
+
+        //    var items = model.GetType()
+        //        .GetCustomAttributes(typeof(TrendItemAttribute), inherit: true)
+        //        .OfType<TrendItemAttribute>()
+        //        .Select(a => a.Item)
+        //        .Where(s => !string.IsNullOrWhiteSpace(s))
+        //        .Select(s => s.Trim())
+        //        .Distinct(StringComparer.OrdinalIgnoreCase)
+        //        .ToArray();
+
+        //    return items.Length > 0 ? items : fallback;
+        //}
+
+        //private static bool TryGetYRangeForItem(object? model, string item, out double yMin, out double yMax)
+        //{
+        //    yMin = 0; yMax = 1;
+        //    if (model == null) return false;
+
+        //    var a = model.GetType()
+        //        .GetCustomAttributes(typeof(TrendItemAttribute), true)
+        //        .OfType<TrendItemAttribute>()
+        //        .FirstOrDefault(x => string.Equals(x.Item, item, StringComparison.OrdinalIgnoreCase));
+
+        //    if (a == null || !a.HasYRange) return false;
+
+        //    yMin = Math.Min(a.YMin, a.YMax);
+        //    yMax = Math.Max(a.YMin, a.YMax);
+        //    return true;
+        //}
+
+        //private static bool TryGetModelScaleMinMax(object? model, out double scaleLo, out double scaleHi)
+        //{
+        //    scaleLo = 0; scaleHi = 1;
+        //    if (model == null) return false;
+
+        //    var t = model.GetType();
+        //    var pMinR = t.GetProperty("MinR");
+        //    var pMaxR = t.GetProperty("MaxR");
+        //    if (pMinR == null || pMaxR == null) return false;
+
+        //    var vMin = pMinR.GetValue(model);
+        //    var vMax = pMaxR.GetValue(model);
+        //    if (vMin == null || vMax == null) return false;
+
+        //    var a = Convert.ToDouble(vMin, CultureInfo.InvariantCulture);
+        //    var b = Convert.ToDouble(vMax, CultureInfo.InvariantCulture);
+
+        //    scaleLo = Math.Min(a, b);
+        //    scaleHi = Math.Max(a, b);
+        //    return true;
+        //}
 
         private static bool TryGetBaseYRange(object? model, string baseItem, out double baseMin, out double baseMax)
         {

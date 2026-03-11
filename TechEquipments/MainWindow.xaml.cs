@@ -28,10 +28,11 @@ namespace TechEquipments
     /// - Нижняя панель прогресса: используется для загрузки списка оборудования и DB (индетерминантно).
     /// - Overlay: используется для загрузки SOE (тренды).
     /// </summary>
-    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged, IParamHost, IDbHost, IQrHost, ISoeHost, IUiStateHost
+    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged, IParamHost, IParamRefsHost, IDbHost, IQrHost, ISoeHost, IUiStateHost
     {
         private ParamController _paramController;
         private ParamWriteController _paramWriteController;
+        private readonly ParamRefsController _paramRefs;
         private readonly DbController _dbController;
         private readonly QrController _qrController;
         private readonly SoeController _soeController;
@@ -512,7 +513,7 @@ namespace TechEquipments
                 _currentParamModel = value;
                 OnPropertyChanged();
 
-                // ✅ Обновляем вычисляемые свойства для шапки ParamTabHost
+                // Шапка Param
                 OnPropertyChanged(nameof(CurrentParamChanel));
                 OnPropertyChanged(nameof(IsCurrentParamChanelVisible));
             }
@@ -537,7 +538,6 @@ namespace TechEquipments
         /// Chanel из модели, если модель поддерживает IHasChanel.
         /// Если не поддерживает — пустая строка.
         /// </summary>
-        //public string CurrentParamChanel => (CurrentParamModel as IHasChanel)?.Chanel ?? "";
         public string CurrentParamChanel => FormatChanelForHeader((CurrentParamModel as IHasChanel)?.Chanel);
 
         /// <summary>
@@ -557,6 +557,65 @@ namespace TechEquipments
                 return !ch.Equals("Unknown", StringComparison.OrdinalIgnoreCase);
             }
         }
+
+        /// <summary>
+        /// Определяет, поддерживает ли текущая модель конкретную страницу Param.
+        /// Опираемся только на новую архитектуру IParamModel / SupportedPages.
+        /// </summary>
+        private bool CurrentParamSupportsPage(ParamSettingsPage page)
+        {
+            if (CurrentParamModel is not IParamModel paramModel)
+                return false;
+
+            return paramModel.SupportedPages.Contains(page);
+        }
+
+        /// <summary>
+        /// Единая точка переключения Chart / Settings для всех ParamView.
+        /// Вся навигация между страницами Param должна идти только через этот метод.
+        /// </summary>
+        public void ShowParamPage(ParamSettingsPage page)
+        {
+            // Если страница не поддерживается текущей моделью — просто выходим.
+            if (page != ParamSettingsPage.None && !CurrentParamSupportsPage(page))
+                return;
+
+            SetParamSettingsPage(page);
+
+            if (page == ParamSettingsPage.None)
+            {
+                // Возвращаемся к графику
+                ShowParamChart(reset: true);
+                return;
+            }
+
+            // Показываем settings-панель
+            ShowParamSettings();
+
+            // Сразу подгружаем активную секцию, чтобы не ждать следующий polling
+            _ = RefreshActiveParamSectionSafeAsync();
+        }
+
+        /// <summary>
+        /// Безопасное обновление активной Param-секции после клика по кнопке.
+        /// </summary>
+        private async Task RefreshActiveParamSectionSafeAsync()
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await _paramRefs.RefreshActiveParamSectionAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // нормально, просто выходим
+            }
+            catch (Exception ex)
+            {
+                ParamStatusText = $"Param settings refresh error: {ex.Message}";
+            }
+        }
+
 
         // ===== Param editing (anti-overwrite during typing) =====
 
@@ -597,10 +656,6 @@ namespace TechEquipments
         public string? DryRunEquipName { get; private set; }
         public DryRunMotor? DryRunModel { get; private set; }
 
-        // Последняя группа параметров, которую показывали на вкладке Param
-        private EquipTypeGroup _lastParamTypeGroup = EquipTypeGroup.All;
-        private bool _hasLastParamTypeGroup;
-
         #endregion
 
         #endregion
@@ -634,10 +689,25 @@ namespace TechEquipments
 
             _paramController = new ParamController(_equipmentService, this);
 
+            //_paramWriteController = new ParamWriteController(
+            //    equipmentService: _equipmentService,
+            //    getSelectedTab: () => SelectedMainTab,
+            //    resolveSelectedEquip: ResolveSelectedEquipForParam,
+            //    getSuppressWritesFromPolling: () => _suppressParamWritesFromPolling,
+            //    getSuppressWritesFromUiRollback: () => _suppressParamWritesFromUiRollback,
+            //    setSuppressWritesFromUiRollback: v => _suppressParamWritesFromUiRollback = v,
+            //    paramRwGate: _paramRwGate,
+            //    setParamReadResumeAtUtc: dt => _paramReadResumeAtUtc = dt,
+            //    setBottomText: txt => ParamStatusText = txt,
+            //    getOwnerWindow: () => this,
+            //    endParamFieldEdit: EndParamFieldEdit
+            //);
+
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
                 getSelectedTab: () => SelectedMainTab,
                 resolveSelectedEquip: ResolveSelectedEquipForParam,
+                resolveEquipNameForWrite: ResolveEquipNameForWrite,
                 getSuppressWritesFromPolling: () => _suppressParamWritesFromPolling,
                 getSuppressWritesFromUiRollback: () => _suppressParamWritesFromUiRollback,
                 setSuppressWritesFromUiRollback: v => _suppressParamWritesFromUiRollback = v,
@@ -647,6 +717,8 @@ namespace TechEquipments
                 getOwnerWindow: () => this,
                 endParamFieldEdit: EndParamFieldEdit
             );
+
+            _paramRefs = new ParamRefsController(_equipmentService, _ctApiService, _config, this);
 
             DataContext = this; // DataContext на себя: используется во всём XAML (binding)
 
@@ -1141,6 +1213,31 @@ namespace TechEquipments
 
         #endregion
 
+        #region Refs
+
+        /// <summary>
+        /// Устанавливает активную страницу Param settings.
+        /// Вынесено в ParamRefsController.
+        /// </summary>
+        public void SetParamSettingsPage(ParamSettingsPage page)
+            => _paramRefs.SetParamSettingsPage(page);
+
+        /// <summary>
+        /// Переход по клику из DI/DO списка к связанному оборудованию.
+        /// Вынесено в ParamRefsController.
+        /// </summary>
+        public void Param_NavigateToLinkedEquip(DiDoRefRow? row)
+            => _paramRefs.NavigateToLinkedEquip(row);
+
+        /// <summary>
+        /// Переход к связанному оборудованию по имени.
+        /// Вынесено в ParamRefsController.
+        /// </summary>
+        public void Param_NavigateToLinkedEquip(string? equipName)
+            => _paramRefs.NavigateToLinkedEquip(equipName);
+
+        #endregion
+
         #region Trend
 
         // прокси для View
@@ -1335,13 +1432,98 @@ namespace TechEquipments
             => ResolveSelectedEquipForParam();
 
         void IParamHost.Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup)
-            => Param_ResetAreaIfTypeGroupChanged(newGroup);
+            => _paramRefs.ResetAreaIfTypeGroupChanged(newGroup);
 
         Task IParamHost.RefreshActiveParamSectionAsync(CancellationToken ct)
-            => RefreshActiveParamSectionAsync(ct);
+            => _paramRefs.RefreshActiveParamSectionAsync(ct);
 
         Task IParamHost.PollTrendOnceSafeAsync(CancellationToken ct)
             => _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
+
+        #endregion
+
+        #region IParamRefsHost
+
+        Dispatcher IParamRefsHost.Dispatcher => Dispatcher;
+
+        MainTabKind IParamRefsHost.SelectedMainTab => SelectedMainTab;
+
+        int IParamRefsHost.SelectedMainTabIndex
+        {
+            get => SelectedMainTabIndex;
+            set => SelectedMainTabIndex = value;
+        }
+
+        SemaphoreSlim IParamRefsHost.ParamRwGate => _paramRwGate;
+
+        ObservableCollection<EquipListBoxItem> IParamRefsHost.Equipments => Equipments;
+        ObservableCollection<DiDoRefRow> IParamRefsHost.ParamDiRows => ParamDiRows;
+        ObservableCollection<DiDoRefRow> IParamRefsHost.ParamDoRows => ParamDoRows;
+        ObservableCollection<PlcRefRow> IParamRefsHost.ParamPlcRows => ParamPlcRows;
+
+        ParamSettingsPage IParamRefsHost.CurrentParamSettingsPage
+        {
+            get => CurrentParamSettingsPage;
+            set => CurrentParamSettingsPage = value;
+        }
+
+        string IParamRefsHost.EquipName
+        {
+            get => EquipName;
+            set => EquipName = value;
+        }
+
+        string IParamRefsHost.SelectedStation
+        {
+            get => SelectedStation;
+            set => SelectedStation = value;
+        }
+
+        EquipTypeGroup IParamRefsHost.SelectedTypeFilter
+        {
+            get => SelectedTypeFilter;
+            set => SelectedTypeFilter = value;
+        }
+
+        void IParamRefsHost.SetDryRunState(string? equipName, DryRunMotor? model)
+        {
+            DryRunEquipName = equipName;
+            DryRunModel = model;
+            OnPropertyChanged(nameof(DryRunEquipName));
+            OnPropertyChanged(nameof(DryRunModel));
+        }
+
+        (string equipName, string equipType) IParamRefsHost.ResolveSelectedEquipForParam()
+            => ResolveSelectedEquipForParam();
+
+        bool IParamRefsHost.IsEquipmentVisible(EquipListBoxItem item)
+            => FilterEquipment(item);
+
+        void IParamRefsHost.ApplyFilters()
+            => ApplyFilters();
+
+        void IParamRefsHost.DoIncrementalSearch(string text)
+            => DoIncrementalSearch(text);
+
+        void IParamRefsHost.ShowParamChart(bool reset)
+            => ShowParamChart(reset);
+
+        void IParamRefsHost.StartParamPolling()
+            => StartParamPolling();
+
+        void IParamRefsHost.BeginSuppressParamWritesFromRefresh()
+        {
+            _suppressParamWritesFromPolling = true;
+        }
+
+        void IParamRefsHost.EndSuppressParamWritesFromRefresh()
+        {
+            // Снимаем suppress чуть позже, когда WPF/DevExpress успеют применить binding
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _suppressParamWritesFromPolling = false;
+            }), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        }
 
         #endregion
 
@@ -1416,745 +1598,29 @@ namespace TechEquipments
 
         /// <summary>
         /// Возвращает имя оборудования для записи.
-        /// По умолчанию пишем в текущее выбранное оборудование (EquipName).
-        /// Если отправитель находится в секции DryRun (DataContext = DryRunMotor),
-        /// то пишем в DryRunEquipName (найденный через WinOpened).
+        ///
+        /// По умолчанию запись идёт в текущее выбранное оборудование (EquipName).
+        /// Но если отправитель находится в секции DryRun (DataContext = DryRunMotor),
+        /// то писать нужно в DryRunEquipName, найденный через WinOpened.
         /// </summary>
         private string ResolveEquipNameForWrite(object sender)
         {
-            // по умолчанию
-            var equip = (EquipName ?? "").Trim();
+            // Обычная запись — в текущее выбранное оборудование
+            var currentEquip = (EquipName ?? "").Trim();
 
-            // DryRun секция — DataContext другой (DryRunMotor)
+            // DryRun секция работает с другой моделью и другим target-equipment
             if (sender is FrameworkElement fe && fe.DataContext is DryRunMotor)
             {
-                var dry = (DryRunEquipName ?? "").Trim();
-                if (!string.IsNullOrWhiteSpace(dry))
-                    return dry;
+                var dryRunEquip = (DryRunEquipName ?? "").Trim();
 
-                // если вдруг DryRunEquipName ещё не найден — fallback на текущий мотор
-                return equip;
+                if (!string.IsNullOrWhiteSpace(dryRunEquip))
+                    return dryRunEquip;
+
+                // Если DryRunEquipName ещё не найден — fallback на текущее оборудование
+                return currentEquip;
             }
 
-            return equip;
-        }
-
-        #endregion
-
-        #region Refs
-
-        /// <summary>
-        /// Вызывается из VGDParamView при нажатии PLC/DI_DO/Alarm/Chart.
-        /// </summary>
-        public void SetParamSettingsPage(ParamSettingsPage page)
-        {
-            CurrentParamSettingsPage = page;
-        }
-
-        /// <summary>
-        /// Вызывается из StartParamPolling каждые 5 секунд.
-        /// Обновляет только ту секцию Settings, которая сейчас активна.
-        /// </summary>
-        private async Task RefreshActiveParamSectionAsync(CancellationToken ct)
-        {
-            // только на вкладке Param
-            if (SelectedMainTab != MainTabKind.Param)
-                return;
-
-            // если пользователь смотрит Chart — ничего не обновляем
-            if (CurrentParamSettingsPage == ParamSettingsPage.None)
-                return;
-
-            // список оборудования должен быть загружен
-            if (Equipments.Count == 0)
-                return;
-
-            switch (CurrentParamSettingsPage)
-            {
-                case ParamSettingsPage.DiDo:
-                    if (Equipments.Count == 0)
-                        return;
-
-                    await RefreshDiDoSectionAsync(ct);
-                    break;
-
-                case ParamSettingsPage.Plc:
-                    await RefreshPlcSectionAsync(ct);
-                    break;
-
-                case ParamSettingsPage.DryRun:
-                    await RefreshDryRunSectionAsync(ct);
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Обновляет DI/DO секции для VGD:
-        /// - читает EquipRef(category="TabDIDO")
-        /// - находит DI/DO в общем Equipments
-        /// - перечитывает DIParam/DOParam (Value может меняться)
-        /// - синхронизирует ObservableCollection без мигания (update in-place)
-        /// </summary>
-        private async Task RefreshDiDoSectionAsync(CancellationToken ct)
-        {
-            var (equipName, _) = ResolveSelectedEquipForParam();
-            equipName = (equipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(equipName))
-                return;
-
-            // сериализуем с Param чтением/записью (CtApi не любит параллельность на одном соединении)
-            await _paramRwGate.WaitAsync(ct);
-            try
-            {
-                // 1) refs
-                var refs = await _equipmentService.GetEquipRef(equipName, "TabDIDO", "State") ?? new List<string>();
-
-                var refNames = refs
-                    .Where(s => !string.IsNullOrWhiteSpace(s) && !s.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                    .Select(s => s.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)                    
-                    .ToList();
-
-                if (refNames.Count == 0)
-                {
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        ParamDiRows.Clear();
-                        ParamDoRows.Clear();
-                    });
-                    return;
-                }
-
-                // 2) разложим refs на DI и DO по EquipTypeGroup
-                var diEquip = new List<EquipListBoxItem>();
-                var doEquip = new List<EquipListBoxItem>();
-
-                foreach (var refName in refNames)
-                {
-                    ct.ThrowIfCancellationRequested();
-
-                    // Быстрый поиск в списке (если у тебя нет _equipIndex — можно оставить FirstOrDefault)
-                    var equip = Equipments.FirstOrDefault(x =>
-                        string.Equals((x.Equipment ?? "").Trim(), refName, StringComparison.OrdinalIgnoreCase));
-
-                    if (equip == null)
-                        continue;
-
-                    var grp = EquipTypeRegistry.GetGroup(equip.Type ?? "");
-
-                    if (grp == EquipTypeGroup.DI)
-                        diEquip.Add(equip);
-                    else if (grp == EquipTypeGroup.DO)
-                        doEquip.Add(equip);
-                }
-
-                // helper: параллельное выполнение задач с лимитом
-                async Task<List<TResult>> RunLimitedAsync<TItem, TResult>(
-                    List<TItem> items,
-                    int maxConcurrency,
-                    Func<TItem, Task<TResult>> work,
-                    CancellationToken token)
-                {
-                    var results = new System.Collections.Concurrent.ConcurrentBag<TResult>();
-                    using var sem = new SemaphoreSlim(Math.Max(1, maxConcurrency), Math.Max(1, maxConcurrency));
-
-                    var tasks = items.Select(async it =>
-                    {
-                        await sem.WaitAsync(token);
-                        try
-                        {
-                            var r = await work(it);
-                            results.Add(r);
-                        }
-                        finally
-                        {
-                            sem.Release();
-                        }
-                    });
-
-                    await Task.WhenAll(tasks);
-                    return results.ToList();
-                }
-
-                var maxPar = _config.GetValue<int>("CtApi:TagReadParallelism", 1);
-                if (maxPar < 1) maxPar = 1;
-
-                // 3) читаем DI/DO параллельно, но с лимитом
-                var diRows = await RunLimitedAsync(diEquip, maxPar, async equip =>
-                {
-                    var model = await _equipmentService.ReadEquipParamsAsync<DIParam>(equip.Equipment.Trim(), ct);
-                    return model != null ? new DiDoRefRow(equip, model) : null;
-                }, ct);
-
-                var doRows = await RunLimitedAsync(doEquip, maxPar, async equip =>
-                {
-                    var model = await _equipmentService.ReadEquipParamsAsync<DOParam>(equip.Equipment.Trim(), ct);
-                    return model != null ? new DiDoRefRow(equip, model) : null;
-                }, ct);
-
-                // nulls убрать
-                var diNew = diRows.Where(x => x != null).ToDictionary(x => x!.EquipName, StringComparer.OrdinalIgnoreCase);
-                var doNew = doRows.Where(x => x != null).ToDictionary(x => x!.EquipName, StringComparer.OrdinalIgnoreCase);
-
-                // 4) sync collections on UI thread
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    SyncRows(ParamDiRows, diNew);
-                    SortRowsByChanel(ParamDiRows);
-
-                    SyncRows(ParamDoRows, doNew);
-                    SortRowsByChanel(ParamDoRows);
-                });
-            }
-            finally
-            {
-                _paramRwGate.Release();
-            }
-        }
-
-        /// <summary>
-        /// Синхронизация ObservableCollection без полного Clear/Add (меньше мигания):
-        /// - удаляем отсутствующие
-        /// - обновляем существующие (Update)
-        /// - добавляем новые
-        /// </summary>
-        private static void SyncRows(ObservableCollection<DiDoRefRow> target, Dictionary<string, DiDoRefRow> newMap)
-        {
-            // remove missing
-            for (int i = target.Count - 1; i >= 0; i--)
-            {
-                var key = target[i].EquipName;
-                if (!newMap.ContainsKey(key))
-                    target.RemoveAt(i);
-            }
-
-            // update existing + mark
-            var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var kv in newMap)
-            {
-                if (existing.TryGetValue(kv.Key, out var row))
-                {
-                    // update values/model
-                    row.Update(kv.Value.EquipItem, kv.Value.ParamModel);
-                }
-                else
-                {
-                    target.Add(kv.Value);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Возвращает числовой ключ сортировки по ChanelShort:
-        /// "6.3.4" -> 006_003_004
-        /// "6.3"   -> 006_003_000
-        /// Если канал пустой/непарсится -> уходит в конец.
-        /// </summary>
-        private static long GetChanelSortKey(DiDoRefRow row)
-        {
-            if (row == null) return long.MaxValue;
-
-            var raw = (row.ChanelShort ?? "").Trim();
-            if (raw.Length == 0) return long.MaxValue;
-
-            // Разбираем "A.B.C" (или "A.B"). Если вдруг формат другой - будет в конец.
-            var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            static int ParsePart(string? s)
-                => int.TryParse(s, out var v) ? v : int.MaxValue;
-
-            var a = parts.Length > 0 ? ParsePart(parts[0]) : int.MaxValue;
-            var b = parts.Length > 1 ? ParsePart(parts[1]) : int.MaxValue;
-            var c = parts.Length > 2 ? ParsePart(parts[2]) : 0;
-
-            return (long)a * 1_000_000L + (long)b * 1_000L + (long)c;
-        }
-
-        /// <summary>
-        /// Переупорядочивает ObservableCollection в нужном порядке (через Move),
-        /// чтобы UI не мигал и не терял выделение.
-        /// </summary>
-        private static void SortRowsByChanel(ObservableCollection<DiDoRefRow> rows)
-        {
-            if (rows == null || rows.Count <= 1)
-                return;
-
-            var sorted = rows
-                .OrderBy(GetChanelSortKey)
-                .ThenBy(r => r.EquipName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            // Переставляем существующие объекты через Move (минимально инвазивно для UI)
-            for (int targetIndex = 0; targetIndex < sorted.Count; targetIndex++)
-            {
-                var item = sorted[targetIndex];
-                var currentIndex = rows.IndexOf(item);
-                if (currentIndex >= 0 && currentIndex != targetIndex)
-                    rows.Move(currentIndex, targetIndex);
-            }
-        }
-
-
-        private async Task RefreshPlcSectionAsync(CancellationToken ct)
-        {
-            // PLC refs сейчас нужны только для VGD
-            //if (CurrentParamModel is not VGDParam)
-            //    return;
-
-            var (equipName, _) = ResolveSelectedEquipForParam();
-            equipName = (equipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(equipName))
-                return;
-
-            const string category = "TabPLC";
-            const string clusterEquipItem = "State";
-
-            // локальный helper: параллельный TagRead с лимитом
-            async Task<Dictionary<string, string?>> TagReadManyAsync(List<string> tags, int maxConcurrency, CancellationToken token)
-            {
-                var result = new System.Collections.Concurrent.ConcurrentDictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-                using var sem = new SemaphoreSlim(Math.Max(1, maxConcurrency), Math.Max(1, maxConcurrency));
-
-                var tasks = tags.Select(async tag =>
-                {
-                    await sem.WaitAsync(token);
-                    try
-                    {
-                        result[tag] = await _ctApiService.TagReadAsync(tag);
-                    }
-                    catch
-                    {
-                        result[tag] = null;
-                    }
-                    finally
-                    {
-                        sem.Release();
-                    }
-                });
-
-                await Task.WhenAll(tasks);
-                return new Dictionary<string, string?>(result, StringComparer.OrdinalIgnoreCase);
-            }
-
-            await _paramRwGate.WaitAsync(ct);
-            try
-            {
-                // 1) refs
-                var fresh = await _equipmentService.GetEquipRef(equipName, category, clusterEquipItem, "CUSTOM1")
-                           ?? new List<PlcRefRow>();
-
-                // 2) sync списка (чтобы не пересоздавать)
-                await Dispatcher.InvokeAsync(() => SyncPlcRows(ParamPlcRows, fresh));
-
-                // 3) snapshot
-                var snapshot = await Dispatcher.InvokeAsync(() => ParamPlcRows.ToList());
-
-                // 4) I/O: TagInfo (только при пустых кешах) -> TagRead пакетно
-                var meta = new List<(PlcRefRow row, string tagName, string unit, string forcedTag)>(snapshot.Count);
-                var tagsToRead = new List<string>(snapshot.Count * 2);
-
-                foreach (var row in snapshot)
-                {
-                    ct.ThrowIfCancellationRequested();
-
-                    // --- resolve TagName (кэш в row.TagName) ---
-                    var tagName = (row.TagName ?? "").Trim();
-                    if (string.IsNullOrWhiteSpace(tagName))
-                    {
-                        var equipItem = GetPlcEquipItemForTagInfo(row);
-                        try
-                        {
-                            tagName = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.{equipItem}\", 0)") ?? "").Trim();
-                        }
-                        catch
-                        {
-                            tagName = "";
-                        }
-                    }
-
-                    // --- resolve Unit (кэш в row.Unit) ---
-                    var unit = (row.Unit ?? "").Trim();
-                    if (string.IsNullOrWhiteSpace(unit) &&
-                        !string.IsNullOrWhiteSpace(tagName) &&
-                        !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                    {
-                        try
-                        {
-                            unit = (await _ctApiService.CicodeAsync($"TagInfo(\"{tagName}\", 1)") ?? "").Trim();
-                        }
-                        catch
-                        {
-                            unit = "";
-                        }
-                    }
-
-                    // --- resolve ForcedTagName (кэш в row.ForcedTagName) ---
-                    var forcedTag = "";
-                    if (row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
-                    {
-                        forcedTag = (row.ForcedTagName ?? "").Trim();
-                        if (string.IsNullOrWhiteSpace(forcedTag))
-                        {
-                            try
-                            {
-                                forcedTag = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.ValueForced\", 0)") ?? "").Trim();
-                            }
-                            catch
-                            {
-                                forcedTag = "";
-                            }
-                        }
-                    }
-
-                    // сохраняем мета для UI (в UI-thread применим кеши)
-                    meta.Add((row, tagName, unit, forcedTag));
-
-                    // собираем теги на чтение (только валидные)
-                    if (!string.IsNullOrWhiteSpace(tagName) && !tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                        tagsToRead.Add(tagName);
-
-                    if (!string.IsNullOrWhiteSpace(forcedTag) && !forcedTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                        tagsToRead.Add(forcedTag);
-                }
-
-                // ничего читать
-                tagsToRead = tagsToRead.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                var rawMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-
-                if (tagsToRead.Count > 0)
-                {
-                    var maxPar = _config.GetValue<int>("CtApi:TagReadParallelism", 1);
-                    if (maxPar < 1) maxPar = 1;
-
-                    rawMap = await TagReadManyAsync(tagsToRead, maxPar, ct);
-                }
-
-                // 5) подготовка updates
-                var updates = new List<(PlcRefRow row, string tagName, double? value, string unit, bool? forced, string forcedTag)>(meta.Count);
-
-                foreach (var m in meta)
-                {
-                    ct.ThrowIfCancellationRequested();
-
-                    double? val = null;
-                    if (!string.IsNullOrWhiteSpace(m.tagName) &&
-                        rawMap.TryGetValue(m.tagName, out var raw) &&
-                        raw != null)
-                    {
-                        val = TryParseDouble(raw);
-                    }
-
-                    bool? forced = null;
-                    if (m.row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
-                    {
-                        if (!string.IsNullOrWhiteSpace(m.forcedTag) &&
-                            rawMap.TryGetValue(m.forcedTag, out var fraw) &&
-                            fraw != null)
-                        {
-                            var s = fraw.Trim();
-                            forced = s == "1" || s.Equals("True", StringComparison.OrdinalIgnoreCase);
-                        }
-                        else
-                        {
-                            forced = false;
-                        }
-                    }
-
-                    updates.Add((m.row, m.tagName, val, m.unit, forced, m.forcedTag));
-                }
-
-                // 6) apply UI (одним заходом)
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    foreach (var u in updates)
-                    {
-                        // кеши мета
-                        if (!string.IsNullOrWhiteSpace(u.tagName))
-                            u.row.TagName = u.tagName;
-
-                        if (!string.IsNullOrWhiteSpace(u.unit) && !u.unit.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                            u.row.Unit = u.unit;
-
-                        if (!string.IsNullOrWhiteSpace(u.forcedTag) && !u.forcedTag.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                            u.row.ForcedTagName = u.forcedTag;
-
-                        // значение
-                        u.row.UpdateValue(u.value);
-
-                        // forced
-                        if (u.forced.HasValue)
-                            u.row.ValueForced = u.forced.Value;
-                        else if (u.row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
-                            u.row.ValueForced = false;
-                    }
-                });
-            }
-            finally
-            {
-                _paramRwGate.Release();
-            }
-        }
-
-        private static double? TryParseDouble(string? s)
-        {
-            s = (s ?? "").Trim();
-            if (s.Length == 0 || s.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
-                return d;
-
-            if (double.TryParse(s, NumberStyles.Float, CultureInfo.GetCultureInfo("ru-RU"), out d))
-                return d;
-
-            return null;
-        }
-
-        /// <summary>
-        /// Синхронизация PLC rows без затирания кэша TagName/Value.
-        /// - удаляем отсутствующие
-        /// - обновляем мета-данные у существующих
-        /// - добавляем новые
-        /// </summary>
-        private static void SyncPlcRows(ObservableCollection<PlcRefRow> target, List<PlcRefRow> fresh)
-        {
-            // key = EquipName (то, что приходит из REFEQUIP)
-            var freshMap = fresh
-                .Where(x => !string.IsNullOrWhiteSpace(x.EquipName))
-                .ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
-
-            // remove missing
-            for (int i = target.Count - 1; i >= 0; i--)
-            {
-                if (!freshMap.ContainsKey(target[i].EquipName))
-                    target.RemoveAt(i);
-            }
-
-            // update existing + add new
-            var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var kv in freshMap)
-            {
-                var freshRow = kv.Value;
-
-                if (existing.TryGetValue(kv.Key, out var row))
-                {
-                    // обновляем только мета (Type/Comment/Title)
-                    // (подстрой под твой PlcRefRow: если UpdateMeta принимает другие аргументы — поменяй)
-                    row.UpdateMeta(freshRow.Type, freshRow.Comment);
-
-                    // TagName НЕ затираем пустым (кэш)
-                    if (!string.IsNullOrWhiteSpace(freshRow.TagName) &&
-                        !freshRow.TagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                    {
-                        row.TagName = freshRow.TagName;
-                    }
-                }
-                else
-                {
-                    target.Add(freshRow);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Переход по клику из DI/DO списка:
-        /// - гарантируем видимость в ListBox (если фильтры прячут — подстроим)
-        /// - подставим EquipName
-        /// - выделим в ListBox
-        /// - откроем вкладку Param
-        /// </summary>
-        public void Param_NavigateToLinkedEquip(DiDoRefRow? row)
-        {
-            if (row == null)
-                return;
-
-            var it = row.EquipItem;
-            if (it == null)
-                return;
-
-            var targetName = (it.Equipment ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(targetName))
-                return;
-
-            // 1) Если текущие фильтры прячут элемент — подстраиваем фильтры так, чтобы он стал виден
-            EnsureEquipmentVisibleInList(it);
-
-            // 2) Подставляем текст поиска (это же ключ для DoIncrementalSearch)
-
-            // если прыгаем на оборудование другого типа — показываем Chart по умолчанию сразу (без ожидания 5 сек)
-            var newGroup = EquipTypeRegistry.GetGroup(row.EquipItem?.Type ?? "");
-            Param_ResetAreaIfTypeGroupChanged(newGroup);
-
-            EquipName = targetName;
-
-            // 3) Выделяем в ListBox
-            DoIncrementalSearch(targetName);
-
-            // 4) Открываем вкладку Param (DI/DO экран появится автоматически по типу)
-            if (SelectedMainTab != MainTabKind.Param)
-            {
-                SelectedMainTabIndex = (int)MainTabKind.Param;
-                return;
-            }
-
-            // Если уже на Param — просто обновим polling
-            StartParamPolling();
-        }
-
-        /// <summary>
-        /// Переход к оборудованию по имени (используется из PLC settings / ссылок).
-        /// НЕ зависит от QR-контроллера.
-        /// </summary>
-        public void Param_NavigateToLinkedEquip(string? equipName)
-        {
-            var key = (equipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(key))
-                return;
-
-            // 1) Пытаемся найти оборудование в полном списке (чтобы корректно подстроить Station/Type фильтры)
-            var it =
-                Equipments.FirstOrDefault(x => string.Equals(x.Equipment, key, StringComparison.OrdinalIgnoreCase)) ??
-                Equipments.FirstOrDefault(x => string.Equals(x.Tag, key, StringComparison.OrdinalIgnoreCase));
-
-            if (it != null)
-            {
-                // Если текущие фильтры скрывают элемент — подстроим фильтры так, чтобы он стал видим
-                EnsureEquipmentVisibleInList(it);
-
-                // Если прыгаем на оборудование другой группы — сбросим область Param (как у тебя уже сделано)
-                var newGroup = EquipTypeRegistry.GetGroup(it.Type ?? "");
-                Param_ResetAreaIfTypeGroupChanged(newGroup);
-
-                // Нормализуем имя на реальное Equipment (а не Tag)
-                key = (it.Equipment ?? key).Trim();
-            }
-
-            // 2) Выставляем оборудование
-            EquipName = key;
-
-            // 3) Выделяем слева
-            DoIncrementalSearch(key);
-
-            // 4) Уводим на вкладку Param
-            if (SelectedMainTab != MainTabKind.Param)
-            {
-                SelectedMainTabIndex = (int)MainTabKind.Param;
-                return;
-            }
-
-            // 5) Если уже на Param — обновим polling (или твой новый механизм)
-            StartParamPolling();
-        }
-
-        /// <summary>
-        /// Если элемент скрыт фильтрами Station/Type — меняем фильтры так, чтобы элемент был видим.
-        /// </summary>
-        private void EnsureEquipmentVisibleInList(EquipListBoxItem it)
-        {
-            try
-            {
-                // если уже видим — ничего не делаем
-                if (FilterEquipment(it))
-                    return;
-
-                // Station
-                if (!string.IsNullOrWhiteSpace(it.Station))
-                    SelectedStation = it.Station.Trim();
-                else
-                    SelectedStation = "All";
-
-                // TypeGroup (DI/DO)
-                var grp = EquipTypeRegistry.GetGroup(it.Type ?? "");
-                SelectedTypeFilter = grp != EquipTypeGroup.All ? grp : EquipTypeGroup.All;
-
-                ApplyFilters();
-            }
-            catch
-            {
-                // best-effort: даже если что-то пошло не так, просто не ломаем навигацию
-            }
-        }
-
-        /// <summary>
-        /// Если группа оборудования изменилась (например VGD -> DI), сбрасываем UI Param на дефолт:
-        /// - показываем Chart
-        /// - сбрасываем активную секцию настроек (PLC/DI_DO/Alarm) = None
-        /// Это устраняет баг "открылась не та область" и "после возврата на VGD нет активной области".
-        /// </summary>
-        private void Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup)
-        {
-            if (!_hasLastParamTypeGroup)
-            {
-                _hasLastParamTypeGroup = true;
-                _lastParamTypeGroup = newGroup;
-                return;
-            }
-
-            if (_lastParamTypeGroup == newGroup)
-                return;
-
-            _lastParamTypeGroup = newGroup;
-
-            // 1) Сбрасываем выбранную секцию Settings (для VGD-кнопок)
-            SetParamSettingsPage(ParamSettingsPage.None);
-
-            // 2) Показываем Chart по умолчанию
-            ShowParamChart(reset: false);
-
-            // 3) (опционально) очистить DI/DO списки, чтобы не светились чужие данные
-            ParamDiRows.Clear();
-            ParamDoRows.Clear();
-            ParamPlcRows.Clear();
-        }
-
-        /// <summary>
-        /// Для PLC-строк по умолчанию используем ".Value".
-        /// Для статусов (Motor/Valve) вместо Value используем ".State".
-        /// </summary>
-        private static string GetPlcEquipItemForTagInfo(PlcRefRow row)
-        {
-            if (row.Type is PlcTypeCustom.EqMotorStatus or PlcTypeCustom.EqValveStatus)
-                return "State";
-
-            return "Value";
-        }
-
-        /// <summary>
-        /// Обновляет DryRun секцию:
-        /// 1) находим ref equipment через WinOpened
-        /// 2) читаем DryRunMotor с найденного оборудования
-        /// </summary>
-        private async Task RefreshDryRunSectionAsync(CancellationToken ct)
-        {
-            var (equipName, _) = ResolveSelectedEquipForParam();
-            equipName = (equipName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(equipName))
-                return;
-
-            // 1) ищем "родителя" для DryRun через WinOpened
-            var winRef = await _equipmentService.GetWinOpenedRefAsync(equipName, sEquipItem: "State", sCategory: "WinOpened");
-            if (winRef == null || string.IsNullOrWhiteSpace(winRef.RefEquip))
-            {
-                DryRunEquipName = null;
-                DryRunModel = null;
-                OnPropertyChanged(nameof(DryRunEquipName));
-                OnPropertyChanged(nameof(DryRunModel));
-                return;
-            }
-
-            DryRunEquipName = winRef.RefEquip;
-
-            // 2) читаем DryRun теги уже с найденного оборудования (S17.P01.P01.*)
-            var model = await _equipmentService.ReadEquipParamsAsync<DryRunMotor>(DryRunEquipName);
-
-            DryRunModel = model;
-            OnPropertyChanged(nameof(DryRunEquipName));
-            OnPropertyChanged(nameof(DryRunModel));
+            return currentEquip;
         }
 
         #endregion

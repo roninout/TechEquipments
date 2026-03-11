@@ -16,35 +16,44 @@
 
         <!-- ✅ Автовыбор разметки по типу модели (CurrentParamModel) -->
 
-        <DataTemplate DataType="{x:Type models:AIParam}">
+        <!--
+        Теперь ParamTabHost работает не с "сырыми" AIParam/DIParam/...,
+        а с новыми UI-обертками AiModel/DiModel/...
+        -->
+
+        <DataTemplate DataType="{x:Type models:AiModel}">
             <views:AIParamView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type models:DIParam}">
+        <DataTemplate DataType="{x:Type models:DiModel}">
             <local:DIParamView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type models:DOParam}">
+        <DataTemplate DataType="{x:Type models:DoModel}">
             <local:DIParamView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type models:VGAParam}">
+        <DataTemplate DataType="{x:Type models:VgaModel}">
             <local:VGAParamView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type models:VGDParam}">
+        <DataTemplate DataType="{x:Type models:VgdModel}">
             <local:VGDParamView />
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type models:MotorParam}">
+        <DataTemplate DataType="{x:Type models:MotorModel}">
             <local:MotorParamView />
         </DataTemplate>
 
-         <!--🧯 Фолбэк, если тип пока не поддержан--> 
-        <!--<DataTemplate DataType="{x:Type sys:Object}">
-            <TextBlock Text="No Param layout for this equipment type."
-                       Margin="8"/>
-        </DataTemplate>-->
+        <!-- Пока View для этих типов еще не подключены -->
+        <DataTemplate DataType="{x:Type models:AtvModel}">
+            <TextBlock Text="ATV view is not connected yet." Margin="8"/>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type models:VgaElModel}">
+            <TextBlock Text="VGA_EL view is not connected yet." Margin="8"/>
+        </DataTemplate>
+
 
     </UserControl.Resources>
 
