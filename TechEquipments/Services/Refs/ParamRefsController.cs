@@ -930,6 +930,11 @@ namespace TechEquipments
         /// - для Motor ищет linked ATV через WinOpened / __EquipmentSic
         /// - читает AtvParam с найденного equipment
         /// - кладёт результат в host.LinkedAtvModel
+        ///
+        /// ВАЖНО:
+        /// Не сбрасываем linked ATV в null перед каждым refresh.
+        /// Иначе секция в MotorParamView мигает/поддёргивается:
+        /// сначала скрывается, потом снова создаётся.
         /// </summary>
         private async Task RefreshAtvSectionAsync(CancellationToken ct)
         {
@@ -937,6 +942,7 @@ namespace TechEquipments
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
 
+            // Если текущее оборудование не выбрано — очищаем linked ATV один раз.
             if (string.IsNullOrWhiteSpace(equipName))
             {
                 await _host.Dispatcher.InvokeAsync(() =>
@@ -958,7 +964,7 @@ namespace TechEquipments
             var group = EquipTypeRegistry.GetGroup(equipType);
 
             // ATV-секция внутри мотора нужна только для Motor.
-            // Для остальных типов очищаем linked state.
+            // Для остальных типов linked ATV state очищаем.
             if (group != EquipTypeGroup.Motor)
             {
                 await _host.Dispatcher.InvokeAsync(() =>
@@ -977,23 +983,15 @@ namespace TechEquipments
                 return;
             }
 
-            // Сразу очищаем старое linked ATV, чтобы не висели старые данные,
-            // пока идёт поиск новой связи.
-            await _host.Dispatcher.InvokeAsync(() =>
-            {
-                _host.BeginSuppressParamWritesFromRefresh();
-                try
-                {
-                    _host.SetLinkedAtvState(null, null);
-                }
-                finally
-                {
-                    _host.EndSuppressParamWritesFromRefresh();
-                }
-            });
-
+            // ВАЖНО:
+            // Не очищаем старую модель перед чтением новой.
+            // Иначе на каждом polling-цикле XAML будет скрывать секцию и показывать её заново.
             var (linkedEquipName, linkedModel) = await TryResolveMotorLinkedAtvAsync(equipName, ct);
 
+            ct.ThrowIfCancellationRequested();
+
+            // После завершения поиска применяем итоговое состояние ОДИН раз:
+            // либо новая linked-модель, либо null/null если link не найден.
             await _host.Dispatcher.InvokeAsync(() =>
             {
                 _host.BeginSuppressParamWritesFromRefresh();
