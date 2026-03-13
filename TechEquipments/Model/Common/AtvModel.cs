@@ -9,5 +9,12 @@ namespace TechEquipments
     public sealed class AtvModel : ParamModelBase<AtvParam>
     {
         public AtvModel(AtvParam param) : base(param) { }
+
+        public override IReadOnlyCollection<ParamSettingsPage> SupportedPages { get; }
+    = new[]
+    {
+                ParamSettingsPage.Plc,
+                ParamSettingsPage.Alarm
+    };
     }
 }

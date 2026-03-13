@@ -4,7 +4,6 @@
                     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                     xmlns:local="clr-namespace:TechEquipments.Views.Param"
-                    xmlns:views="clr-namespace:TechEquipments.Views.Param"
                     xmlns:models="clr-namespace:TechEquipments"
                     xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
                     mc:Ignorable="d"
@@ -22,7 +21,7 @@
         -->
 
         <DataTemplate DataType="{x:Type models:AiModel}">
-            <views:AIParamView />
+            <local:AIParamView />
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type models:DiModel}">
@@ -49,11 +48,9 @@
             <local:MotorParamView />
         </DataTemplate>
 
-        <!-- Пока View для этих типов еще не подключены -->
         <DataTemplate DataType="{x:Type models:AtvModel}">
-            <TextBlock Text="ATV view is not connected yet." Margin="8"/>
+            <local:ATVParamView />
         </DataTemplate>
-
 
     </UserControl.Resources>
 
