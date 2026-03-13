@@ -290,51 +290,49 @@
                         <dxlc:LayoutGroup Orientation="Vertical" View="Group" GroupBoxDisplayMode="Light">
 
                             <!-- ====== PLC settings ====== -->
-                            <dxlc:LayoutGroup x:Name="PlcSettingsGroup"
-                                                Header="PLC settings"
-                                                View="GroupBox"
-                                                HorizontalAlignment="Stretch"
-                                                Orientation="Vertical"
-                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
-                                                                    Converter={StaticResource ParamPageToVis},
-                                                                    ConverterParameter=Plc}">
+                            <dxlc:LayoutGroup x:Name="PlcSettingsGroup" Header="PLC settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical"
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ParamPageToVis}, ConverterParameter=Plc}">
 
                                 <dxlc:LayoutItem>
-                                    <ScrollViewer Height="482" VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding DataContext.ParamPlcRows, RelativeSource={RelativeSource AncestorType=Window}}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Margin="2">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="120"/>
-                                                            <ColumnDefinition Width="30"/>
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <!-- Title -->
-                                                        <TextBlock Grid.Column="0" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Style="{StaticResource AppTextBlockStyle}"/>
-
-                                                        <!-- Value (dynamic by PlcTypeCustom) -->
-                                                        <ContentControl Grid.Column="1"
-                                                                        Content="{Binding}"
-                                                                        ContentTemplateSelector="{StaticResource PlcTypeTemplateSelector}"/>
-
-                                                        <!-- Unit -->
-                                                        <TextBlock Grid.Column="2" Margin="6,0,0,0"
-                                                                   Text="{Binding Unit}"
-                                                                   VerticalAlignment="Center"
-                                                                   HorizontalAlignment="Left"
-                                                                   Style="{StaticResource AppTextBlockStyle}"/>
-
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
+                                    <common:ParamPlcRowsView/>
                                 </dxlc:LayoutItem>
 
                             </dxlc:LayoutGroup>
+
+                            <!-- ====== ATV settings ====== -->
+                            <dxlc:LayoutItem Visibility="{Binding DataContext.CurrentParamSettingsPage,
+                                      RelativeSource={RelativeSource AncestorType=Window},
+                                      Converter={StaticResource ParamPageToVis},
+                                      ConverterParameter=Atv}">
+                                <Grid>
+
+                                    <!-- Если linked ATV найден -->
+                                    <common:AtvSettingsSectionView DataContext="{Binding DataContext.LinkedAtvModel.Param,
+                                                             RelativeSource={RelativeSource AncestorType=Window}}"
+                                       Visibility="{Binding DataContext.LinkedAtvModel,
+                                                            RelativeSource={RelativeSource AncestorType=Window},
+                                                            Converter={StaticResource NullToVis}}"/>
+
+                                    <!-- Если linked ATV не найден -->
+                                    <TextBlock Text="No ATV is configured for this equipment."
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontStyle="Italic"
+                                               Opacity="0.7">
+                                        <TextBlock.Style>
+                                            <Style TargetType="{x:Type TextBlock}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding DataContext.LinkedAtvModel, RelativeSource={RelativeSource AncestorType=Window}}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                </Grid>
+                            </dxlc:LayoutItem>
 
                             <!-- ====== DI settings ====== -->
                             <dxlc:LayoutGroup x:Name="DiSettingsGroup"

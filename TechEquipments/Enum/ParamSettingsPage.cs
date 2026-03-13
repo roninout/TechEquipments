@@ -12,6 +12,7 @@ namespace TechEquipments
         DiDo = 2,
         Alarm = 3,
         TimeWork = 4,
-        DryRun = 5
+        DryRun = 5,
+        Atv = 6,
     }
 }

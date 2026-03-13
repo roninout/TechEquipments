@@ -35,6 +35,7 @@ namespace TechEquipments
         public bool HasAlarmPage => SupportedPages.Contains(ParamSettingsPage.Alarm);
         public bool HasTimeWorkPage => SupportedPages.Contains(ParamSettingsPage.TimeWork);
         public bool HasDryRunPage => SupportedPages.Contains(ParamSettingsPage.DryRun);
+        public bool HasAtvPage => SupportedPages.Contains(ParamSettingsPage.Atv);
 
         /// <summary>
         /// Проксируем Chanel наружу, чтобы MainWindow/Header продолжали работать как раньше.

@@ -33,12 +33,23 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    
     <Compile Update="Views\Param\ATVParamView.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
+
+    <Compile Update="Views\Common\ParamPlcRowsView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    
     <Compile Update="Views\Param\VGA_ELParamView.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
+
+    <Compile Update="Views\Common\AtvSettingsSectionView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+
   </ItemGroup>
 
   <ItemGroup>

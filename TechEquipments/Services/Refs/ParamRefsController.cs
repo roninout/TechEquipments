@@ -80,6 +80,10 @@ namespace TechEquipments
                     await RefreshDryRunSectionAsync(ct);
                     break;
 
+                case ParamSettingsPage.Atv:
+                    await RefreshAtvSectionAsync(ct);
+                    break;
+
                 default:
                     break;
             }
@@ -699,44 +703,6 @@ namespace TechEquipments
             }
         }
 
-        ///// <summary>
-        ///// Синхронизация PLC rows без затирания кэша TagName/Value.
-        ///// </summary>
-        //private static void SyncPlcRows(ObservableCollection<PlcRefRow> target, List<PlcRefRow> fresh)
-        //{
-        //    var freshMap = fresh
-        //        .Where(x => !string.IsNullOrWhiteSpace(x.EquipName))
-        //        .ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
-
-        //    for (int i = target.Count - 1; i >= 0; i--)
-        //    {
-        //        if (!freshMap.ContainsKey(target[i].EquipName))
-        //            target.RemoveAt(i);
-        //    }
-
-        //    var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
-
-        //    foreach (var kv in freshMap)
-        //    {
-        //        var freshRow = kv.Value;
-
-        //        if (existing.TryGetValue(kv.Key, out var row))
-        //        {
-        //            row.UpdateMeta(freshRow.Type, freshRow.Comment);
-
-        //            if (!string.IsNullOrWhiteSpace(freshRow.TagName) &&
-        //                !freshRow.TagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-        //            {
-        //                row.TagName = freshRow.TagName;
-        //            }
-        //        }
-        //        else
-        //        {
-        //            target.Add(freshRow);
-        //        }
-        //    }
-        //}
-
         /// <summary>
         /// Синхронизация PLC rows без затирания кэша TagName/Value.
         /// Поддерживает несколько PLC-строк с одинаковым EquipName,
@@ -948,6 +914,136 @@ namespace TechEquipments
                 : $"{linkedEquipName}:    {equip.Description}";
 
             return (linkedEquipName, new AiModel(param), title);
+        }
+
+
+
+
+
+
+
+
+
+
+        /// <summary>
+        /// Обновляет ATV-секцию:
+        /// - для Motor ищет linked ATV через WinOpened / __EquipmentSic
+        /// - читает AtvParam с найденного equipment
+        /// - кладёт результат в host.LinkedAtvModel
+        /// </summary>
+        private async Task RefreshAtvSectionAsync(CancellationToken ct)
+        {
+            var (equipName, equipType) = _host.ResolveSelectedEquipForParam();
+            equipName = (equipName ?? "").Trim();
+            equipType = (equipType ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equipName))
+            {
+                await _host.Dispatcher.InvokeAsync(() =>
+                {
+                    _host.BeginSuppressParamWritesFromRefresh();
+                    try
+                    {
+                        _host.SetLinkedAtvState(null, null);
+                    }
+                    finally
+                    {
+                        _host.EndSuppressParamWritesFromRefresh();
+                    }
+                });
+
+                return;
+            }
+
+            var group = EquipTypeRegistry.GetGroup(equipType);
+
+            // ATV-секция внутри мотора нужна только для Motor.
+            // Для остальных типов очищаем linked state.
+            if (group != EquipTypeGroup.Motor)
+            {
+                await _host.Dispatcher.InvokeAsync(() =>
+                {
+                    _host.BeginSuppressParamWritesFromRefresh();
+                    try
+                    {
+                        _host.SetLinkedAtvState(null, null);
+                    }
+                    finally
+                    {
+                        _host.EndSuppressParamWritesFromRefresh();
+                    }
+                });
+
+                return;
+            }
+
+            // Сразу очищаем старое linked ATV, чтобы не висели старые данные,
+            // пока идёт поиск новой связи.
+            await _host.Dispatcher.InvokeAsync(() =>
+            {
+                _host.BeginSuppressParamWritesFromRefresh();
+                try
+                {
+                    _host.SetLinkedAtvState(null, null);
+                }
+                finally
+                {
+                    _host.EndSuppressParamWritesFromRefresh();
+                }
+            });
+
+            var (linkedEquipName, linkedModel) = await TryResolveMotorLinkedAtvAsync(equipName, ct);
+
+            await _host.Dispatcher.InvokeAsync(() =>
+            {
+                _host.BeginSuppressParamWritesFromRefresh();
+                try
+                {
+                    _host.SetLinkedAtvState(linkedEquipName, linkedModel);
+                }
+                finally
+                {
+                    _host.EndSuppressParamWritesFromRefresh();
+                }
+            });
+        }
+
+        /// <summary>
+        /// Ищет linked ATV для мотора через:
+        /// WinOpened / ASSOC="__EquipmentSic"
+        /// 
+        /// Возвращает:
+        /// - equipment name
+        /// - AtvModel
+        /// </summary>
+        private async Task<(string? equipName, AtvModel? model)> TryResolveMotorLinkedAtvAsync(string motorEquipName, CancellationToken ct)
+        {
+            var winRef = await _equipmentService.GetWinOpenedRefAsync(
+                sEquipName: motorEquipName,
+                sEquipItem: "State",
+                sCategory: "WinOpened",
+                assocExpected: "__EquipmentSic");
+
+            if (winRef == null || string.IsNullOrWhiteSpace(winRef.RefEquip))
+                return (null, null);
+
+            var equip = FindLoadedEquipment(winRef.RefEquip);
+            if (equip == null)
+                return (null, null);
+
+            var group = EquipTypeRegistry.GetGroup(equip.Type ?? "");
+            if (group != EquipTypeGroup.Atv)
+                return (null, null);
+
+            var linkedEquipName = (equip.Equipment ?? winRef.RefEquip).Trim();
+            if (string.IsNullOrWhiteSpace(linkedEquipName))
+                return (null, null);
+
+            var param = await _equipmentService.ReadEquipParamsAsync<AtvParam>(linkedEquipName, ct);
+            if (param == null)
+                return (null, null);
+
+            return (linkedEquipName, new AtvModel(param));
         }
 
     }

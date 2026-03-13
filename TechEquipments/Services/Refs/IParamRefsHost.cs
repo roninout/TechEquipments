@@ -43,6 +43,9 @@ namespace TechEquipments
         // Текущее состояние DryRun
         void SetDryRunState(string? equipName, DryRunMotor? model);
 
+        // Текущее linked-ATV состояние для Motor -> __EquipmentSic
+        void SetLinkedAtvState(string? equipName, AtvModel? model);
+
         // Helpers из MainWindow
         (string equipName, string equipType) ResolveSelectedEquipForParam();
         bool IsEquipmentVisible(EquipListBoxItem item);

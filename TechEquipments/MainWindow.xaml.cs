@@ -669,6 +669,9 @@ namespace TechEquipments
         public string? DryRunEquipName { get; private set; }
         public DryRunMotor? DryRunModel { get; private set; }
 
+        public string? LinkedAtvEquipName { get; private set; }
+        public AtvModel? LinkedAtvModel { get; private set; }
+
         #endregion
 
         #endregion
@@ -1712,6 +1715,15 @@ namespace TechEquipments
             }), System.Windows.Threading.DispatcherPriority.ContextIdle);
         }
 
+        void IParamRefsHost.SetLinkedAtvState(string? equipName, AtvModel? model)
+        {
+            LinkedAtvEquipName = equipName;
+            LinkedAtvModel = model;
+
+            OnPropertyChanged(nameof(LinkedAtvEquipName));
+            OnPropertyChanged(nameof(LinkedAtvModel));
+        }
+
         #endregion
 
         #region ISoeHost
@@ -1791,24 +1803,46 @@ namespace TechEquipments
         /// Возвращает имя оборудования для записи.
         ///
         /// По умолчанию запись идёт в текущее выбранное оборудование (EquipName).
-        /// Но если отправитель находится в секции DryRun (DataContext = DryRunMotor),
-        /// то писать нужно в DryRunEquipName, найденный через WinOpened.
+        /// Но:
+        /// - если отправитель находится в секции DryRun (DataContext = DryRunMotor),
+        ///   то писать нужно в DryRunEquipName;
+        /// - если отправитель находится в секции linked ATV (DataContext = AtvParam)
+        ///   и сейчас открыт Motor -> ATV page,
+        ///   то писать нужно в LinkedAtvEquipName.
         /// </summary>
         private string ResolveEquipNameForWrite(object sender)
         {
             // Обычная запись — в текущее выбранное оборудование
             var currentEquip = (EquipName ?? "").Trim();
 
-            // DryRun секция работает с другой моделью и другим target-equipment
-            if (sender is FrameworkElement fe && fe.DataContext is DryRunMotor)
+            if (sender is FrameworkElement fe)
             {
-                var dryRunEquip = (DryRunEquipName ?? "").Trim();
+                // DryRun секция работает с другим target-equipment
+                if (fe.DataContext is DryRunMotor)
+                {
+                    var dryRunEquip = (DryRunEquipName ?? "").Trim();
 
-                if (!string.IsNullOrWhiteSpace(dryRunEquip))
-                    return dryRunEquip;
+                    if (!string.IsNullOrWhiteSpace(dryRunEquip))
+                        return dryRunEquip;
 
-                // Если DryRunEquipName ещё не найден — fallback на текущее оборудование
-                return currentEquip;
+                    return currentEquip;
+                }
+
+                // ATV секция внутри Motor работает с linked ATV equipment
+                if (fe.DataContext is AtvParam)
+                {
+                    var (_, equipType) = ResolveSelectedEquipForParam();
+                    var currentGroup = EquipTypeRegistry.GetGroup(equipType ?? "");
+
+                    if (currentGroup == EquipTypeGroup.Motor &&
+                        CurrentParamSettingsPage == ParamSettingsPage.Atv)
+                    {
+                        var linkedAtvEquip = (LinkedAtvEquipName ?? "").Trim();
+
+                        if (!string.IsNullOrWhiteSpace(linkedAtvEquip))
+                            return linkedAtvEquip;
+                    }
+                }
             }
 
             return currentEquip;

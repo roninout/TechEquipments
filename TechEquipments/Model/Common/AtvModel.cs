@@ -11,10 +11,10 @@ namespace TechEquipments
         public AtvModel(AtvParam param) : base(param) { }
 
         public override IReadOnlyCollection<ParamSettingsPage> SupportedPages { get; }
-    = new[]
-    {
-                ParamSettingsPage.Plc,
+        = new[]
+        {
+                ParamSettingsPage.Atv,
                 ParamSettingsPage.Alarm
-    };
+        };
     }
 }

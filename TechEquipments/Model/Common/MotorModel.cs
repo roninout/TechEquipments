@@ -21,7 +21,8 @@ namespace TechEquipments
                 ParamSettingsPage.DiDo,
                 ParamSettingsPage.Alarm,
                 ParamSettingsPage.TimeWork,
-                ParamSettingsPage.DryRun
+                ParamSettingsPage.DryRun,
+                ParamSettingsPage.Atv
             };
     }
 }

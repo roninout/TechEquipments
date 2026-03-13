@@ -29,5 +29,6 @@ namespace TechEquipments
         bool HasAlarmPage { get; }
         bool HasTimeWorkPage { get; }
         bool HasDryRunPage { get; }
+        bool HasAtvPage { get; }
     }
 }
