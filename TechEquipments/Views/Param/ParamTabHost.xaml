@@ -37,6 +37,10 @@
             <local:VGAParamView />
         </DataTemplate>
 
+        <DataTemplate DataType="{x:Type models:VgaElModel}">
+            <local:VGA_ELParamView />
+        </DataTemplate>
+
         <DataTemplate DataType="{x:Type models:VgdModel}">
             <local:VGDParamView />
         </DataTemplate>
@@ -48,10 +52,6 @@
         <!-- Пока View для этих типов еще не подключены -->
         <DataTemplate DataType="{x:Type models:AtvModel}">
             <TextBlock Text="ATV view is not connected yet." Margin="8"/>
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type models:VgaElModel}">
-            <TextBlock Text="VGA_EL view is not connected yet." Margin="8"/>
         </DataTemplate>
 
 

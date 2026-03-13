@@ -1,13 +1,10 @@
 ﻿using CtApi;
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
-using DevExpress.Xpf.Editors;
 using Microsoft.Extensions.Configuration;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -16,8 +13,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Threading;
-using System.IO;
-using static TechEquipments.IEquipmentService;
 
 namespace TechEquipments
 {

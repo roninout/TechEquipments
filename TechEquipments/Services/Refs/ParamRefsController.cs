@@ -699,31 +699,95 @@ namespace TechEquipments
             }
         }
 
+        ///// <summary>
+        ///// Синхронизация PLC rows без затирания кэша TagName/Value.
+        ///// </summary>
+        //private static void SyncPlcRows(ObservableCollection<PlcRefRow> target, List<PlcRefRow> fresh)
+        //{
+        //    var freshMap = fresh
+        //        .Where(x => !string.IsNullOrWhiteSpace(x.EquipName))
+        //        .ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+
+        //    for (int i = target.Count - 1; i >= 0; i--)
+        //    {
+        //        if (!freshMap.ContainsKey(target[i].EquipName))
+        //            target.RemoveAt(i);
+        //    }
+
+        //    var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+
+        //    foreach (var kv in freshMap)
+        //    {
+        //        var freshRow = kv.Value;
+
+        //        if (existing.TryGetValue(kv.Key, out var row))
+        //        {
+        //            row.UpdateMeta(freshRow.Type, freshRow.Comment);
+
+        //            if (!string.IsNullOrWhiteSpace(freshRow.TagName) &&
+        //                !freshRow.TagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        //            {
+        //                row.TagName = freshRow.TagName;
+        //            }
+        //        }
+        //        else
+        //        {
+        //            target.Add(freshRow);
+        //        }
+        //    }
+        //}
+
         /// <summary>
         /// Синхронизация PLC rows без затирания кэша TagName/Value.
+        /// Поддерживает несколько PLC-строк с одинаковым EquipName,
+        /// если у них разный Type.
         /// </summary>
         private static void SyncPlcRows(ObservableCollection<PlcRefRow> target, List<PlcRefRow> fresh)
         {
+            // 1) Нормализуем fresh и убираем точные дубли по ключу EquipName+Type.
             var freshMap = fresh
                 .Where(x => !string.IsNullOrWhiteSpace(x.EquipName))
-                .ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+                .GroupBy(GetPlcRowKey, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
+            var freshKeys = new HashSet<string>(freshMap.Keys, StringComparer.OrdinalIgnoreCase);
+
+            // 2) Удаляем из target строки, которых уже нет в fresh.
             for (int i = target.Count - 1; i >= 0; i--)
             {
-                if (!freshMap.ContainsKey(target[i].EquipName))
+                var key = GetPlcRowKey(target[i]);
+                if (!freshKeys.Contains(key))
                     target.RemoveAt(i);
             }
 
-            var existing = target.ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
+            // 3) Дополнительно убираем возможные дубли уже внутри target,
+            //    чтобы existing.ToDictionary никогда не падал.
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            for (int i = target.Count - 1; i >= 0; i--)
+            {
+                var key = GetPlcRowKey(target[i]);
+                if (!seen.Add(key))
+                    target.RemoveAt(i);
+            }
+
+            // 4) Строим карту уже существующих UI-строк.
+            var existing = target.ToDictionary(
+                x => GetPlcRowKey(x),
+                x => x,
+                StringComparer.OrdinalIgnoreCase);
+
+            // 5) Обновляем существующие строки или добавляем новые.
             foreach (var kv in freshMap)
             {
                 var freshRow = kv.Value;
 
                 if (existing.TryGetValue(kv.Key, out var row))
                 {
+                    // Обновляем только метаданные.
                     row.UpdateMeta(freshRow.Type, freshRow.Comment);
 
+                    // Не затираем TagName пустым/Unknown значением.
                     if (!string.IsNullOrWhiteSpace(freshRow.TagName) &&
                         !freshRow.TagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                     {
@@ -735,6 +799,19 @@ namespace TechEquipments
                     target.Add(freshRow);
                 }
             }
+        }
+
+        /// <summary>
+        /// Уникальный ключ PLC-строки.
+        /// Для VGA_EL одного EquipName недостаточно, поэтому берем:
+        /// EquipName + Type.
+        /// Comment в ключ не включаем, потому что он может меняться
+        /// по языку/формулировке и ломать стабильную идентификацию строки.
+        /// </summary>
+        private static string GetPlcRowKey(PlcRefRow row)
+        {
+            var equip = (row?.EquipName ?? "").Trim();
+            return $"{equip}\u001F{(int)row.Type}";
         }
 
         /// <summary>

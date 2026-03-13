@@ -2,7 +2,12 @@
 
 namespace TechEquipments
 {
-    public class VGA_ElParam
+    [TrendItem("R", YMin = 0, YMax = 100)]
+    [TrendSeriesStyle("R", "#4F81BD", transparency: 0.7)]
+
+    [TrendItem("CurrPos", YMin = 0, YMax = 100)]
+    [TrendSeriesStyle("CurrPos", "Gray", transparency: 0.7)]
+    public class VGA_ElParam : IHasUnit
     {
         public bool Mode { get; set; }
         public bool OpenCmd { get; set; }
@@ -28,6 +33,32 @@ namespace TechEquipments
         public long STW { get; set; }
 
         public uint HashCode { get; set; }
+
+        private string _unit = "";
+        public string Unit
+        {
+            get => _unit;
+            set => _unit = Clean(value);
+        }
+
+        private static string Clean(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return "";
+
+            s = s.Trim();
+
+            if (s.StartsWith("@(") && s.EndsWith(")") && s.Length >= 3)
+            {
+                s = s.Substring(2, s.Length - 3).Trim();
+
+                // снять кавычки, если есть
+                if (s.Length >= 2 && ((s[0] == '"' && s[^1] == '"') || (s[0] == '\'' && s[^1] == '\'')))
+                    s = s[1..^1].Trim();
+            }
+
+            return s;
+        }
 
     }
 }
