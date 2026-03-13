@@ -1,5 +1,5 @@
 ﻿using System;
-
+using System.Collections.Generic;
 
 namespace TechEquipments
 {
@@ -9,7 +9,7 @@ namespace TechEquipments
     public sealed class UserState
     {
         /// <summary>Последнее введённое/использованное имя оборудования (поиск).</summary>
-        public string LastEquipName { get; set; }
+        public string LastEquipName { get; set; } = "";
 
         /// <summary>Последняя выбранная дата для DB-вкладок.</summary>
         public DateTime DbDate { get; set; } = DateTime.Today;
@@ -22,6 +22,11 @@ namespace TechEquipments
 
         /// <summary>Фильтр Type (левая панель).</summary>
         public EquipTypeGroup SelectedTypeFilter { get; set; } = EquipTypeGroup.All;
-    }
 
+        /// <summary>
+        /// Память последнего выбранного оборудования для пары фильтров:
+        /// ключ = "Station|TypeGroup", значение = EquipName.
+        /// </summary>
+        public Dictionary<string, string> LastEquipmentsByFilter { get; set; } = new();
+    }
 }

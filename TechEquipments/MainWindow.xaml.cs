@@ -3,6 +3,7 @@ using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -201,9 +202,12 @@ namespace TechEquipments
             get => _selectedListBoxEquipment;
             set
             {
+                if (ReferenceEquals(_selectedListBoxEquipment, value))
+                    return;
+
                 _selectedListBoxEquipment = value;
                 OnPropertyChanged();
-                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
+                NotifyParamQrUiChanged();   // пересчитать Visibility кнопки Generate QR
             }
         }
 
@@ -224,13 +228,15 @@ namespace TechEquipments
             set
             {
                 if (_selectedTypeFilter == value) return;
+
                 _selectedTypeFilter = value;
                 OnPropertyChanged();
+
                 ApplyFilters();
+                RestoreOrSelectEquipmentAfterFilterChanged();
 
                 _uiState.ScheduleSave();
-
-                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
+                NotifyParamQrUiChanged();   // пересчитать Visibility кнопки Generate QR
             }
         }
 
@@ -245,17 +251,29 @@ namespace TechEquipments
 
                 _selectedStation = value;
                 OnPropertyChanged();
+
                 ApplyFilters();
+                RestoreOrSelectEquipmentAfterFilterChanged();
 
                 _uiState.ScheduleSave();
-                NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
+                NotifyParamQrUiChanged();   // пересчитать Visibility кнопки Generate QR
             }
         }
 
         // --- incremental search support ---
         private DispatcherTimer _searchTimer = null!;
         private string _pendingSearch = "";
+
+        // Подавляем побочные эффекты во время программного выбора оборудования.
+        private bool _isApplyingFilterSelection;
+
+        // Память последнего выбранного оборудования для комбинации Station + Type.
+        // Ключ: "Station|TypeGroup".
+        private readonly Dictionary<string, string> _lastEquipByFilterKey = new(StringComparer.OrdinalIgnoreCase);
+
         private bool _suppressEquipNameFromSelection;
+
+
 
         #endregion
 
@@ -684,20 +702,6 @@ namespace TechEquipments
 
             _paramController = new ParamController(_equipmentService, this);
 
-            //_paramWriteController = new ParamWriteController(
-            //    equipmentService: _equipmentService,
-            //    getSelectedTab: () => SelectedMainTab,
-            //    resolveSelectedEquip: ResolveSelectedEquipForParam,
-            //    getSuppressWritesFromPolling: () => _suppressParamWritesFromPolling,
-            //    getSuppressWritesFromUiRollback: () => _suppressParamWritesFromUiRollback,
-            //    setSuppressWritesFromUiRollback: v => _suppressParamWritesFromUiRollback = v,
-            //    paramRwGate: _paramRwGate,
-            //    setParamReadResumeAtUtc: dt => _paramReadResumeAtUtc = dt,
-            //    setBottomText: txt => ParamStatusText = txt,
-            //    getOwnerWindow: () => this,
-            //    endParamFieldEdit: EndParamFieldEdit
-            //);
-
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
                 getSelectedTab: () => SelectedMainTab,
@@ -795,16 +799,18 @@ namespace TechEquipments
                 if (!Stations.Any(s => string.Equals(s, SelectedStation, StringComparison.OrdinalIgnoreCase)))
                     SelectedStation = "All";
 
+                // На этом этапе Equipments уже загружены.
+                // Безопасно нормализуем выбор: remembered -> current -> first item.
                 ApplyFilters();
+                RestoreOrSelectEquipmentAfterFilterChanged();
 
-                // Если на старте использовали ExternalTag — выставляем Station/TypeGroup по найденному оборудованию
+                // Если на старте использовали ExternalTag — попробуем выставить Station/TypeGroup
+                // по найденному оборудованию. Если это оборудование уже исчезло,
+                // RestoreOrSelectEquipmentAfterFilterChanged() выберет первый доступный элемент.
                 if (_uiState.StartupUsedExternalTag && !string.IsNullOrWhiteSpace(_uiState.StartupExternalTag))
                 {
                     _qrController.TryApplyStationTypeFiltersFromQr(_uiState.StartupExternalTag);
-
-                    // После смены фильтров — снова выделим оборудование
-                    if (!string.IsNullOrWhiteSpace(EquipName))
-                        DoIncrementalSearch(EquipName);
+                    RestoreOrSelectEquipmentAfterFilterChanged();
                 }
 
                 BottomText = $"Equipments: {Equipments.Count}";
@@ -826,9 +832,10 @@ namespace TechEquipments
                 // Даём UI шанс перерисовать нижнюю панель (скрыть/показать)
                 await Dispatcher.Yield(DispatcherPriority.Render);
 
-                // Если внешний тег уже заполнил EquipName - выделяем в ListBox
-                if (!string.IsNullOrWhiteSpace(EquipName))
-                    DoIncrementalSearch(EquipName);
+                // Финальная нормализация выбора после загрузки списка.
+                // Если сохранённого/введённого оборудования уже нет,
+                // просто выберем первое доступное под текущим фильтром.
+                RestoreOrSelectEquipmentAfterFilterChanged();
             }
         }
 
@@ -943,6 +950,186 @@ namespace TechEquipments
             EquipmentsView.Refresh();
         }
 
+        /// <summary>
+        /// Формирует ключ словаря памяти выбора.
+        /// </summary>
+        private string BuildFilterSelectionKey(string? station, EquipTypeGroup typeGroup)
+        {
+            var st = string.IsNullOrWhiteSpace(station) ? "All" : station.Trim();
+            return $"{st}|{typeGroup}";
+        }
+
+        /// <summary>
+        /// Запоминает выбранное оборудование для текущей комбинации фильтров.
+        /// </summary>
+        private void RememberEquipmentForCurrentFilters(string? equipName)
+        {
+            var eq = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(eq))
+                return;
+
+            var key = BuildFilterSelectionKey(SelectedStation, SelectedTypeFilter);
+            _lastEquipByFilterKey[key] = eq;
+        }
+
+        /// <summary>
+        /// Импортирует карту из user-state.json.
+        /// Здесь мы только нормализуем входные данные.
+        /// Проверка фактического наличия оборудования будет позже,
+        /// когда список Equipments уже загрузится.
+        /// </summary>
+        private void ImportRememberedEquipmentsByFilter(Dictionary<string, string>? state)
+        {
+            _lastEquipByFilterKey.Clear();
+
+            if (state == null || state.Count == 0)
+                return;
+
+            foreach (var pair in state)
+            {
+                var key = (pair.Key ?? "").Trim();
+                var equip = (pair.Value ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(equip))
+                    continue;
+
+                _lastEquipByFilterKey[key] = equip;
+            }
+        }
+
+        /// <summary>
+        /// Экспортирует карту памяти выбора для сохранения.
+        /// Здесь же чистим "мусор":
+        /// - пустые ключи,
+        /// - пустые значения,
+        /// - оборудование, которого уже нет в проекте.
+        /// </summary>
+        private Dictionary<string, string> ExportRememberedEquipmentsByFilter()
+        {
+            var existingEquipments = Equipments
+                .Select(x => (x.Equipment ?? "").Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in _lastEquipByFilterKey)
+            {
+                var key = (pair.Key ?? "").Trim();
+                var equip = (pair.Value ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(equip))
+                    continue;
+
+                // Если оборудование уже исчезло из проекта —
+                // не сохраняем его обратно в user-state.json.
+                if (!existingEquipments.Contains(equip))
+                    continue;
+
+                result[key] = equip;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// После смены фильтров:
+        /// 1) пробуем восстановить оборудование, запомненное для текущей пары Station+Type;
+        /// 2) если оно уже исчезло, удаляем устаревшую запись из памяти;
+        /// 3) если текущее EquipName подходит под фильтр — используем его;
+        /// 4) иначе берём первый элемент в отфильтрованном списке.
+        /// </summary>
+        private void RestoreOrSelectEquipmentAfterFilterChanged()
+        {
+            if (EquipmentsView == null)
+                return;
+
+            var visibleItems = EquipmentsView
+                .Cast<object>()
+                .OfType<EquipListBoxItem>()
+                .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+                .ToList();
+
+            // Вообще ничего не найдено под текущий фильтр.
+            if (visibleItems.Count == 0)
+            {
+                _isApplyingFilterSelection = true;
+                _suppressEquipNameFromSelection = true;
+
+                try
+                {
+                    SelectedListBoxEquipment = null;
+                }
+                finally
+                {
+                    _suppressEquipNameFromSelection = false;
+                    _isApplyingFilterSelection = false;
+                }
+
+                return;
+            }
+
+            var key = BuildFilterSelectionKey(SelectedStation, SelectedTypeFilter);
+
+            _lastEquipByFilterKey.TryGetValue(key, out var rememberedEquip);
+            rememberedEquip = (rememberedEquip ?? "").Trim();
+
+            var currentEquip = (EquipName ?? "").Trim();
+
+            EquipListBoxItem? rememberedMatch = null;
+            if (!string.IsNullOrWhiteSpace(rememberedEquip))
+            {
+                rememberedMatch = visibleItems.FirstOrDefault(x =>
+                    string.Equals((x.Equipment ?? "").Trim(), rememberedEquip, StringComparison.OrdinalIgnoreCase));
+
+                // Было запомнено оборудование, которого уже нет
+                // или оно больше не попадает под эту комбинацию фильтров.
+                if (rememberedMatch == null)
+                    _lastEquipByFilterKey.Remove(key);
+            }
+
+            EquipListBoxItem? currentMatch = null;
+            if (!string.IsNullOrWhiteSpace(currentEquip))
+            {
+                currentMatch = visibleItems.FirstOrDefault(x =>
+                    string.Equals((x.Equipment ?? "").Trim(), currentEquip, StringComparison.OrdinalIgnoreCase));
+            }
+
+            var match = rememberedMatch ?? currentMatch ?? visibleItems[0];
+            var selectedEquip = (match.Equipment ?? "").Trim();
+
+            _isApplyingFilterSelection = true;
+            _suppressEquipNameFromSelection = true;
+
+            try
+            {
+                SelectedListBoxEquipment = match;
+                EquipmentsView.MoveCurrentTo(match);
+
+                // Синхронизируем строку поиска с фактическим выбранным оборудованием.
+                if (!string.Equals((EquipName ?? "").Trim(), selectedEquip, StringComparison.OrdinalIgnoreCase))
+                    EquipName = selectedEquip;
+
+                // Запоминаем уже валидный выбор для текущего фильтра.
+                RememberEquipmentForCurrentFilters(selectedEquip);
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    EquipmentsListBox?.ScrollIntoView(match);
+                }), DispatcherPriority.Background);
+            }
+            finally
+            {
+                _suppressEquipNameFromSelection = false;
+                _isApplyingFilterSelection = false;
+            }
+
+            // Если сейчас уже открыта вкладка Param —
+            // сразу обновляем её, чтобы не оставалась пустая страница.
+            if (!_uiState.IsRestoringState && SelectedMainTab == MainTabKind.Param)
+                StartParamPolling();
+        }
+
         #endregion
 
         #region Tab
@@ -984,7 +1171,9 @@ namespace TechEquipments
 
         #region ListBox
 
-        /// <summary>Клик по списку: подставляет оборудование в поле поиска (если сейчас не печатаем).</summary>
+        /// <summary>
+        /// Клик по списку: подставляет оборудование в поле поиска (если сейчас не печатаем).
+        /// </summary>
         private void Equipments_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             // Защита от “программного” выделения при поиске/скролле
@@ -1001,7 +1190,10 @@ namespace TechEquipments
 
             // Подставляем выбранное оборудование в строку поиска (EquipName)
             if (SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
+            {
                 EquipName = eq;
+                RememberEquipmentForCurrentFilters(eq);
+            }
 
             // Переключаемся на Param
             if (SelectedMainTab != MainTabKind.Param)
@@ -1548,6 +1740,10 @@ namespace TechEquipments
         string IUiStateHost.SelectedStation { get => SelectedStation; set => SelectedStation = value; }
         EquipTypeGroup IUiStateHost.SelectedTypeFilter { get => SelectedTypeFilter; set => SelectedTypeFilter = value; }
         int IUiStateHost.SelectedMainTabIndex { get => SelectedMainTabIndex; set => SelectedMainTabIndex = value; }
+
+        Dictionary<string, string> IUiStateHost.ExportRememberedEquipmentsByFilter() => ExportRememberedEquipmentsByFilter();
+
+        void IUiStateHost.ImportRememberedEquipmentsByFilter(Dictionary<string, string>? state) => ImportRememberedEquipmentsByFilter(state);
 
         #endregion
 

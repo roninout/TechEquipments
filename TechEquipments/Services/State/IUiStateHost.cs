@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Windows.Threading;
 
 namespace TechEquipments
@@ -16,5 +17,18 @@ namespace TechEquipments
         string SelectedStation { get; set; }
         EquipTypeGroup SelectedTypeFilter { get; set; }
         int SelectedMainTabIndex { get; set; }
+
+        /// <summary>
+        /// Экспортирует карту "Station+Type -> Equipment" для сохранения в user-state.json.
+        /// Хост сам должен вернуть уже очищенные/валидные данные.
+        /// </summary>
+        Dictionary<string, string> ExportRememberedEquipmentsByFilter();
+
+        /// <summary>
+        /// Импортирует карту "Station+Type -> Equipment" из user-state.json.
+        /// На этом этапе список Equipments может быть ещё не загружен,
+        /// поэтому здесь только принимаем и нормализуем входные данные.
+        /// </summary>
+        void ImportRememberedEquipmentsByFilter(Dictionary<string, string>? state);
     }
 }

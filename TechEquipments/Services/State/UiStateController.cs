@@ -144,6 +144,11 @@ namespace TechEquipments
 
                 await _host.Dispatcher.InvokeAsync(() =>
                 {
+                    // Сначала восстанавливаем карту "Station+Type -> EquipName".
+                    // Проверка на реальное наличие оборудования произойдёт позже,
+                    // когда список Equipments уже будет загружен.
+                    _host.ImportRememberedEquipmentsByFilter(state.LastEquipmentsByFilter);
+
                     _host.EquipName = state.LastEquipName ?? "";
                     _host.DbDate = state.DbDate.Date;
 
@@ -173,10 +178,63 @@ namespace TechEquipments
                 DbDate = _host.DbDate.Date,
                 SelectedTab = (MainTabKind)_host.SelectedMainTabIndex,
                 SelectedStation = (_host.SelectedStation ?? "All").Trim(),
-                SelectedTypeFilter = _host.SelectedTypeFilter
+                SelectedTypeFilter = _host.SelectedTypeFilter,
+
+                // Хост вернёт уже очищенную карту:
+                // без пустых ключей и без оборудования, которого больше нет в проекте.
+                LastEquipmentsByFilter = _host.ExportRememberedEquipmentsByFilter()
             };
 
             await _stateService.SaveAsync(state);
         }
+
+        ///// <summary>
+        ///// Восстановление состояния из user-state.json.
+        ///// </summary>
+        //public async Task RestoreStateAsync()
+        //{
+        //    _isRestoringState = true;
+        //    try
+        //    {
+        //        var state = await _stateService.LoadAsync();
+        //        if (state == null)
+        //            return;
+
+        //        await _host.Dispatcher.InvokeAsync(() =>
+        //        {
+        //            _host.EquipName = state.LastEquipName ?? "";
+        //            _host.DbDate = state.DbDate.Date;
+
+        //            _host.SelectedStation = state.SelectedStation ?? "All";
+        //            _host.SelectedTypeFilter = state.SelectedTypeFilter;
+
+        //            _host.SelectedMainTabIndex = (int)state.SelectedTab;
+        //        }, DispatcherPriority.Background);
+        //    }
+        //    finally
+        //    {
+        //        _isRestoringState = false;
+        //    }
+        //}
+
+        ///// <summary>
+        ///// Сохранение состояния сразу (обычно вызывается таймером).
+        ///// </summary>
+        //public async Task SaveAsync()
+        //{
+        //    if (_isRestoringState)
+        //        return;
+
+        //    var state = new UserState
+        //    {
+        //        LastEquipName = (_host.EquipName ?? "").Trim(),
+        //        DbDate = _host.DbDate.Date,
+        //        SelectedTab = (MainTabKind)_host.SelectedMainTabIndex,
+        //        SelectedStation = (_host.SelectedStation ?? "All").Trim(),
+        //        SelectedTypeFilter = _host.SelectedTypeFilter
+        //    };
+
+        //    await _stateService.SaveAsync(state);
+        //}
     }
 }
