@@ -41,14 +41,14 @@ namespace TechEquipments
 
             return t switch
             {
-                "DigitalIn" => GetNameOrEmpty<DiSoeCode>(bitCode),
-                "DigitalOut" => GetNameOrEmpty<DoSoeCode>(bitCode),
-                "Atv" => GetNameOrEmpty<AtvSoeCode>(bitCode),
-                "Motor" => GetNameOrEmpty<MotorSoeCode>(bitCode),
-                "AnalogIn" or "AnalogInCalc" or "AnalogInSiemens" => GetNameOrEmpty<AiSoeCode>(bitCode),
-                "ValveA" => GetNameOrEmpty<AoSoeCode>(bitCode),
+                "DigitalIn" or "DigitalInSiemens" => GetNameOrEmpty<DiSoeCode>(bitCode),
+                "DigitalOut" or "DigitalOutSiemens" => GetNameOrEmpty<DoSoeCode>(bitCode),
+                "Atv" or "AtvSiemens" => GetNameOrEmpty<AtvSoeCode>(bitCode),
+                "Motor" or "MotorSiemens" => GetNameOrEmpty<MotorSoeCode>(bitCode),
+                "AnalogIn" or "AnalogInCalc" or "AnalogInCalcSiemens" or "AnalogInSiemens" => GetNameOrEmpty<AiSoeCode>(bitCode),
+                "ValveA" or "ValveASiemens" => GetNameOrEmpty<AoSoeCode>(bitCode),
                 "ValveA_EL" => GetNameOrEmpty<VgaElSoeCode>(bitCode),
-                "ValveD" => GetNameOrEmpty<VgdSoeCode>(bitCode),
+                "ValveD" or "ValveDSiemens" => GetNameOrEmpty<VgdSoeCode>(bitCode),
                 _ => ""
             };
         }

@@ -77,11 +77,11 @@
                         <Grid Grid.Column="2" Grid.Row="1" x:Name="BarRight">
                             <Border BorderBrush="Black" BorderThickness="1">
                                 <dxe:ProgressBarEdit
-                                    Value="{Binding HmiTrue, Mode=OneWay}" 
+                                    Value="{Binding R, Mode=OneWay}" 
                                     Minimum="{Binding MinR}"
                                     Maximum="{Binding MaxR}"
                                     ContentDisplayMode="Value" 
-                                    DisplayFormatString="HmiTrue:   {0}"
+                                    DisplayFormatString="R:   {0}"
                                     Orientation="Vertical"
                                     Width="30"
                                     HorizontalAlignment="Center"

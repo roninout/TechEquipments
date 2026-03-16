@@ -7,7 +7,7 @@
     xmlns:local="clr-namespace:TechEquipments"
     xmlns:views="clr-namespace:TechEquipments.Views.Param"
     x:Class="TechEquipments.MainWindow"
-    Title="MainWindow" Height="800" Width="1200">
+    Title="MainWindow" Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
 
     <dx:ThemedWindow.Resources>
         <!-- Конвертер bool -> Visibility -->

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -13,7 +14,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Threading;
+using TechEquipments.Views.Settings;
 
 namespace TechEquipments
 {
@@ -1850,5 +1853,55 @@ namespace TechEquipments
 
         #endregion
 
+        #region Settings
+
+        /// <summary>
+        /// Глобальная горячая клавиша окна:
+        /// F10 -> открыть модальное окно редактирования appsettings.json.
+        /// </summary>
+        private void ThemedWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.SystemKey != Key.F10)
+                return;
+
+            e.Handled = true;
+            ShowAppSettingsWindow();
+        }
+
+        /// <summary>
+        /// Открывает модальное окно настроек.
+        /// Редактируется тот же appsettings.json, который читает Host:
+        /// AppContext.BaseDirectory\appsettings.json
+        /// </summary>
+        private void ShowAppSettingsWindow()
+        {
+            try
+            {
+                var settingsPath = GetRuntimeAppSettingsPath();
+
+                var wnd = new AppSettingsWindow(settingsPath)
+                {
+                    Owner = this
+                };
+
+                wnd.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show($"Failed to open settings window.\n\n{ex.Message}","Settings",MessageBoxButton.OK,MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Возвращает путь к runtime appsettings.json.
+        /// Это важно:
+        /// приложение читает именно файл рядом с exe, а не исходник из корня проекта.
+        /// </summary>
+        private static string GetRuntimeAppSettingsPath()
+        {
+            return Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        }
+
+        #endregion
     }
 }

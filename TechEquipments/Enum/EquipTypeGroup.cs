@@ -29,15 +29,30 @@ namespace TechEquipments
         private static readonly Dictionary<string, Meta> Map = new(StringComparer.OrdinalIgnoreCase)
         {
             ["DigitalIn"] = new(EquipTypeGroup.DI, c => SoeEventMapper.GetDescriptionOrEmpty<DiSoeCode>(c)),
+            ["DigitalInSiemens"] = new(EquipTypeGroup.DI, c => SoeEventMapper.GetDescriptionOrEmpty<DiSoeCode>(c)),
+            
             ["DigitalOut"] = new(EquipTypeGroup.DO, c => SoeEventMapper.GetDescriptionOrEmpty<DoSoeCode>(c)),
+            ["DigitalOutSiemens"] = new(EquipTypeGroup.DO, c => SoeEventMapper.GetDescriptionOrEmpty<DoSoeCode>(c)),
+
             ["Motor"] = new(EquipTypeGroup.Motor, c => SoeEventMapper.GetDescriptionOrEmpty<MotorSoeCode>(c)),
+            ["MotorSiemens"] = new(EquipTypeGroup.Motor, c => SoeEventMapper.GetDescriptionOrEmpty<MotorSoeCode>(c)),
+
             ["AnalogIn"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
             ["AnalogInSiemens"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
+            
             ["AnalogInCalc"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
+            ["AnalogInCalcSiemens"] = new(EquipTypeGroup.AI, c => SoeEventMapper.GetDescriptionOrEmpty<AiSoeCode>(c)),
+
             ["ValveA"] = new(EquipTypeGroup.VGA, c => SoeEventMapper.GetDescriptionOrEmpty<AoSoeCode>(c)),
+            ["ValveASiemens"] = new(EquipTypeGroup.VGA, c => SoeEventMapper.GetDescriptionOrEmpty<AoSoeCode>(c)),
+
             ["ValveA_EL"] = new(EquipTypeGroup.VGA_EL, c => SoeEventMapper.GetDescriptionOrEmpty<VgaElSoeCode>(c)),
+
             ["ValveD"] = new(EquipTypeGroup.VGD, c => SoeEventMapper.GetDescriptionOrEmpty<VgdSoeCode>(c)),
+            ["ValveDSiemens"] = new(EquipTypeGroup.VGD, c => SoeEventMapper.GetDescriptionOrEmpty<VgdSoeCode>(c)),
+
             ["Atv"] = new(EquipTypeGroup.Atv, c => SoeEventMapper.GetDescriptionOrEmpty<AtvSoeCode>(c)),
+            ["AtvSiemens"] = new(EquipTypeGroup.Atv, c => SoeEventMapper.GetDescriptionOrEmpty<AtvSoeCode>(c)),
         };
 
         public static EquipTypeGroup GetGroup(string? equipType)
