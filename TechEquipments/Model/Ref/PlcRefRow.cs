@@ -6,17 +6,35 @@ namespace TechEquipments
 {
     /// <summary>
     /// Одна строка PLC refs (для PLC области в Param):
-    /// - EquipName: значение из REFEQUIP (используем в TagInfo("{EquipName}.Value",0))
-    /// - Type: тип из CUSTOM1 (EqNumW/EqCheckRW/...)
-    /// - Title: текст слева ("Equip: Comment")
-    /// - TagName: кэш результата TagInfo(...,0)
-    /// - Value: текущее значение тега (double?)
+    /// - EquipName: значение из REFEQUIP
+    /// - RefItem:   значение из REFITEM (какой именно item читать/писать)
+    /// - Type:      тип из CUSTOM1 (EqNumW/EqCheckRW/...)
+    /// - Title:     текст слева ("Equip: Comment")
+    /// - TagName:   кэш результата TagInfo(...,0)
+    /// - Value:     текущее значение тега (double?)
     /// </summary>
     public sealed class PlcRefRow : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
         public string EquipName { get; }
+
+        private string _refItem = "";
+        /// <summary>
+        /// Какой equip item реально связан у этой PLC-строки.
+        /// Например: Value / State / Opened / Closed / ...
+        /// </summary>
+        public string RefItem
+        {
+            get => _refItem;
+            private set
+            {
+                value = (value ?? "").Trim();
+                if (_refItem == value) return;
+                _refItem = value;
+                OnPropertyChanged();
+            }
+        }
 
         public PlcTypeCustom Type { get; private set; }
 
@@ -102,15 +120,17 @@ namespace TechEquipments
         /// <summary>Текст слева.</summary>
         public string Title => string.IsNullOrWhiteSpace(Comment) ? EquipName : $"{EquipName}:    {Comment}";
 
-        public PlcRefRow(string equipName, PlcTypeCustom type, string comment)
+        public PlcRefRow(string equipName, string refItem, PlcTypeCustom type, string comment)
         {
             EquipName = (equipName ?? "").Trim();
+            RefItem = refItem ?? "";
             Type = type;
             Comment = (comment ?? "").Trim();
         }
 
-        public void UpdateMeta(PlcTypeCustom type, string comment)
+        public void UpdateMeta(string refItem, PlcTypeCustom type, string comment)
         {
+            RefItem = refItem ?? "";
             Type = type;
             Comment = (comment ?? "").Trim();
 
@@ -130,6 +150,6 @@ namespace TechEquipments
             return Enum.TryParse(s, ignoreCase: true, out PlcTypeCustom e) ? e : PlcTypeCustom.Unknown;
         }
 
-        private void OnPropertyChanged([CallerMemberName] string? name = null)  => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }

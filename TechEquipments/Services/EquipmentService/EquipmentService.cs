@@ -196,10 +196,11 @@ namespace TechEquipments
             return listEquip;
         }
 
-        // возвращает PLC refs (теги), с CUSTOM + COMMENT
+        // возвращает PLC refs (теги), с CUSTOM + COMMENT + REFITEM
         public async Task<List<PlcRefRow>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem, string sCustField = "CUSTOM1")
         {
             var sField = "REFEQUIP";
+            var sFieldRefItem = "REFITEM";
             var sFieldComment = "COMMENT";
             var list = new List<PlcRefRow>();
 
@@ -224,12 +225,13 @@ namespace TechEquipments
                 {
                     var sEquip = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sField}\")");
                     var sCustom = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sCustField}\")");
+                    var sRefItem = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldRefItem}\")");
                     var sComment = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldComment}\")");
 
                     if (!string.IsNullOrWhiteSpace(sEquip) && !string.Equals(sEquip, "Unknown", StringComparison.OrdinalIgnoreCase))
                     {
                         var type = PlcRefRow.ParseCustom(sCustom);
-                        list.Add(new PlcRefRow(sEquip, type, sComment ?? ""));
+                        list.Add(new PlcRefRow(sEquip, sRefItem ?? "", type, sComment ?? ""));
                     }
 
                     nReturn = await _ctApiService.CicodeAsync($"EquipRefBrowseNext({hSession})");
@@ -242,7 +244,6 @@ namespace TechEquipments
                 // гарантированное закрытие
                 await _ctApiService.CicodeAsync($"EquipRefBrowseClose({hSession})");
             }
-
         }
 
         /// <summary>
@@ -250,6 +251,7 @@ namespace TechEquipments
         /// Читает поля:
         /// - REFEQUIP
         /// - ASSOC
+        /// - REFITEM
         ///
         /// Логика:
         /// - если assocExpected == null:
@@ -257,10 +259,11 @@ namespace TechEquipments
         /// - если assocExpected != null:
         ///   возвращаем первую валидную REFEQUIP только для нужного ASSOC
         /// </summary>
-        public async Task<WinOpenedRefResult?> GetWinOpenedRefAsync(string sEquipName,string sEquipItem,string sCategory = "WinOpened",string? assocExpected = null)
+        public async Task<WinOpenedRefResult?> GetWinOpenedRefAsync(string sEquipName, string sEquipItem, string sCategory = "WinOpened", string? assocExpected = null)
         {
             const string sFieldEquip = "REFEQUIP";
             const string sFieldAssoc = "ASSOC";
+            const string sFieldRefItem = "REFITEM";
 
             // cluster по любому tag внутри equipment
             var sCluster = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.{sEquipItem}\", 17)");
@@ -282,9 +285,11 @@ namespace TechEquipments
                 {
                     var sEquip = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldEquip}\")");
                     var sAssoc = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldAssoc}\")");
+                    var sRefItem = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldRefItem}\")");
 
                     var refEquip = (sEquip ?? "").Trim();
                     var assoc = (sAssoc ?? "").Trim();
+                    var refItem = (sRefItem ?? "").Trim();
 
                     // Если ищем конкретный ASSOC - пропускаем все остальные
                     if (!string.IsNullOrWhiteSpace(assocExpected) &&
@@ -298,7 +303,7 @@ namespace TechEquipments
                     if (!string.IsNullOrWhiteSpace(refEquip) &&
                         !string.Equals(refEquip, "Unknown", StringComparison.OrdinalIgnoreCase))
                     {
-                        return new WinOpenedRefResult(refEquip, assoc);
+                        return new WinOpenedRefResult(refEquip, assoc, refItem);
                     }
 
                     nReturn = await _ctApiService.CicodeAsync($"EquipRefBrowseNext({hSession})");
@@ -312,60 +317,6 @@ namespace TechEquipments
                 await _ctApiService.CicodeAsync($"EquipRefBrowseClose({hSession})");
             }
         }
-
-        /// <summary>
-        /// Ищет связанную equipment-ссылку по категории "WinOpened".
-        /// Читает поля:
-        /// - REFEQUIP (то что возвращаем)
-        /// - ASSOC    (для информации/диагностики)
-        ///
-        /// Логика:
-        /// - как только нашли валидный REFEQUIP (не пустой, не Unknown) -> возвращаем и выходим.
-        /// </summary>
-        //public async Task<WinOpenedRefResult?> GetWinOpenedRefAsync(string sEquipName, string sEquipItem, string sCategory = "WinOpened")
-        //{
-        //    const string sFieldEquip = "REFEQUIP";
-        //    const string sFieldAssoc = "ASSOC";
-
-        //    // cluster по любому tag внутри equipment
-        //    var sCluster = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.{sEquipItem}\", 17)");
-        //    var sConnect = "CLUSTER=" + sCluster + ";EQUIP=" + sEquipName + ";REFCAT=" + sCategory;
-
-        //    var hSession = await _ctApiService.CicodeAsync($"EquipRefBrowseOpen(\"{sConnect}\",\"\")");
-        //    if (Convert.ToInt32(hSession) == -1)
-        //        return null;
-
-        //    try
-        //    {
-        //        var nNumRecords = await _ctApiService.CicodeAsync($"EquipRefBrowseNumRecords({hSession})");
-        //        if (Convert.ToInt32(nNumRecords) <= 0)
-        //            return null;
-
-        //        var nReturn = await _ctApiService.CicodeAsync($"EquipRefBrowseFirst({hSession})");
-
-        //        while (Convert.ToInt32(nReturn) == 0)
-        //        {
-        //            var sEquip = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldEquip}\")");
-        //            var sAssoc = await _ctApiService.CicodeAsync($"EquipRefBrowseGetField(\"{hSession}\", \"{sFieldAssoc}\")");
-
-        //            // если нашли валидный REFEQUIP -> это то что нужно
-        //            if (!string.IsNullOrWhiteSpace(sEquip) &&
-        //                !string.Equals(sEquip, "Unknown", StringComparison.OrdinalIgnoreCase))
-        //            {
-        //                return new WinOpenedRefResult(sEquip.Trim(), (sAssoc ?? "").Trim());
-        //            }
-
-        //            nReturn = await _ctApiService.CicodeAsync($"EquipRefBrowseNext({hSession})");
-        //        }
-
-        //        return null;
-        //    }
-        //    finally
-        //    {
-        //        // гарантированное закрытие
-        //        await _ctApiService.CicodeAsync($"EquipRefBrowseClose({hSession})");
-        //    }
-        //}
 
         // проверка на существования тега (c кешем)
         private async Task<bool> IsTagExistAsync(string tagName)

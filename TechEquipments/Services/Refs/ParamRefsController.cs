@@ -751,7 +751,7 @@ namespace TechEquipments
                 if (existing.TryGetValue(kv.Key, out var row))
                 {
                     // Обновляем только метаданные.
-                    row.UpdateMeta(freshRow.Type, freshRow.Comment);
+                    row.UpdateMeta(freshRow.RefItem, freshRow.Type, freshRow.Comment);
 
                     // Не затираем TagName пустым/Unknown значением.
                     if (!string.IsNullOrWhiteSpace(freshRow.TagName) &&
@@ -769,15 +769,18 @@ namespace TechEquipments
 
         /// <summary>
         /// Уникальный ключ PLC-строки.
-        /// Для VGA_EL одного EquipName недостаточно, поэтому берем:
-        /// EquipName + Type.
+        /// Для одной equipment может существовать несколько PLC refs
+        /// с одинаковым Type, но разным REFITEM.
+        /// Поэтому берём:
+        /// EquipName + RefItem + Type.
         /// Comment в ключ не включаем, потому что он может меняться
         /// по языку/формулировке и ломать стабильную идентификацию строки.
         /// </summary>
         private static string GetPlcRowKey(PlcRefRow row)
         {
             var equip = (row?.EquipName ?? "").Trim();
-            return $"{equip}\u001F{(int)row.Type}";
+            var refItem = (row?.RefItem ?? "").Trim();
+            return $"{equip}\u001F{refItem}\u001F{(int)row.Type}";
         }
 
         /// <summary>
@@ -799,11 +802,21 @@ namespace TechEquipments
         }
 
         /// <summary>
-        /// Для PLC-строк по умолчанию используем ".Value".
-        /// Для статусов (Motor/Valve) вместо Value используем ".State".
+        /// Определяет, какой equip item использовать для TagInfo/TagWrite.
+        /// 
+        /// Приоритет:
+        /// 1) REFITEM из EquipRefBrowse (если он есть)
+        /// 2) legacy-fallback по типу строки
         /// </summary>
         private static string GetPlcEquipItemForTagInfo(PlcRefRow row)
         {
+            var refItem = (row?.RefItem ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(refItem) &&
+                !refItem.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return refItem;
+            }
+
             if (row.Type is PlcTypeCustom.EqMotorStatus or PlcTypeCustom.EqValveStatus)
                 return "State";
 

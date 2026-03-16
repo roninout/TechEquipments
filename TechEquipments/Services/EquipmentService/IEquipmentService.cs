@@ -17,9 +17,14 @@ namespace TechEquipments
 
         Task<List<string>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem ="STW");
         Task<List<PlcRefRow>> GetEquipRef(string sEquipName, string sCategory, string sEquipItem, string sCustField = "CUSTOM1");
-        
+
         /// <summary>
         /// Ищет связанную equipment-ссылку в категории WinOpened.
+        /// 
+        /// Возвращает WinOpenedRefResult c полями:
+        /// - RefEquip (REFEQUIP)
+        /// - Assoc    (ASSOC)
+        /// - RefItem  (REFITEM)
         /// 
         /// Если assocExpected == null:
         /// - возвращает первую валидную REFEQUIP

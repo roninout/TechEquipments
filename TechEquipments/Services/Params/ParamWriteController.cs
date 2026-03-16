@@ -291,8 +291,22 @@ namespace TechEquipments
             }
         }
 
+        /// <summary>
+        /// Определяет, какой equip item использовать для записи PLC-строки.
+        /// 
+        /// Приоритет:
+        /// 1) REFITEM из EquipRefBrowse (если он есть)
+        /// 2) legacy-fallback по типу строки
+        /// </summary>
         private static string GetPlcEquipItemForTagInfo(PlcRefRow row)
         {
+            var refItem = (row?.RefItem ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(refItem) &&
+                !refItem.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return refItem;
+            }
+
             if (row.Type is PlcTypeCustom.EqMotorStatus or PlcTypeCustom.EqValveStatus)
                 return "State";
 

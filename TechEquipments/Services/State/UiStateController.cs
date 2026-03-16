@@ -188,53 +188,5 @@ namespace TechEquipments
             await _stateService.SaveAsync(state);
         }
 
-        ///// <summary>
-        ///// Восстановление состояния из user-state.json.
-        ///// </summary>
-        //public async Task RestoreStateAsync()
-        //{
-        //    _isRestoringState = true;
-        //    try
-        //    {
-        //        var state = await _stateService.LoadAsync();
-        //        if (state == null)
-        //            return;
-
-        //        await _host.Dispatcher.InvokeAsync(() =>
-        //        {
-        //            _host.EquipName = state.LastEquipName ?? "";
-        //            _host.DbDate = state.DbDate.Date;
-
-        //            _host.SelectedStation = state.SelectedStation ?? "All";
-        //            _host.SelectedTypeFilter = state.SelectedTypeFilter;
-
-        //            _host.SelectedMainTabIndex = (int)state.SelectedTab;
-        //        }, DispatcherPriority.Background);
-        //    }
-        //    finally
-        //    {
-        //        _isRestoringState = false;
-        //    }
-        //}
-
-        ///// <summary>
-        ///// Сохранение состояния сразу (обычно вызывается таймером).
-        ///// </summary>
-        //public async Task SaveAsync()
-        //{
-        //    if (_isRestoringState)
-        //        return;
-
-        //    var state = new UserState
-        //    {
-        //        LastEquipName = (_host.EquipName ?? "").Trim(),
-        //        DbDate = _host.DbDate.Date,
-        //        SelectedTab = (MainTabKind)_host.SelectedMainTabIndex,
-        //        SelectedStation = (_host.SelectedStation ?? "All").Trim(),
-        //        SelectedTypeFilter = _host.SelectedTypeFilter
-        //    };
-
-        //    await _stateService.SaveAsync(state);
-        //}
     }
 }
