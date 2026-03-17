@@ -1,12 +1,8 @@
-﻿using DevExpress.XtraPrinting.DataNodes;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.ComponentModel.Design;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,6 +13,22 @@ namespace CtApi
         private readonly CtApi _ctApi;
         private readonly IConfiguration _config;
 
+        /// <summary>
+        /// Один gate на все операции с _ctApi:
+        /// чтобы heartbeat/reconnect не пересекались с обычными вызовами.
+        /// </summary>
+        private readonly SemaphoreSlim _apiGate = new(1, 1);
+
+        private CancellationTokenSource? _healthCts;
+        private Task? _healthTask;
+
+        private volatile bool _isConnectionAvailable = true;
+        public bool IsConnectionAvailable => _isConnectionAvailable;
+
+        public string? LastConnectionError { get; private set; }
+
+        public event Action<bool, string?>? ConnectionStateChanged;
+
         public CtApiService(IConfiguration config)
         {
             _ctApi = new CtApi();
@@ -24,6 +36,7 @@ namespace CtApi
         }
 
         #region IHostedService
+
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             SetCtApiDirectory(_config["CtApi:Path"]);
@@ -33,14 +46,49 @@ namespace CtApi
                 await OpenAsync();
             else
                 await OpenAsync(ip, _config["CtApi:User"], _config["CtApi:Password"]);
+
+            SetConnectionState(true, null);
+
+            _healthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _healthTask = RunHealthMonitorAsync(_healthCts.Token);
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
-            //throw new NotImplementedException();
-            _ctApi.Close();
-            return Task.CompletedTask;
+            try
+            {
+                _healthCts?.Cancel();
+            }
+            catch { }
+
+            if (_healthTask != null)
+            {
+                try
+                {
+                    await _healthTask;
+                }
+                catch (OperationCanceledException) { }
+                catch { }
+            }
+
+            try
+            {
+                await _apiGate.WaitAsync(cancellationToken);
+                try
+                {
+                    _ctApi.Close();
+                }
+                finally
+                {
+                    _apiGate.Release();
+                }
+            }
+            catch
+            {
+                // ignore on shutdown
+            }
         }
+
         #endregion
 
         #region ICtApiService
@@ -52,48 +100,76 @@ namespace CtApi
 
         public async Task OpenAsync(string ip = null, string user = null, string password = null)
         {
-            if (string.IsNullOrEmpty(ip))
-                await _ctApi.OpenAsync(null, null, null, CtOpen.Reconnect);
-            else
-                await _ctApi.OpenAsync(ip, user, password, 0);
+            await _apiGate.WaitAsync();
+            try
+            {
+                if (string.IsNullOrEmpty(ip))
+                    await _ctApi.OpenAsync(null, null, null, CtOpen.Reconnect);
+                else
+                    await _ctApi.OpenAsync(ip, user, password, 0);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
         }
 
-        // Чтение тега
         public async Task<string> TagReadAsync(string tagName)
         {
-            return await _ctApi.TagReadAsync(tagName);
-            //return (object)result;
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.TagReadAsync(tagName);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
         }
 
-        // Запись тега
         public async Task<object> TagWriteAsync(string tagName, string value)
         {
-            await _ctApi.TagWriteAsync(tagName, value); // _ctApi.TagWriteAsync возвращает Task
-            return null; // Возвращаем null, потому что значение не возвращается
+            await _apiGate.WaitAsync();
+            try
+            {
+                await _ctApi.TagWriteAsync(tagName, value);
+                return null!;
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
         }
 
-        // Поиск тегов
         public async Task<IEnumerable<Dictionary<string, string>>> FindAsync(string tableName, string filter, string cluster, params string[] propertiesName)
         {
-            return await _ctApi.FindAsync(tableName, filter, cluster, propertiesName);
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.FindAsync(tableName, filter, cluster, propertiesName);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
         }
 
         public async Task<string> CicodeAsync(string cmd)
         {
-            return await _ctApi.CicodeAsync(cmd);
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.CicodeAsync(cmd);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
         }
 
         public async Task<bool> IsConnected()
         {
-            try
-            {
-                string value = await _ctApi.TagReadAsync("sWndTitle");
-                return !string.IsNullOrEmpty(value);
-            }
-            catch
-            {
-                return false;
-            }
+            return await ProbeConnectionAsync(CancellationToken.None);
         }
 
         public string UserInfo(int type)
@@ -101,25 +177,159 @@ namespace CtApi
             return _ctApi.UserInfo(type);
         }
 
-        #endregion
-
-        #region Trend
-
-        // Чтение тега
         public async Task<List<TrnData>> GetTrnData(string tagName, DateTime startTime, DateTime endTime)
         {
-            //DateTime startTime = DateTime.UtcNow.AddMinutes(-60);
-            //DateTime endTime = DateTime.UtcNow;
-            float period = 1.0f;
-            uint displayMode = DisplayMode.Get(Ordering.OldestToNewest, Condense.Mean, Stretch.Raw, 0, BadQuality.Zero, Raw.None);
-            int dataMode = 1;
+            await _apiGate.WaitAsync();
+            try
+            {
+                float period = 1.0f;
+                uint displayMode = DisplayMode.Get(Ordering.OldestToNewest, Condense.Mean, Stretch.Raw, 0, BadQuality.Zero, Raw.None);
+                int dataMode = 1;
 
-            var data = await _ctApi.TrnQueryAsync(startTime, endTime, period, tagName, displayMode, dataMode, "Cluster1");
-
-            return data.ToList();
+                var data = await _ctApi.TrnQueryAsync(startTime, endTime, period, tagName, displayMode, dataMode, "Cluster1");
+                return data.ToList();
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
         }
 
-        #endregion        
+        #endregion
 
+        #region Connection monitor
+
+        /// <summary>
+        /// Периодическая проверка связи.
+        /// Обычные TagRead/TagWrite не трогаем.
+        /// </summary>
+        private async Task RunHealthMonitorAsync(CancellationToken ct)
+        {
+            var periodSeconds = Math.Max(1, _config.GetValue("CtApi:HealthCheckPeriodSeconds", 5));
+            var failThreshold = Math.Max(1, _config.GetValue("CtApi:HealthCheckFailCount", 3));
+
+            var failCount = 0;
+
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(periodSeconds));
+
+            try
+            {
+                while (await timer.WaitForNextTickAsync(ct))
+                {
+                    var ok = await ProbeConnectionAsync(ct);
+
+                    if (ok)
+                    {
+                        failCount = 0;
+
+                        if (!_isConnectionAvailable)
+                            SetConnectionState(true, "CtApi connection restored.");
+
+                        continue;
+                    }
+
+                    failCount++;
+
+                    // единичный сбой ещё не считаем потерей связи
+                    if (failCount < failThreshold)
+                        continue;
+
+                    if (_isConnectionAvailable)
+                        SetConnectionState(false, "CtApi connection lost.");
+
+                    // Пытаемся переподключиться.
+                    await TryReconnectAsync(ct);
+
+                    // После reconnect сразу перепроверим.
+                    ok = await ProbeConnectionAsync(ct);
+
+                    if (ok)
+                    {
+                        failCount = 0;
+                        SetConnectionState(true, "CtApi connection restored.");
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // normal shutdown
+            }
+        }
+
+        /// <summary>
+        /// Отдельный мягкий probe.
+        /// Ничего не бросает наружу.
+        /// </summary>
+        private async Task<bool> ProbeConnectionAsync(CancellationToken ct)
+        {
+            try
+            {
+                await _apiGate.WaitAsync(ct);
+                try
+                {
+                    return await _ctApi.TryProbeConnectionAsync("TagRead(sWndTitle)");
+                }
+                finally
+                {
+                    _apiGate.Release();
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Мягкая попытка переподключения.
+        /// Ошибка тут не должна валить приложение.
+        /// </summary>
+        private async Task TryReconnectAsync(CancellationToken ct)
+        {
+            try
+            {
+                await _apiGate.WaitAsync(ct);
+                try
+                {
+                    try
+                    {
+                        _ctApi.Close();
+                    }
+                    catch
+                    {
+                        // ignore close errors
+                    }
+
+                    var ip = _config["CtApi:Ip"];
+                    if (string.IsNullOrWhiteSpace(ip))
+                        await _ctApi.OpenAsync(null, null, null, CtOpen.Reconnect);
+                    else
+                        await _ctApi.OpenAsync(ip, _config["CtApi:User"], _config["CtApi:Password"], 0);
+                }
+                finally
+                {
+                    _apiGate.Release();
+                }
+            }
+            catch
+            {
+                // не бросаем наружу — повторим на следующем heartbeat
+            }
+        }
+
+        private void SetConnectionState(bool isConnected, string? message)
+        {
+            var changed =
+                _isConnectionAvailable != isConnected ||
+                !string.Equals(LastConnectionError ?? "", message ?? "", StringComparison.Ordinal);
+
+            _isConnectionAvailable = isConnected;
+            LastConnectionError = isConnected ? null : message;
+
+            if (changed)
+                ConnectionStateChanged?.Invoke(isConnected, message);
+        }
+
+        #endregion
     }
 }

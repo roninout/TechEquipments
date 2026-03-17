@@ -78,6 +78,13 @@ namespace TechEquipments
                 return;
             }
 
+            // Если CtApi disconnected — не запускаем тяжёлые refresh-и секций.
+            if (!_ctApiService.IsConnectionAvailable)
+            {
+                _host.NotifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
+                return;
+            }
+
             try
             {
                 switch (page)

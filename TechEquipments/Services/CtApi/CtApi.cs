@@ -781,5 +781,42 @@ namespace CtApi
             }
         }
 
+        /// <summary>
+        /// Мягкая probe-проверка связи через CtCicode.
+        /// 
+        /// НИЧЕГО не бросает.
+        /// Возвращает true, если вызов успешен и вернул непустое значение.
+        /// Используется только heartbeat-логикой.
+        /// </summary>
+        public Task<bool> TryProbeConnectionAsync(string cmd = "TagRead(sWndTitle)", uint win = 0)
+        {
+            return Task.Run(() => TryProbeConnection(cmd, win));
+        }
+
+        /// <summary>
+        /// Мягкая probe-проверка связи через CtCicode.
+        /// </summary>
+        public bool TryProbeConnection(string cmd = "TagRead(sWndTitle)", uint win = 0)
+        {
+            try
+            {
+                var value = new StringBuilder(100);
+                var result = CtCicode(_ctapi, cmd, win, 0, value, value.Capacity, IntPtr.Zero);
+
+                if (result == 0)
+                {
+                    var err = Marshal.GetLastWin32Error();
+                    //Logger.Warning($"Citect.CtApi > TryProbeConnection failed, cmd={cmd}, win={win}, win32={err}");
+                    return false;
+                }
+
+                return !string.IsNullOrWhiteSpace(value.ToString());
+            }
+            catch (Exception ex)
+            {
+                //Logger.Warning($"Citect.CtApi > TryProbeConnection exception, cmd={cmd}, win={win}, error={ex.Message}");
+                return false;
+            }
+        }
     }
 }

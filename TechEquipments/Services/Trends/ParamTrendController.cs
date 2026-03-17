@@ -262,6 +262,10 @@ namespace TechEquipments
         {
             try
             {
+                // При потере связи не трогаем тренды — это один из самых дорогих путей.
+                if (!_ctApiService.IsConnectionAvailable)
+                    return;
+
                 await _trendGate.WaitAsync(ct);
                 try
                 {

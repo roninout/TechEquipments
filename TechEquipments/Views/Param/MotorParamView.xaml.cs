@@ -69,7 +69,7 @@ namespace TechEquipments.Views.Param
             }
 
             // Запись в SCADA через общий механизм
-            Host.ParamEditable_WriteFromUi(tb.Tag as string, tb.IsChecked);
+            Host.ParamEditable_WriteFromUi(tb.Tag as string, tb.IsChecked, oldValue);
 
             // Запоминаем последнее значение
             _lastMode = newValue;
@@ -143,13 +143,13 @@ namespace TechEquipments.Views.Param
                 btn.IsEnabled = false;
 
                 // Взводим 1
-                Host.ParamEditable_WriteFromUi(equipItem, 1);
+                Host.ParamEditable_WriteFromUi(equipItem, newValue: 1, oldValue: 0);
 
                 // Ждём 3 секунды
                 await Task.Delay(TimeSpan.FromSeconds(3), cts.Token);
 
                 // Сбрасываем в 0
-                Host.ParamEditable_WriteFromUi(equipItem, 0);
+                Host.ParamEditable_WriteFromUi(equipItem, newValue: 0, oldValue: 1);
             }
             catch (TaskCanceledException)
             {

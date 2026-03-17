@@ -19,5 +19,16 @@ namespace CtApi
         void SetCtApiDirectory(string path);
 
         Task<List<TrnData>> GetTrnData(string tagName, DateTime startTime, DateTime endTime);
+
+        // ===== Connection state for UI =====
+        bool IsConnectionAvailable { get; }
+        string? LastConnectionError { get; }
+
+        /// <summary>
+        /// isConnected = true  -> связь доступна / восстановлена
+        /// isConnected = false -> связь потеряна
+        /// message -> текст для UI
+        /// </summary>
+        event Action<bool, string?>? ConnectionStateChanged;
     }
 }

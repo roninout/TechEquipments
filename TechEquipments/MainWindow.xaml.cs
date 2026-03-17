@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using TechEquipments.Views.Settings;
 
@@ -302,6 +303,7 @@ namespace TechEquipments
                 // прогресс/текст
                 OnPropertyChanged(nameof(BottomProgressMaximum));
                 OnPropertyChanged(nameof(BottomText));
+                OnPropertyChanged(nameof(BottomStatusText));
             }
         }
 
@@ -319,6 +321,7 @@ namespace TechEquipments
                 // прогресс/текст
                 OnPropertyChanged(nameof(BottomProgressValue));
                 OnPropertyChanged(nameof(BottomText));
+                OnPropertyChanged(nameof(BottomStatusText));
             }
         }
 
@@ -338,6 +341,9 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(BottomProgressIsIndeterminate));
                 OnPropertyChanged(nameof(BottomProgressMaximum));
                 OnPropertyChanged(nameof(BottomProgressValue));
+
+                OnPropertyChanged(nameof(IsBottomStatusVisible));
+                OnPropertyChanged(nameof(BottomStatusText));
 
                 // текст
                 OnPropertyChanged(nameof(EquipListText));
@@ -386,6 +392,9 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(BottomProgressMaximum));
                 OnPropertyChanged(nameof(BottomProgressValue));
 
+                OnPropertyChanged(nameof(IsBottomStatusVisible));
+                OnPropertyChanged(nameof(BottomStatusText));
+
                 // кнопка
                 OnPropertyChanged(nameof(CanMainAction));
             }
@@ -410,8 +419,46 @@ namespace TechEquipments
             {
                 _bottomText = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(BottomStatusText));
             }
         }
+
+        private bool _isCtApiConnected = true;
+        public bool IsCtApiConnected
+        {
+            get => _isCtApiConnected;
+            private set
+            {
+                if (_isCtApiConnected == value) return;
+                _isCtApiConnected = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsBottomStatusVisible));
+                OnPropertyChanged(nameof(BottomStatusText));
+                OnPropertyChanged(nameof(BottomStatusBrush));
+            }
+        }
+
+        private string _ctApiStatusText = "";
+
+        /// <summary>
+        /// Нижняя панель видна либо когда что-то грузится,
+        /// либо когда потеряна связь с CtApi.
+        /// </summary>
+        public bool IsBottomStatusVisible => IsBottomLoading || !IsCtApiConnected;
+
+        /// <summary>
+        /// Если CtApi disconnected — показываем сообщение о связи.
+        /// Иначе используем обычный BottomText.
+        /// </summary>
+        public string BottomStatusText =>
+            !IsCtApiConnected && !string.IsNullOrWhiteSpace(_ctApiStatusText)
+                ? _ctApiStatusText
+                : BottomText;
+
+        /// <summary>
+        /// Красный цвет при потере связи, обычный — во всех остальных случаях.
+        /// </summary>
+        public Brush BottomStatusBrush => !IsCtApiConnected ? Brushes.Red : Brushes.Black;
 
         private int _selectedMainTabIndex;
         public int SelectedMainTabIndex
@@ -662,6 +709,9 @@ namespace TechEquipments
         {
             try
             {
+                if (!_ctApiService.IsConnectionAvailable)
+                    return;
+
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 await _paramRefs.RefreshActiveParamSectionAsync(cts.Token);
             }
@@ -883,6 +933,12 @@ namespace TechEquipments
             _equipmentService = equipmentService;
             _stateService = stateService;
             _ctApiService = ctApiService;
+
+            _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
+            Closed += (_, __) => _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
+
+            IsCtApiConnected = _ctApiService.IsConnectionAvailable;
+
             _config = config;
             _dbController = new DbController(dbService, this);
             _qrController = new QrController(_equipmentService, qrCodeService, qrScannerService, this);
@@ -903,10 +959,11 @@ namespace TechEquipments
                 getParamCycles: () => _paramReadCycles             // счетчик циклов
             );
 
-            _paramController = new ParamController(_equipmentService, this);
+            _paramController = new ParamController(_equipmentService, this, _ctApiService);
 
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
+                ctApiService: _ctApiService,
                 getSelectedTab: () => SelectedMainTab,
                 resolveSelectedEquip: ResolveSelectedEquipForParam,
                 resolveEquipNameForWrite: ResolveEquipNameForWrite,
@@ -931,6 +988,11 @@ namespace TechEquipments
             {
                 _layoutReady = true;
                 InitLeftPaneState();
+
+                // Сразу на старте проверяем CtApi.
+                // Если связи нет — показываем сообщение и закрываем приложение.
+                //if (!await EnsureCtApiAvailableAtStartupAsync())
+                //    return;
 
                 // 1) ExternalTag имеет приоритет над user-state.json
                 //    Если ExternalTag пустой -> восстановим с файла
@@ -1039,6 +1101,87 @@ namespace TechEquipments
                 // Если сохранённого/введённого оборудования уже нет,
                 // просто выберем первое доступное под текущим фильтром.
                 RestoreOrSelectEquipmentAfterFilterChanged();
+            }
+        }
+
+        /// <summary>
+        /// Реакция UI на потерю/восстановление связи CtApi.
+        /// </summary>
+        private void OnCtApiConnectionStateChanged(bool isConnected, string? message)
+        {
+            void Apply()
+            {
+                IsCtApiConnected = isConnected;
+
+                if (!isConnected)
+                {
+                    _ctApiStatusText = string.IsNullOrWhiteSpace(message)
+                        ? "CtApi connection lost."
+                        : message;
+
+                    OnPropertyChanged(nameof(IsBottomStatusVisible));
+                    OnPropertyChanged(nameof(BottomStatusText));
+                    OnPropertyChanged(nameof(BottomStatusBrush));
+                    return;
+                }
+
+                _ctApiStatusText = "";
+
+                // Сообщение о восстановлении связи показываем в обычном BottomText.
+                BottomText = string.IsNullOrWhiteSpace(message)
+                    ? $"CtApi connection restored at {DateTime.Now:HH:mm:ss}"
+                    : message;
+
+                OnPropertyChanged(nameof(IsBottomStatusVisible));
+                OnPropertyChanged(nameof(BottomStatusText));
+                OnPropertyChanged(nameof(BottomStatusBrush));
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke((Action)Apply);
+                return;
+            }
+
+            Apply();
+        }
+
+        /// <summary>
+        /// Ранняя проверка связи с CtApi на старте окна.
+        /// Если связи нет, показываем сообщение и закрываем приложение.
+        /// </summary>
+        private async Task<bool> EnsureCtApiAvailableAtStartupAsync()
+        {
+            try
+            {
+                BottomText = "Checking CtApi connection...";
+                await Dispatcher.Yield(DispatcherPriority.Background);
+
+                var isConnected = await _ctApiService.IsConnected();
+                if (isConnected)
+                    return true;
+
+                DXMessageBox.Show(
+                    this,
+                    "There is no connection to the server.\nThe application will be closed.",
+                    "Connection error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
+                Application.Current.Shutdown();
+                return false;
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(
+                    this,
+                    $"Failed to connect to the CtApi server.\n\n{ex.Message}\n\nThe application will be closed.",
+                    "Connection error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
+                Application.Current.Shutdown();
+                return false;
             }
         }
 
@@ -1602,12 +1745,12 @@ namespace TechEquipments
         /// <summary>
         /// Универсальная запись параметра (если не DevExpress событие).
         /// </summary>
-        public async void ParamEditable_WriteFromUi(string? equipItem, object? newValue)
+        public async void ParamEditable_WriteFromUi(string? equipItem, object? newValue, object? oldValue)
         {
             if (_paramWriteController == null)
                 return;
 
-            await _paramWriteController.WriteFromUiAsync(equipItem, newValue);
+            await _paramWriteController.WriteFromUiAsync(equipItem, newValue, oldValue);
         }
 
         #endregion

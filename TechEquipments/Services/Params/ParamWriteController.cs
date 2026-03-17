@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using CtApi;
 
 namespace TechEquipments
 {
@@ -26,9 +27,11 @@ namespace TechEquipments
         private readonly Action<string> _setBottomText;
         private readonly Func<Window> _getOwnerWindow;
         private readonly Action _endParamFieldEdit;
+        private readonly ICtApiService _ctApiService;
 
         public ParamWriteController(
             IEquipmentService equipmentService,
+            ICtApiService ctApiService,
             Func<MainTabKind> getSelectedTab,
             Func<(string equipName, string equipType)> resolveSelectedEquip,
             Func<object, string> resolveEquipNameForWrite,
@@ -42,6 +45,7 @@ namespace TechEquipments
             Action endParamFieldEdit)
         {
             _equipmentService = equipmentService;
+            _ctApiService = ctApiService;
             _getSelectedTab = getSelectedTab;
             _resolveSelectedEquip = resolveSelectedEquip;
             _resolveEquipNameForWrite = resolveEquipNameForWrite;
@@ -150,8 +154,8 @@ namespace TechEquipments
             // 5) Нормализуем значение
             if (!TryNormalizeWriteValue(e.NewValue, out var writeValue))
                 return;
-
-            await WriteParamAsync(equip, equipItem, writeValue);
+            
+            await WriteParamAsync(equipName: equip, equipItem: equipItem, writeValue: writeValue, currentValue: e.OldValue, description: equipItem);
         }
 
         /// <summary>
@@ -191,6 +195,7 @@ namespace TechEquipments
                 return;
 
             // 5) Берём текущее значение из редактора
+            object? oldValue = TryGetOldValueFromSender(sender, equipItem);
             object? newValue = (sender as BaseEdit)?.EditValue;
             if (!TryNormalizeWriteValue(newValue, out var writeValue))
                 return;
@@ -198,13 +203,13 @@ namespace TechEquipments
             e.Handled = true;
             _endParamFieldEdit();
 
-            await WriteParamAsync(equip, equipItem, writeValue);
+            await WriteParamAsync(equipName: equip, equipItem: equipItem, writeValue: writeValue, currentValue: oldValue, description: equipItem);
         }
 
         /// <summary>
         /// Универсальная запись параметра без DevExpress событий.
         /// </summary>
-        public async Task WriteFromUiAsync(string? equipItem, object? newValue)
+        public async Task WriteFromUiAsync(string? equipItem, object? newValue, object? currentValue = null)
         {
             if (_getSuppressWritesFromPolling())
                 return;
@@ -224,12 +229,12 @@ namespace TechEquipments
             if (!TryNormalizeWriteValue(newValue, out var writeValue))
                 return;
 
-            await WriteParamAsync(equip, equipItem, writeValue);
+            await WriteParamAsync(equipName: equip, equipItem: equipItem, writeValue: writeValue, currentValue: currentValue, description: equipItem);
         }
 
         // ====== Private helpers ======
 
-        private async Task WriteParamAsync(string equipName, string equipItem, string writeValue)
+        private async Task WriteParamAsync(string equipName, string equipItem, string writeValue, object? currentValue, string? description)
         {
             try
             {
@@ -242,6 +247,9 @@ namespace TechEquipments
                     _setBottomText($"Write: {equipItem}={writeValue} ...");
 
                     await _equipmentService.WriteEquipItemAsync(equipName, equipItem, writeValue);
+
+                    // Логируем действие оператора best-effort. Ошибка логирования НЕ должна ломать саму запись.
+                    await TrySaveOperatorActionAsync(name: $"{equipName}.{equipItem}", currentValue: currentValue, newValue: writeValue, description: description ?? equipItem);
 
                     _setBottomText($"Wrote: {equipItem}={writeValue} at {DateTime.Now:HH:mm:ss}");
                 }
@@ -256,6 +264,7 @@ namespace TechEquipments
             }
         }
 
+        // Запись данных из PLC вкладки
         private async Task Plc_WriteValueAsync(PlcRefRow row, object? newValue)
         {
             if (row == null || !row.IsWritable)
@@ -279,7 +288,14 @@ namespace TechEquipments
                 if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                     return;
 
-                await _equipmentService.WriteTagNameAsync(tagName, writeValueStr);
+                _setBottomText($"Write: {equipItem}={writeValueStr} ...");
+
+                await _equipmentService.WriteTagNameAsync(tagName, writeValueStr);               
+
+                // Логируем действие оператора
+                await TrySaveOperatorActionAsync(name: $"{row.EquipName}.{row.RefItem}", currentValue: row.Value, newValue: writeValueStr, description: row.Comment);
+
+                _setBottomText($"Wrote: {equipItem}={writeValueStr} at {DateTime.Now:HH:mm:ss}");
             }
             catch
             {
@@ -367,5 +383,102 @@ namespace TechEquipments
                 return false;
             }
         }
+
+        #region Save actions
+
+        /// <summary>
+        /// Best-effort логирование действия оператора в SCADA.
+        /// Никогда не ломает основную запись.
+        /// </summary>
+        private async Task TrySaveOperatorActionAsync(string? name, object? currentValue, object? newValue, string? description)
+        {
+            try
+            {
+                var safeName = ToCicodeStringArg(name);
+                var safeCurrent = ToCicodeValueArg(currentValue);
+                var safeNew = ToCicodeValueArg(newValue);
+                var safeDescription = ToCicodeStringArg((description ?? ""));
+
+                await _ctApiService.CicodeAsync($"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription})");
+            }
+            catch
+            {
+                // логирование действия оператора не должно валить основной write-flow
+            }
+        }
+
+        /// <summary>
+        /// Аргумент Cicode как строка: "text"
+        /// С экранированием двойных кавычек.
+        /// </summary>
+        private static string ToCicodeStringArg(string? value)
+        {
+            var s = (value ?? "").Trim();
+            s = s.Replace("\"", "\"\"");
+            return $"\"{s}\"";
+        }
+
+        /// <summary>
+        /// Аргумент Cicode как число/булево/строка.
+        /// - bool -> 1/0
+        /// - числа -> invariant
+        /// - строки с числом -> без кавычек
+        /// - всё остальное -> "text"
+        /// </summary>
+        private static string ToCicodeValueArg(object? value)
+        {
+            if (value == null)
+                return "\"\"";
+
+            if (value is bool b)
+                return b ? "1" : "0";
+
+            if (value is byte or sbyte or short or ushort or int or uint or long or ulong)
+                return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "0";
+
+            if (value is float or double or decimal)
+                return Convert.ToString(value, CultureInfo.InvariantCulture)?.Replace(',', '.') ?? "0";
+
+            var s = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? "";
+
+            if (bool.TryParse(s, out var boolParsed))
+                return boolParsed ? "1" : "0";
+
+            var numeric = s.Replace(',', '.');
+            if (double.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                return numeric;
+
+            return ToCicodeStringArg(s);
+        }
+
+        private static object? TryGetOldValueFromSender(object sender, string equipItem)
+        {
+            // PLC ветка
+            if (sender is FrameworkElement fePlc && fePlc.Tag is PlcRefRow plcRow)
+                return plcRow.Value;
+
+            // Обычная Param-модель
+            if (sender is FrameworkElement fe)
+            {
+                var dc = fe.DataContext;
+                if (dc == null || string.IsNullOrWhiteSpace(equipItem))
+                    return null;
+
+                try
+                {
+                    var prop = dc.GetType().GetProperty(equipItem);
+                    if (prop != null && prop.CanRead)
+                        return prop.GetValue(dc);
+                }
+                catch
+                {
+                    // best-effort
+                }
+            }
+
+            return null;
+        }
+
+        #endregion
     }
 }

@@ -67,7 +67,7 @@ namespace TechEquipments.Views.Param
             if (sender is not ToggleButton tb)
                 return;
 
-            Host?.ParamEditable_WriteFromUi(tb.Tag as string, tb.IsChecked);
+            Host?.ParamEditable_WriteFromUi(tb.Tag as string, tb.IsChecked, !tb.IsChecked);
         }
 
         /// <summary>
@@ -202,7 +202,7 @@ namespace TechEquipments.Views.Param
         /// </summary>
         protected void WriteBoolTagValue(string equipItem, bool value)
         {
-            Host?.ParamEditable_WriteFromUi(equipItem, value);
+            Host?.ParamEditable_WriteFromUi(equipItem, value, !value);
         }
 
         /// <summary>

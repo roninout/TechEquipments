@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CtApi;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -19,6 +20,7 @@ namespace TechEquipments
     {
         private readonly IEquipmentService _equipmentService;
         private readonly IParamHost _host;
+        private readonly ICtApiService _ctApiService;
 
         // защита от гонок Start/Stop (SelectionChanged + TabChanged могут дернуть одновременно)
         private readonly object _sync = new();
@@ -34,10 +36,11 @@ namespace TechEquipments
         private readonly Dictionary<Type, PropertyInfo[]> _uiPropsCache = new();
         private readonly Dictionary<string, int> _rowIndexByName = new(StringComparer.Ordinal);
 
-        public ParamController(IEquipmentService equipmentService, IParamHost host)
+        public ParamController(IEquipmentService equipmentService, IParamHost host, ICtApiService ctApiService)
         {
             _equipmentService = equipmentService;
             _host = host;
+            _ctApiService = ctApiService;
         }
 
         public void Start()
@@ -143,6 +146,14 @@ namespace TechEquipments
         {
             try
             {
+                // Если CtApi сейчас disconnected — не долбим чтениями native API.
+                // Просто ждём восстановления связи.
+                if (!_ctApiService.IsConnectionAvailable)
+                {
+                    _host.ParamStatusText = "CtApi disconnected";
+                    return;
+                }
+
                 // Если недавно писали — подождем чуть-чуть
                 if (DateTime.UtcNow < _host.ParamReadResumeAtUtc)
                     return;
@@ -318,134 +329,6 @@ namespace TechEquipments
                 }
             }
         }
-
-        //private async Task PollParamOnceAsync(CancellationToken ct)
-        //{
-        //    var (equipName, equipType) = _host.ResolveSelectedEquipForParam();
-
-        //    equipName = (equipName ?? "").Trim();
-        //    equipType = (equipType ?? "").Trim();
-
-        //    if (string.IsNullOrWhiteSpace(equipName))
-        //    {
-        //        await _host.Dispatcher.InvokeAsync(() =>
-        //        {
-        //            _host.ParamStatusText = "Param: select equipment";
-        //            _host.ParamItems.Clear();
-        //            _currentParamModelType = null;
-        //            _host.CurrentParamModel = null!;
-        //        });
-        //        return;
-        //    }
-
-        //    var typeGroup = EquipTypeRegistry.GetGroup(equipType);
-
-        //    object? model = typeGroup switch
-        //    {
-        //        EquipTypeGroup.AI => await _equipmentService.ReadEquipParamsAsync<AIParam>(equipName, ct),
-        //        EquipTypeGroup.DI => await _equipmentService.ReadEquipParamsAsync<DIParam>(equipName, ct),
-        //        EquipTypeGroup.DO => await _equipmentService.ReadEquipParamsAsync<DOParam>(equipName, ct),
-        //        EquipTypeGroup.Atv => await _equipmentService.ReadEquipParamsAsync<AtvParam>(equipName, ct),
-        //        EquipTypeGroup.Motor => await _equipmentService.ReadEquipParamsAsync<MotorParam>(equipName, ct),
-        //        EquipTypeGroup.VGA_EL => await _equipmentService.ReadEquipParamsAsync<VGA_ElParam>(equipName, ct),
-        //        EquipTypeGroup.VGA => await _equipmentService.ReadEquipParamsAsync<VGAParam>(equipName, ct),
-        //        EquipTypeGroup.VGD => await _equipmentService.ReadEquipParamsAsync<VGDParam>(equipName, ct),
-        //        _ => null
-        //    };
-
-        //    ct.ThrowIfCancellationRequested();
-
-        //    await _host.Dispatcher.InvokeAsync(() =>
-        //    {
-        //        // Сброс области при смене типа группы
-        //        _host.Param_ResetAreaIfTypeGroupChanged(typeGroup);
-
-        //        _host.SuppressParamWritesFromPolling = true;
-
-        //        try
-        //        {
-        //            if (model == null)
-        //            {
-        //                _host.ParamStatusText = "Updating ...";
-        //                _host.ParamItems.Clear();
-        //                _currentParamModelType = null;
-        //                _host.CurrentParamModel = null!;
-        //                return;
-        //            }
-
-        //            ApplyParamModelToUi(model);
-
-        //            _host.ParamReadCycles++;
-        //            _host.ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_host.ParamReadCycles} cycles";
-        //        }
-        //        finally
-        //        {
-        //            // Снимаем подавление ПОСЛЕ того, как UI применит биндинги/создаст визуальные элементы
-        //            _host.Dispatcher.BeginInvoke(new Action(() =>
-        //            {
-        //                _host.SuppressParamWritesFromPolling = false;
-        //            }), DispatcherPriority.ContextIdle);
-        //        }
-        //    });
-        //}
-
-        //private void ApplyParamModelToUi(object model)
-        //{
-        //    _host.CurrentParamModel = model;
-
-        //    var modelType = model.GetType();
-
-        //    // --- props cache ---
-        //    if (!_uiPropsCache.TryGetValue(modelType, out var props))
-        //    {
-        //        props = modelType
-        //            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-        //            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
-        //            // служебные поля не показываем строками Param:
-        //            .Where(p =>
-        //                !p.Name.Equals("Unit", StringComparison.OrdinalIgnoreCase) &&
-        //                !p.Name.Equals("Chanel", StringComparison.OrdinalIgnoreCase))
-        //            .OrderBy(p => p.MetadataToken)
-        //            .ToArray();
-
-        //        _uiPropsCache[modelType] = props;
-        //    }
-
-        //    // Если модель поменялась (например AI -> DI), пересоздаём строки
-        //    if (_currentParamModelType != modelType)
-        //    {
-        //        _host.ParamItems.Clear();
-        //        _rowIndexByName.Clear();
-
-        //        for (int i = 0; i < props.Length; i++)
-        //        {
-        //            var p = props[i];
-
-        //            _host.ParamItems.Add(new ParamItem
-        //            {
-        //                Name = p.Name,
-        //                Value = p.GetValue(model)
-        //            });
-
-        //            _rowIndexByName[p.Name] = i;
-        //        }
-
-        //        _currentParamModelType = modelType;
-        //        return;
-        //    }
-
-        //    // Та же модель — обновляем только Value без построения словаря каждый цикл
-        //    for (int i = 0; i < props.Length; i++)
-        //    {
-        //        var p = props[i];
-
-        //        if (_rowIndexByName.TryGetValue(p.Name, out var rowIndex) &&
-        //            rowIndex >= 0 && rowIndex < _host.ParamItems.Count)
-        //        {
-        //            _host.ParamItems[rowIndex].Value = p.GetValue(model);
-        //        }
-        //    }
-        //}
 
         /// <summary>
         /// Формируем ключ polling (что именно сейчас поллим).

@@ -354,21 +354,27 @@
         <Border Grid.Row="1"
                 Padding="10,6"
                 Background="#0A000000"
-                Visibility="{Binding IsBottomLoading, Converter={StaticResource BoolToVis}}">
+                Visibility="{Binding IsBottomStatusVisible, Converter={StaticResource BoolToVis}}">
 
             <DockPanel LastChildFill="True">
                 <!-- Текст статуса -->
                 <TextBlock DockPanel.Dock="Left"
                            Style="{StaticResource AppTextStyle}"
-                           Text="{Binding BottomText}"
+                           Text="{Binding BottomStatusText}"
+                           Foreground="{Binding BottomStatusBrush}"
                            Margin="0,0,12,0"/>
+                <!--<TextBlock DockPanel.Dock="Left"
+                           Style="{StaticResource AppTextStyle}"
+                           Text="{Binding BottomText}"
+                           Margin="0,0,12,0"/>-->
 
                 <!-- Один ProgressBar:- EquipList: Value/Maximum- DB: IsIndeterminate=true -->
                 <ProgressBar Height="16"
                              Minimum="0"
                              Maximum="{Binding BottomProgressMaximum, Mode=OneWay}"
                              Value="{Binding BottomProgressValue, Mode=OneWay}"
-                             IsIndeterminate="{Binding BottomProgressIsIndeterminate, Mode=OneWay}"/>
+                             IsIndeterminate="{Binding BottomProgressIsIndeterminate, Mode=OneWay}"
+                             Visibility="{Binding IsBottomLoading, Converter={StaticResource BoolToVis}}"/>
 
             </DockPanel>
         </Border>
