@@ -46,6 +46,9 @@ namespace TechEquipments
         // Текущее linked-ATV состояние для Motor -> __EquipmentSic
         void SetLinkedAtvState(string? equipName, AtvModel? model);
 
+        // Уведомление о завершении загрузки секции
+        void NotifySectionLoaded(string equipName, ParamSettingsPage page, ParamLoadState state);
+
         // Helpers из MainWindow
         (string equipName, string equipType) ResolveSelectedEquipForParam();
         bool IsEquipmentVisible(EquipListBoxItem item);

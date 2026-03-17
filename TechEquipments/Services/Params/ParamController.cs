@@ -165,6 +165,9 @@ namespace TechEquipments
             catch (Exception ex)
             {
                 _host.BottomText = $"Param read error: {ex.Message}";
+
+                var (equipName, _) = _host.ResolveSelectedEquipForParam();
+                _host.NotifyMainParamLoaded((equipName ?? "").Trim(), ParamLoadState.Error);
             }
         }
 
@@ -183,6 +186,8 @@ namespace TechEquipments
                     _host.ParamItems.Clear();
                     _currentParamModelType = null;
                     _host.CurrentParamModel = null!;
+
+                    _host.NotifyMainParamLoaded("", ParamLoadState.Unavailable);
                 });
                 return;
             }
@@ -223,6 +228,8 @@ namespace TechEquipments
                         _host.ParamItems.Clear();
                         _currentParamModelType = null;
                         _host.CurrentParamModel = null!;
+
+                        _host.NotifyMainParamLoaded(equipName, ParamLoadState.Unavailable);
                         return;
                     }
 
@@ -230,6 +237,8 @@ namespace TechEquipments
 
                     _host.ParamReadCycles++;
                     _host.ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_host.ParamReadCycles} cycles";
+
+                    _host.NotifyMainParamLoaded(equipName, ParamLoadState.Ready);
                 }
                 finally
                 {

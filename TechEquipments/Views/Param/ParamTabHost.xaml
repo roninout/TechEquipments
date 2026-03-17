@@ -104,7 +104,44 @@
         </Grid>
 
         <!-- ✅ В зависимости от CurrentParamModel подставится нужный *ParamView.xaml -->
-        <ContentControl Grid.Row="1" Content="{Binding CurrentParamModel}" />
+        <Grid Grid.Row="1">
+
+            <ContentControl Content="{Binding CurrentParamModel}" />
+
+            <!-- Loading overlay для центральной области Param -->
+            <Border Panel.ZIndex="100"
+                    Background="#55FFFFFF"
+                    Visibility="{Binding IsParamCenterLoading, Converter={StaticResource BoolToVis}}">
+
+                <Border Width="240"
+                        Padding="16"
+                        Background="White"
+                        BorderBrush="#D0D0D0"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+
+                    <StackPanel>
+                        <TextBlock Text="Updating data..."
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"/>
+
+                        <ProgressBar Height="14"
+                                     Margin="0,12,0,8"
+                                     IsIndeterminate="True"/>
+
+                        <TextBlock Text="{Binding ParamStatusText}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Style="{StaticResource AppTextStyle}"/>
+                    </StackPanel>
+
+                </Border>
+            </Border>
+
+        </Grid>
 
         <StackPanel Grid.Row="0" Orientation="Vertical" Margin="0,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Right">
             <!--✅ Строка состояния именно для Param-->

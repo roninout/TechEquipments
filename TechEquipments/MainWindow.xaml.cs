@@ -538,6 +538,35 @@ namespace TechEquipments
         // polling
         private int _paramReadCycles;
 
+        // overlay над центральной областью Param
+        private bool _isParamCenterLoading;
+        public bool IsParamCenterLoading
+        {
+            get => _isParamCenterLoading;
+            set
+            {
+                if (_isParamCenterLoading == value)
+                    return;
+
+                _isParamCenterLoading = value;
+                OnPropertyChanged();
+            }
+        }
+
+        // Что именно сейчас ждём
+        private string? _pendingParamOverlayEquipName;
+        private ParamSettingsPage _pendingParamOverlayPage = ParamSettingsPage.None;
+        private bool _pendingParamOverlayNeedsMainModel;
+
+        // Последний завершённый статус основной Param-модели
+        private string? _lastMainLoadedEquipName;
+        private ParamLoadState _lastMainLoadedState = ParamLoadState.Waiting;
+
+        // Последний завершённый статус секции settings
+        private string? _lastSectionLoadedEquipName;
+        private ParamSettingsPage _lastSectionLoadedPage = ParamSettingsPage.None;
+        private ParamLoadState _lastSectionLoadedState = ParamLoadState.Waiting;
+
         // 1) Общий “замок” на чтение/запись Param (чтение и запись не пересекаются)
         private readonly SemaphoreSlim _paramRwGate = new(1, 1);
 
@@ -592,23 +621,37 @@ namespace TechEquipments
         /// </summary>
         public void ShowParamPage(ParamSettingsPage page)
         {
-            // Если страница не поддерживается текущей моделью — просто выходим.
             if (page != ParamSettingsPage.None && !CurrentParamSupportsPage(page))
                 return;
+
+            var (equipName, _) = ResolveSelectedEquipForParam();
+            equipName = (equipName ?? "").Trim();
 
             SetParamSettingsPage(page);
 
             if (page == ParamSettingsPage.None)
             {
-                // Возвращаемся к графику
+                StopParamOverlayWait();
                 ShowParamChart(reset: true);
                 return;
             }
 
-            // Показываем settings-панель
             ShowParamSettings();
 
-            // Сразу подгружаем активную секцию, чтобы не ждать следующий polling
+            // При клике по кнопкам страниц equipment не меняется,
+            // поэтому main model уже есть и ждём только саму секцию.
+            if (page == ParamSettingsPage.DiDo &&
+                string.Equals(_lastSectionLoadedEquipName, equipName, StringComparison.OrdinalIgnoreCase) &&
+                _lastSectionLoadedPage == ParamSettingsPage.DiDo &&
+                IsFinalParamLoadState(_lastSectionLoadedState))
+            {
+                StopParamOverlayWait();
+            }
+            else
+            {
+                BeginParamOverlayWait(equipName, page, needMainModel: false);
+            }
+
             _ = RefreshActiveParamSectionSafeAsync();
         }
 
@@ -624,11 +667,12 @@ namespace TechEquipments
             }
             catch (OperationCanceledException)
             {
-                // нормально, просто выходим
+                StopParamOverlayWait();
             }
             catch (Exception ex)
             {
                 ParamStatusText = $"Param settings refresh error: {ex.Message}";
+                StopParamOverlayWait();
             }
         }
 
@@ -640,6 +684,159 @@ namespace TechEquipments
 
         // Быстрая проверка из polling
         private bool IsEditingField => System.Threading.Volatile.Read(ref _isEditingField) == 1;
+
+        private static bool IsFinalParamLoadState(ParamLoadState state)
+            => state is ParamLoadState.Ready or ParamLoadState.Unavailable or ParamLoadState.Error;
+
+        /// <summary>
+        /// Начинаем ожидание обновления центральной области Param.
+        /// 
+        /// needMainModel = true  -> ждём и основную модель, и секцию
+        /// needMainModel = false -> ждём только секцию
+        /// </summary>
+        private void BeginParamOverlayWait(string? equipName, ParamSettingsPage page, bool needMainModel)
+        {
+            var key = (equipName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                StopParamOverlayWait();
+                return;
+            }
+
+            _pendingParamOverlayEquipName = key;
+            _pendingParamOverlayPage = page;
+            _pendingParamOverlayNeedsMainModel = needMainModel;
+
+            var mainDone =
+                string.Equals(_lastMainLoadedEquipName, key, StringComparison.OrdinalIgnoreCase) &&
+                IsFinalParamLoadState(_lastMainLoadedState);
+
+            // Chart: ждём только main model
+            if (page == ParamSettingsPage.None)
+            {
+                IsParamCenterLoading = !mainDone;
+                return;
+            }
+
+            var sectionDone =
+                string.Equals(_lastSectionLoadedEquipName, key, StringComparison.OrdinalIgnoreCase) &&
+                _lastSectionLoadedPage == page &&
+                IsFinalParamLoadState(_lastSectionLoadedState);
+
+            // При простом переключении страницы ждём только секцию
+            if (!needMainModel)
+            {
+                IsParamCenterLoading = !sectionDone;
+                return;
+            }
+
+            // При смене equipment ждём и модель, и секцию
+            IsParamCenterLoading = !(mainDone && sectionDone);
+        }
+
+        /// <summary>
+        /// Полностью останавливаем ожидание overlay.
+        /// </summary>
+        private void StopParamOverlayWait()
+        {
+            _pendingParamOverlayEquipName = null;
+            _pendingParamOverlayPage = ParamSettingsPage.None;
+            _pendingParamOverlayNeedsMainModel = false;
+            IsParamCenterLoading = false;
+        }
+
+        /// <summary>
+        /// Проверяем, можно ли уже скрывать overlay.
+        /// </summary>
+        private void TryFinishParamOverlayWait()
+        {
+            if (!IsParamCenterLoading)
+                return;
+
+            var key = (_pendingParamOverlayEquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                StopParamOverlayWait();
+                return;
+            }
+
+            var mainDone =
+                string.Equals(_lastMainLoadedEquipName, key, StringComparison.OrdinalIgnoreCase) &&
+                IsFinalParamLoadState(_lastMainLoadedState);
+
+            // Chart: ждём только main
+            if (_pendingParamOverlayPage == ParamSettingsPage.None)
+            {
+                if (mainDone)
+                    StopParamOverlayWait();
+
+                return;
+            }
+
+            var sectionDone =
+                string.Equals(_lastSectionLoadedEquipName, key, StringComparison.OrdinalIgnoreCase) &&
+                _lastSectionLoadedPage == _pendingParamOverlayPage &&
+                IsFinalParamLoadState(_lastSectionLoadedState);
+
+            // Переключение страницы без смены equipment:
+            // ждём только секцию
+            if (!_pendingParamOverlayNeedsMainModel)
+            {
+                if (sectionDone)
+                    StopParamOverlayWait();
+
+                return;
+            }
+
+            // Полная смена equipment:
+            // ждём и main, и section
+            if (mainDone && sectionDone)
+                StopParamOverlayWait();
+        }
+
+        /// <summary>
+        /// Уведомление: основная Param-модель по equipment завершила загрузку.
+        /// </summary>
+        private void NotifyMainParamLoadedCore(string? equipName, ParamLoadState state)
+        {
+            void Apply()
+            {
+                _lastMainLoadedEquipName = (equipName ?? "").Trim();
+                _lastMainLoadedState = state;
+                TryFinishParamOverlayWait();
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke((Action)Apply);
+                return;
+            }
+
+            Apply();
+        }
+
+        /// <summary>
+        /// Уведомление: конкретная Param settings-секция завершила загрузку.
+        /// </summary>
+        private void NotifySectionLoadedCore(string? equipName, ParamSettingsPage page, ParamLoadState state)
+        {
+            void Apply()
+            {
+                _lastSectionLoadedEquipName = (equipName ?? "").Trim();
+                _lastSectionLoadedPage = page;
+                _lastSectionLoadedState = state;
+                TryFinishParamOverlayWait();
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke((Action)Apply);
+                return;
+            }
+
+            Apply();
+        }
 
         #endregion
 
@@ -1199,6 +1396,15 @@ namespace TechEquipments
             {
                 EquipName = eq;
                 RememberEquipmentForCurrentFilters(eq);
+
+                // Ждём обновление центра Param:
+                // - главной модели
+                // - и текущей активной секции, если сейчас открыта Settings-страница
+                BeginParamOverlayWait(eq, CurrentParamSettingsPage, needMainModel: true);
+            }
+            else
+            {
+                StopParamOverlayWait();
             }
 
             // Переключаемся на Param
@@ -1633,6 +1839,9 @@ namespace TechEquipments
         Task IParamHost.PollTrendOnceSafeAsync(CancellationToken ct)
             => _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
 
+        void IParamHost.NotifyMainParamLoaded(string equipName, ParamLoadState state)
+            => NotifyMainParamLoadedCore(equipName, state);
+
         #endregion
 
         #region IParamRefsHost
@@ -1726,6 +1935,9 @@ namespace TechEquipments
             OnPropertyChanged(nameof(LinkedAtvEquipName));
             OnPropertyChanged(nameof(LinkedAtvModel));
         }
+
+        void IParamRefsHost.NotifySectionLoaded(string equipName, ParamSettingsPage page, ParamLoadState state)
+            => NotifySectionLoadedCore(equipName, page, state);
 
         #endregion
 

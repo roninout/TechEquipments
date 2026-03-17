@@ -51,41 +51,70 @@ namespace TechEquipments
         /// </summary>
         public async Task RefreshActiveParamSectionAsync(CancellationToken ct)
         {
-            // только на вкладке Param
+            // Обновляем секции только на вкладке Param
             if (_host.SelectedMainTab != MainTabKind.Param)
                 return;
 
-            // если пользователь смотрит Chart — ничего не обновляем
-            if (_host.CurrentParamSettingsPage == ParamSettingsPage.None)
+            var page = _host.CurrentParamSettingsPage;
+
+            // Если открыт Chart, а не settings-page — ничего не делаем
+            if (page == ParamSettingsPage.None)
                 return;
 
-            // список оборудования должен быть загружен
-            if (_host.Equipments.Count == 0)
-                return;
+            var (equipName, _) = _host.ResolveSelectedEquipForParam();
+            equipName = (equipName ?? "").Trim();
 
-            switch (_host.CurrentParamSettingsPage)
+            // Нет выбранного оборудования -> секция недоступна
+            if (string.IsNullOrWhiteSpace(equipName))
             {
-                case ParamSettingsPage.DiDo:
-                    if (_host.Equipments.Count == 0)
-                        return;
+                _host.NotifySectionLoaded("", page, ParamLoadState.Unavailable);
+                return;
+            }
 
-                    await RefreshDiDoSectionAsync(ct);
-                    break;
+            // Список оборудования ещё не загружен -> секция пока недоступна
+            if (_host.Equipments.Count == 0)
+            {
+                _host.NotifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
+                return;
+            }
 
-                case ParamSettingsPage.Plc:
-                    await RefreshPlcSectionAsync(ct);
-                    break;
+            try
+            {
+                switch (page)
+                {
+                    case ParamSettingsPage.DiDo:
+                        await RefreshDiDoSectionAsync(ct);
+                        break;
 
-                case ParamSettingsPage.DryRun:
-                    await RefreshDryRunSectionAsync(ct);
-                    break;
+                    case ParamSettingsPage.Plc:
+                        await RefreshPlcSectionAsync(ct);
+                        break;
 
-                case ParamSettingsPage.Atv:
-                    await RefreshAtvSectionAsync(ct);
-                    break;
+                    case ParamSettingsPage.DryRun:
+                        await RefreshDryRunSectionAsync(ct);
+                        break;
 
-                default:
-                    break;
+                    case ParamSettingsPage.Atv:
+                        await RefreshAtvSectionAsync(ct);
+                        break;
+
+                    default:
+                        // Для неподдерживаемых/пустых страниц сразу отдаём финальный статус
+                        _host.NotifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
+                        break;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Отмену не считаем ошибкой состояния UI
+                throw;
+            }
+            catch
+            {
+                // Любая ошибка должна дать финальный сигнал,
+                // иначе loading overlay может повиснуть
+                _host.NotifySectionLoaded(equipName, page, ParamLoadState.Error);
+                throw;
             }
         }
 
@@ -237,6 +266,8 @@ namespace TechEquipments
                         _host.ParamDiRows.Clear();
                         _host.ParamDoRows.Clear();
                     });
+
+                    _host.NotifySectionLoaded(equipName, ParamSettingsPage.DiDo, ParamLoadState.Unavailable);
                     return;
                 }
 
@@ -298,6 +329,11 @@ namespace TechEquipments
                     SyncRows(_host.ParamDoRows, doNew);
                     SortRowsByChanel(_host.ParamDoRows);
                 });
+
+                // ВАЖНО:
+                // DI/DO секция успешно дочитана и синхронизирована.
+                // Без этого overlay будет висеть, хотя данные уже на экране.
+                _host.NotifySectionLoaded(equipName, ParamSettingsPage.DiDo, ParamLoadState.Ready);
             }
             finally
             {
@@ -326,8 +362,14 @@ namespace TechEquipments
             try
             {
                 // 1) refs
-                var fresh = await _equipmentService.GetEquipRef(equipName, category, clusterEquipItem, "CUSTOM1")
-                           ?? new List<PlcRefRow>();
+                var fresh = await _equipmentService.GetEquipRef(equipName, category, clusterEquipItem, "CUSTOM1") ?? new List<PlcRefRow>();
+
+                if (fresh.Count == 0)
+                {
+                    await _host.Dispatcher.InvokeAsync(() => _host.ParamPlcRows.Clear());
+                    _host.NotifySectionLoaded(equipName, ParamSettingsPage.Plc, ParamLoadState.Unavailable);
+                    return;
+                }
 
                 // 2) sync списка
                 await _host.Dispatcher.InvokeAsync(() => SyncPlcRows(_host.ParamPlcRows, fresh));
@@ -468,6 +510,8 @@ namespace TechEquipments
                             u.row.ValueForced = false;
                     }
                 });
+
+                _host.NotifySectionLoaded(equipName, ParamSettingsPage.Plc, ParamLoadState.Ready);
             }
             finally
             {
@@ -489,7 +533,10 @@ namespace TechEquipments
             var (equipName, _) = _host.ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
+            {
+                _host.NotifySectionLoaded("", ParamSettingsPage.DryRun, ParamLoadState.Unavailable);
                 return;
+            }
 
             // 1) Ищем базовый DryRun equipment через WinOpened от мотора
             var winRef = await _equipmentService.GetWinOpenedRefAsync(
@@ -512,6 +559,8 @@ namespace TechEquipments
                         _host.EndSuppressParamWritesFromRefresh();
                     }
                 });
+
+                _host.NotifySectionLoaded(equipName, ParamSettingsPage.DryRun, ParamLoadState.Unavailable);
                 return;
             }
 
@@ -546,6 +595,8 @@ namespace TechEquipments
                     _host.EndSuppressParamWritesFromRefresh();
                 }
             });
+
+            _host.NotifySectionLoaded(equipName, ParamSettingsPage.DryRun, ParamLoadState.Ready);
         }
 
         /// <summary>
@@ -929,25 +980,11 @@ namespace TechEquipments
             return (linkedEquipName, new AiModel(param), title);
         }
 
-
-
-
-
-
-
-
-
-
         /// <summary>
         /// Обновляет ATV-секцию:
         /// - для Motor ищет linked ATV через WinOpened / __EquipmentSic
         /// - читает AtvParam с найденного equipment
         /// - кладёт результат в host.LinkedAtvModel
-        ///
-        /// ВАЖНО:
-        /// Не сбрасываем linked ATV в null перед каждым refresh.
-        /// Иначе секция в MotorParamView мигает/поддёргивается:
-        /// сначала скрывается, потом снова создаётся.
         /// </summary>
         private async Task RefreshAtvSectionAsync(CancellationToken ct)
         {
@@ -955,7 +992,7 @@ namespace TechEquipments
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
 
-            // Если текущее оборудование не выбрано — очищаем linked ATV один раз.
+            // Если текущее оборудование не выбрано — очищаем linked ATV
             if (string.IsNullOrWhiteSpace(equipName))
             {
                 await _host.Dispatcher.InvokeAsync(() =>
@@ -971,13 +1008,13 @@ namespace TechEquipments
                     }
                 });
 
+                _host.NotifySectionLoaded("", ParamSettingsPage.Atv, ParamLoadState.Unavailable);
                 return;
             }
 
             var group = EquipTypeRegistry.GetGroup(equipType);
 
             // ATV-секция внутри мотора нужна только для Motor.
-            // Для остальных типов linked ATV state очищаем.
             if (group != EquipTypeGroup.Motor)
             {
                 await _host.Dispatcher.InvokeAsync(() =>
@@ -993,18 +1030,14 @@ namespace TechEquipments
                     }
                 });
 
+                _host.NotifySectionLoaded(equipName, ParamSettingsPage.Atv, ParamLoadState.Unavailable);
                 return;
             }
 
-            // ВАЖНО:
-            // Не очищаем старую модель перед чтением новой.
-            // Иначе на каждом polling-цикле XAML будет скрывать секцию и показывать её заново.
             var (linkedEquipName, linkedModel) = await TryResolveMotorLinkedAtvAsync(equipName, ct);
 
             ct.ThrowIfCancellationRequested();
 
-            // После завершения поиска применяем итоговое состояние ОДИН раз:
-            // либо новая linked-модель, либо null/null если link не найден.
             await _host.Dispatcher.InvokeAsync(() =>
             {
                 _host.BeginSuppressParamWritesFromRefresh();
@@ -1017,6 +1050,11 @@ namespace TechEquipments
                     _host.EndSuppressParamWritesFromRefresh();
                 }
             });
+
+            _host.NotifySectionLoaded(
+                equipName,
+                ParamSettingsPage.Atv,
+                linkedModel != null ? ParamLoadState.Ready : ParamLoadState.Unavailable);
         }
 
         /// <summary>

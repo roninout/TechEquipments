@@ -30,11 +30,14 @@ namespace TechEquipments
         object CurrentParamModel { get; set; }
         ObservableCollection<ParamItem> ParamItems { get; }
 
+        // Main Param model loading notifications
+        void NotifyMainParamLoaded(string equipName, ParamLoadState state);
+
         // Core callbacks
         (string equipName, string equipType) ResolveSelectedEquipForParam();
         void Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup);
 
-        // Extra periodic updates (у тебе вже є)
+        // Extra periodic updates
         Task RefreshActiveParamSectionAsync(CancellationToken ct);
         Task PollTrendOnceSafeAsync(CancellationToken ct);
     }
