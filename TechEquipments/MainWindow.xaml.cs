@@ -17,6 +17,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TechEquipments.Services.QR;
 using TechEquipments.Views.Settings;
 
 namespace TechEquipments
@@ -45,6 +46,7 @@ namespace TechEquipments
         private readonly ICtApiService _ctApiService;
         private readonly IConfiguration _config;
         private readonly IUserStateService _stateService;
+        private readonly IQrScannerService _qrScannerService;
 
         #endregion
 
@@ -988,6 +990,7 @@ namespace TechEquipments
             _equipmentService = equipmentService;
             _stateService = stateService;
             _ctApiService = ctApiService;
+            _qrScannerService = qrScannerService;
 
             _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
             Closed += (_, __) => _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;

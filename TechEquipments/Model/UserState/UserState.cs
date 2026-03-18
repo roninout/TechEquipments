@@ -28,5 +28,10 @@ namespace TechEquipments
         /// ключ = "Station|TypeGroup", значение = EquipName.
         /// </summary>
         public Dictionary<string, string> LastEquipmentsByFilter { get; set; } = new();
+
+        /// <summary>
+        /// Последняя выбранная камера для QR-сканера.
+        /// </summary>
+        public int QrCameraIndex { get; set; } = 0;
     }
 }
