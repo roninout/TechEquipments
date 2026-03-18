@@ -277,7 +277,11 @@ namespace TechEquipments
 
         private bool _suppressEquipNameFromSelection;
 
-
+        /// <summary>
+        /// true  -> используем overlay прямо в центре Param области
+        /// false -> вместо overlay показываем загрузку в нижнем progress bar
+        /// </summary>
+        public bool UseParamAreaOverlay { get; }
 
         #endregion
 
@@ -401,9 +405,12 @@ namespace TechEquipments
         }
 
         /// <summary>
-        /// Единый флаг видимости нижней панели: EquipList или DB.
+        /// Нижняя панель видна, если:
+        /// - грузится EquipList
+        /// - грузится DB
+        /// - либо активна Param-загрузка и overlay в центре отключён
         /// </summary>
-        public bool IsBottomLoading => IsEquipListLoading || IsDbLoading;
+        public bool IsBottomLoading => IsEquipListLoading || IsDbLoading || (!UseParamAreaOverlay && IsParamCenterLoading);
 
         private string _bottomText = "";
 
@@ -414,7 +421,16 @@ namespace TechEquipments
         /// </summary>
         public string BottomText
         {
-            get => IsEquipListLoading ? EquipListText : _bottomText;
+            get
+            {
+                if (IsEquipListLoading)
+                    return EquipListText;
+
+                if (!UseParamAreaOverlay && IsParamCenterLoading)
+                    return ParamBottomLoadingText;
+
+                return _bottomText;
+            }
             set
             {
                 _bottomText = value;
@@ -531,17 +547,17 @@ namespace TechEquipments
         };
 
         /// <summary>Показываем нижний прогресс только когда что-то грузим</summary>
-        public bool IsBottomProgressVisible => IsEquipListLoading || IsDbLoading;
+        public bool IsBottomProgressVisible => IsEquipListLoading || IsDbLoading || (!UseParamAreaOverlay && IsParamCenterLoading);
 
         /// <summary>
         /// Режим нижнего прогресса:
         /// - список оборудования: детерминированный
         /// - DB: индетерминированный
         /// </summary>
-        public bool BottomProgressIsIndeterminate => IsDbLoading && !IsEquipListLoading;
+        public bool BottomProgressIsIndeterminate => (!UseParamAreaOverlay && IsParamCenterLoading && !IsEquipListLoading) || (IsDbLoading && !IsEquipListLoading);
 
         /// <summary>Максимум для нижнего прогресса</summary>
-        public int BottomProgressMaximum => IsEquipListLoading ? EquipListMax : 100;
+        public int BottomProgressMaximum => IsEquipListLoading ? EquipListMax : 100;        
 
         /// <summary>Текущее значение для нижнего прогресса</summary>
         public int BottomProgressValue => IsEquipListLoading ? EquipListDone : 0;
@@ -563,7 +579,19 @@ namespace TechEquipments
         public string ParamStatusText
         {
             get => _paramStatusText;
-            set { _paramStatusText = value; OnPropertyChanged(); }
+            set
+            {
+                if (_paramStatusText == value)
+                    return;
+
+                _paramStatusText = value;
+                OnPropertyChanged();
+
+                // Для нижней панели, если overlay отключён
+                OnPropertyChanged(nameof(ParamBottomLoadingText));
+                OnPropertyChanged(nameof(BottomText));
+                OnPropertyChanged(nameof(BottomStatusText));
+            }
         }
 
         // Текущая модель параметров (AIParam / DIParam / MotorParam / ...)
@@ -597,8 +625,35 @@ namespace TechEquipments
 
                 _isParamCenterLoading = value;
                 OnPropertyChanged();
+
+                // Центровой overlay
+                OnPropertyChanged(nameof(ShouldShowParamOverlay));
+
+                // Нижняя панель
+                OnPropertyChanged(nameof(IsBottomProgressVisible));
+                OnPropertyChanged(nameof(IsBottomLoading));
+                OnPropertyChanged(nameof(BottomProgressIsIndeterminate));
+                OnPropertyChanged(nameof(BottomProgressMaximum));
+                OnPropertyChanged(nameof(BottomProgressValue));
+                OnPropertyChanged(nameof(BottomText));
+
+                OnPropertyChanged(nameof(IsBottomStatusVisible));
+                OnPropertyChanged(nameof(BottomStatusText));
             }
         }
+
+        /// <summary>
+        /// Показывать ли overlay именно в центре Param-области.
+        /// Если UseParamAreaOverlay=false, то overlay в центре отключается,
+        /// а загрузка уходит в нижнюю панель MainWindow.
+        /// </summary>
+        public bool ShouldShowParamOverlay => UseParamAreaOverlay && IsParamCenterLoading;
+
+        /// <summary>
+        /// Текст загрузки Param для нижней панели,
+        /// когда overlay в центре отключен.
+        /// </summary>
+        public string ParamBottomLoadingText => string.IsNullOrWhiteSpace(ParamStatusText) ? "Updating data..." : ParamStatusText;
 
         // Что именно сейчас ждём
         private string? _pendingParamOverlayEquipName;
@@ -944,6 +999,9 @@ namespace TechEquipments
             _qrController = new QrController(_equipmentService, qrCodeService, qrScannerService, this);
             _soeController = new SoeController(_equipmentService, this);
             _uiState = new UiStateController(_stateService, _equipmentService, this);
+
+            // Если настройки нет — сохраняем текущее поведение (overlay включен)
+            UseParamAreaOverlay = _config.GetValue("Global:Overlay", true);
 
             // Vm + Controller
             Trend = new ParamTrendVm();

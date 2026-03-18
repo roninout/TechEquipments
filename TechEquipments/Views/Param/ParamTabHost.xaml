@@ -110,8 +110,8 @@
 
             <!-- Loading overlay для центральной области Param -->
             <Border Panel.ZIndex="100"
-                    Background="#55FFFFFF"
-                    Visibility="{Binding IsParamCenterLoading, Converter={StaticResource BoolToVis}}">
+                    Background="#55FFFFFF"                    
+                    Visibility="{Binding ShouldShowParamOverlay, Converter={StaticResource BoolToVis}}">
 
                 <Border Width="240"
                         Padding="16"
