@@ -77,14 +77,24 @@
                                    Style="{StaticResource AppLabelTextStyle}"/>-->
 
                         <!-- Type -->
-                        <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
+                        <!--<dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
                                           HorizontalContentAlignment ="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Types"
                                           IsTextEditable="False"
                                           ItemsSource="{Binding TypeFilters}"
+                                          EditValue="{Binding SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>-->
+
+                        <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
+                                          HorizontalContentAlignment="Left"
+                                          Style="{StaticResource AppBaseEditStyle}"
+                                          NullText="Types"
+                                          IsTextEditable="False"
+                                          ItemsSource="{Binding TypeFilters}"
+                                          ItemTemplate="{StaticResource EquipTypeFilterItemTemplate}"
+                                          ApplyItemTemplateToSelectedItem="True"
                                           EditValue="{Binding SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                        
+
                         <!--<TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center"
                                    Text="Type"
                                    Style="{StaticResource AppLabelTextStyle}"/>-->
@@ -94,11 +104,11 @@
                     <ListBox x:Name="EquipmentsListBox"
                              Grid.Row="1"
                              ItemsSource="{Binding EquipmentsView}"
-                             DisplayMemberPath="Equipment"
+                             ItemTemplate="{StaticResource EquipmentListItemTemplate}"
                              ItemContainerStyle="{StaticResource AppListBoxItemStyle}"
                              SelectedItem="{Binding SelectedListBoxEquipment}"
                              SelectionChanged="Equipments_SelectionChanged"/>
-
+                    
                     <!-- Версия -->
                     <TextBlock Grid.Row="2"                               
                                Margin="0,6,-10,-5"

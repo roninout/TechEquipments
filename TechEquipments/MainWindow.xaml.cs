@@ -1377,7 +1377,8 @@ namespace TechEquipments
         /// <summary>Фильтр для EquipmentsView: Station + Type.</summary>
         private bool FilterEquipment(object obj)
         {
-            if (obj is not EquipListBoxItem it) return false;
+            if (obj is not EquipListBoxItem it)
+                return false;
 
             // Station filter
             var st = (SelectedStation ?? "All").Trim();
@@ -1391,7 +1392,7 @@ namespace TechEquipments
             if (SelectedTypeFilter == EquipTypeGroup.All)
                 return true;
 
-            return EquipTypeRegistry.GetGroup(it.Type) == SelectedTypeFilter;
+            return it.TypeGroup == SelectedTypeFilter;
         }
 
         /// <summary>Применяет фильтры (перерисовка представления).</summary>

@@ -4,7 +4,8 @@
     xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
     xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
     xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
-    xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol">
+    xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
+    xmlns:local="clr-namespace:TechEquipments">
 
     <!-- ============ BASE TEXT ============ -->
     <Style x:Key="AppTextBlockStyle" TargetType="{x:Type TextBlock}">
@@ -42,6 +43,196 @@
         <Setter Property="Padding" Value="10,4"/>
         <Setter Property="FontSize" Value="14"/>
     </Style>
+
+    <!-- Общий стиль иконки по EquipTypeGroup. В Image.Tag передаём EquipTypeGroup. -->
+    <Style x:Key="EquipTypeIconImageStyle" TargetType="{x:Type Image}">
+        <Setter Property="Width" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+
+        <!-- Иконка по умолчанию -->
+        <Setter Property="Source" Value="{dx:DXImage 'Office2013/Actions/Show_16x16.png'}"/>
+
+        <Style.Triggers>
+            <!-- AI -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.AI}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Chart/FullStackedLine_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- DI -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.DI}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Chart/Stepline_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- DO -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.DO}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Chart/OpenHighLowCloseCandleStick_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- Motor -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.Motor}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Programming/Technology_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- VGA -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.VGA}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleLinearVertical_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- VGA_EL -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.VGA_EL}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleRightQuarterCircular_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- VGD -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.VGD}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Chart/StepArea_16x16.png'}"/>
+            </DataTrigger>
+
+            <!-- Atv -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.Atv}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleLinearHorizontal_16x16.png'}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!--
+Шаблон элемента левого списка.
+DataContext = EquipListBoxItem
+-->
+    <DataTemplate x:Key="EquipmentListItemTemplate">
+        <Grid Margin="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="24"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Image Grid.Column="0"
+               Tag="{Binding TypeGroup}"
+               Style="{StaticResource EquipTypeIconImageStyle}"/>
+
+            <TextBlock Grid.Column="1"
+                   VerticalAlignment="Center"
+                   Text="{Binding Equipment}"
+                   TextTrimming="CharacterEllipsis">
+                <TextBlock.ToolTip>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Equipment}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Type}"/>
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxWidth="320"/>
+                    </StackPanel>
+                </TextBlock.ToolTip>
+        </TextBlock>
+        </Grid>
+    </DataTemplate>
+
+    <!--
+Шаблон элемента Type ComboBox.
+DataContext = EquipTypeGroup (enum)
+-->
+    <DataTemplate x:Key="EquipTypeFilterItemTemplate">
+        <StackPanel Orientation="Horizontal">
+            <Image Tag="{Binding}"
+               Style="{StaticResource EquipTypeIconImageStyle}"/>
+
+            <TextBlock Text="{Binding}"
+                   VerticalAlignment="Center"/>
+        </StackPanel>
+    </DataTemplate>
+
+    <!--<DataTemplate x:Key="EquipmentListItemTemplate">
+        <Grid Margin="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="24"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            --><!-- Иконка типа --><!--
+            <Image Grid.Column="0"
+               Width="16"
+               Height="16"
+               Margin="0,0,8,0"
+               VerticalAlignment="Center"
+               HorizontalAlignment="Center">
+                <Image.Style>
+                    <Style TargetType="Image">
+
+                        --><!-- Иконка по умолчанию. Подставь сюда свой DX PNG resource key.--><!--
+                        <Setter Property="Source"
+                            Value="{dx:DXImage 'Office2013/Support/Question_16x16.png'}"/>
+
+                        <Style.Triggers>
+
+                            --><!-- AI --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.AI}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Chart/FullStackedLine_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- DI --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.DI}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Chart/Stepline_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- DO --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.DO}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Chart/OpenHighLowCloseCandleStick_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- Motor --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.Motor}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Reports/GroupFieldCollection_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- VGA --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.VGA}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleLinearVertical_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- VGA_EL --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.VGA_EL}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleRightQuarterCircular_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- VGD --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.VGD}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Chart/StepArea_16x16.png'}"/>
+                            </DataTrigger>
+
+                            --><!-- Atv --><!--
+                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.Atv}">
+                                <Setter Property="Source"
+                                    Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleLinearHorizontal_16x16.png'}"/>
+                            </DataTrigger>
+
+                        </Style.Triggers>
+                    </Style>
+                </Image.Style>
+            </Image>
+
+            --><!-- Текст оборудования --><!--
+            <TextBlock Grid.Column="1"
+                   VerticalAlignment="Center"
+                   Text="{Binding Equipment}"
+                   TextTrimming="CharacterEllipsis">
+                <TextBlock.ToolTip>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Equipment}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Type}"/>
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxWidth="320"/>
+                    </StackPanel>
+                </TextBlock.ToolTip>
+        </TextBlock>
+        </Grid>
+    </DataTemplate>-->
 
     <!-- ============ GRID HEADERS ============ -->
     <Style x:Key="AppGridColumnHeaderStyle" TargetType="{x:Type dxg:GridColumnHeader}">

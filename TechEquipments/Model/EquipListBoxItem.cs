@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace TechEquipments
 {
@@ -13,12 +9,18 @@ namespace TechEquipments
         public string Type { get; set; } = "";
         public string Station { get; set; } = "";
 
+        /// <summary>
+        /// Уже нормализованная группа типа. Нужна для фильтрации и для отображения значка в списке.
+        /// </summary>
+        public EquipTypeGroup TypeGroup { get; set; } = EquipTypeGroup.All;
+
         private string _description = "";
         public string Description
         {
             get => _description;
             set => _description = CleanDescription(value);
         }
+
         public override string ToString() => Equipment;
 
         private static string CleanDescription(string? s)
@@ -39,6 +41,5 @@ namespace TechEquipments
 
             return s;
         }
-
     }
 }

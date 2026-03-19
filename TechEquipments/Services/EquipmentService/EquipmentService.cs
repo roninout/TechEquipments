@@ -337,44 +337,72 @@ namespace TechEquipments
         }
 
         // Возвращает список названий всех Equipment
-        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null, CancellationToken ct = default)
+        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null,CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
-            var findHashTags = await _ctApiService.FindAsync("Tag", "Tag=*_HASHCODE", "", "EQUIPMENT", "TAG", "COMMENT");
+
+            var findHashTags = await _ctApiService.FindAsync(
+                "Tag",
+                "Tag=*_HASHCODE",
+                "",
+                "EQUIPMENT",
+                "TAG",
+                "COMMENT");
+
             ct.ThrowIfCancellationRequested();
 
-            var items = findHashTags
-                .Where(d => d.TryGetValue("EQUIPMENT", out var eq) && !string.IsNullOrWhiteSpace(eq) && d.TryGetValue("TAG", out var tag) && !string.IsNullOrWhiteSpace(tag))
+            var sourceItems = findHashTags
+                .Where(d =>
+                    d.TryGetValue("EQUIPMENT", out var eq) &&
+                    !string.IsNullOrWhiteSpace(eq) &&
+                    d.TryGetValue("TAG", out var tag) &&
+                    !string.IsNullOrWhiteSpace(tag))
                 .Select(d => new EquipListBoxItem
                 {
-                    Equipment = d["EQUIPMENT"].Trim(),
-                    Tag = d["TAG"].Trim(),
-                    Description = d["COMMENT"].Trim()
+                    Equipment = (d.TryGetValue("EQUIPMENT", out var eq) ? eq : "").Trim(),
+                    Tag = (d.TryGetValue("TAG", out var tag) ? tag : "").Trim(),
+                    Description = (d.TryGetValue("COMMENT", out var comment) ? comment : "").Trim()
                 })
-                // уникальность по имени оборудования
+                // уникальность по имени оборудования: предпочитаем строку с непустым Description
                 .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
+                .Select(g => g
+                    .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.Description))
+                    .First())
                 .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            int total = items.Count;
+            int total = sourceItems.Count;
             int done = 0;
             progress?.Report((done, total));
 
-            foreach (var item in items)
+            var result = new List<EquipListBoxItem>(sourceItems.Count);
+
+            foreach (var item in sourceItems)
             {
                 ct.ThrowIfCancellationRequested();
 
                 item.Type = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{item.Equipment}\",\"Type\", 3)");
 
+                // Отсекаем все типы, которые приложение не поддерживает.
+                if (!EquipTypeRegistry.IsSupportedType(item.Type))
+                {
+                    done++;
+                    progress?.Report((done, total));
+                    continue;
+                }
+
+                item.TypeGroup = EquipTypeRegistry.GetGroup(item.Type);
+
                 int dot = item.Equipment.IndexOf('.');
                 item.Station = dot > 0 ? item.Equipment.Substring(0, dot) : "";
 
-                done++;
+                result.Add(item);
 
+                done++;
                 progress?.Report((done, total));
             }
-            return items;
+
+            return result;
         }
 
         // читаем внешний тег для поиска

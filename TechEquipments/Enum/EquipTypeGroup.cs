@@ -69,6 +69,16 @@ namespace TechEquipments
             return Map.TryGetValue(t, out var meta) ? meta.EventText(bitCode) : "";
         }
 
+        /// <summary>
+        /// Поддерживается ли тип оборудования нашим приложением.
+        /// Если false - не показываем equipment в левом списке.
+        /// </summary>
+        public static bool IsSupportedType(string? equipType)
+        {
+            var t = (equipType ?? "").Trim();
+            return Map.ContainsKey(t);
+        }
+
         #region Brush
 
         #region Type
@@ -156,5 +166,6 @@ namespace TechEquipments
         }
 
         #endregion
+
     }
 }
