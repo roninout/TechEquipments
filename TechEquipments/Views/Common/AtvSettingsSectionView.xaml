@@ -43,7 +43,7 @@
 
                             <dxga:CircularGaugeControl.Scales>
                                 <dxga:ArcScale StartValue="0"
-                                               EndValue="{Binding Nsp, Mode=OneWay, Converter={StaticResource PositiveDoubleOrDefaultConverter}, ConverterParameter=1000}"
+                                               EndValue="{Binding NMax, Mode=OneWay, Converter={StaticResource PositiveDoubleOrDefaultConverter}, ConverterParameter=1000}"
                                                StartAngle="-180" EndAngle="0"
                                                MajorIntervalCount="5" MinorIntervalCount="4">
 

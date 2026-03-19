@@ -63,6 +63,18 @@
 
         <Grid Margin="12,0,0,0">
 
+            <!-- Скрываем весь верхний блок Name / Type / Location / Desc, пока CurrentParamModel ещё не загружена. -->
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CurrentParamModel}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+
             <Grid.ColumnDefinitions >
                 <ColumnDefinition Width="70"/>
                 <ColumnDefinition Width="*"/>
@@ -76,6 +88,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- Name -->
             <TextBlock Grid.Row="0" Grid.Column="0" Padding="0, 4" Text="Name: " FontWeight="SemiBold"/>
 
             <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left">
@@ -91,13 +104,15 @@
                                  Visibility="{Binding Param_ShowGenerateQrButton, Converter={StaticResource BoolToVis}}"/>
             </StackPanel>
 
+            <!-- Type -->
             <TextBlock Grid.Row="1" Grid.Column="0" Padding="0, 4" Text="Type: " FontWeight="SemiBold" />
             <TextBlock Grid.Row="1" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Type, TargetNullValue='-'}" />
 
+            <!-- Location -->
             <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Location: " FontWeight="SemiBold" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
             <TextBlock Grid.Row="2" Grid.Column="1" Padding="0,4" Text="{Binding CurrentParamChanel}" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
 
-
+            <!-- Desc -->
             <TextBlock Grid.Row="3" Grid.Column="0" Padding="0, 4" Text="Desc: " FontWeight="SemiBold" />
             <TextBlock Grid.Row="3" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Description, TargetNullValue='-'}" />
 
@@ -143,16 +158,19 @@
 
         </Grid>
 
-        <StackPanel Grid.Row="0" Orientation="Vertical" Margin="0,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Right">
-            <!--✅ Строка состояния именно для Param-->
-            <TextBlock Grid.Row="0" Margin="0,0,13,0" Text="{Binding ParamStatusText}" Style="{StaticResource AppTextStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" />
+        <StackPanel Grid.Row="0"
+            Orientation="Vertical"
+            Margin="0,0,0,0"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Right">
 
-            <dx:SimpleButton Grid.Row="0" Width="60" Height="60" Margin="0,8,13,0" HorizontalAlignment="Right"
-                             Padding="0" GlyphWidth="40" GlyphHeight="40"
-                             Click="ScanQr_Click"
-                             ToolTip="Scan QR"
-                             Glyph="{dx:DXImage 'SvgImages/Icon Builder/Shopping_Barcode.svg'}"
-                             Style="{StaticResource AppButtonStyle}" />
+            <!-- Строка состояния именно для Param -->
+            <TextBlock Grid.Row="0"
+               Margin="0,0,13,0"
+               Text="{Binding ParamStatusText}"
+               Style="{StaticResource AppTextStyle}"
+               VerticalAlignment="Top"
+               HorizontalAlignment="Right" />
 
         </StackPanel>
 

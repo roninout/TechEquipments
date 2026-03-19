@@ -7,7 +7,8 @@
     xmlns:local="clr-namespace:TechEquipments"
     xmlns:views="clr-namespace:TechEquipments.Views.Param"
     x:Class="TechEquipments.MainWindow"
-    Title="MainWindow" Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
+    Icon="/TechEquipments;component/Resources/Icons/app.ico"
+    Title="{Binding WindowTitle}" Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
 
     <dx:ThemedWindow.Resources>
         <!-- Конвертер bool -> Visibility -->
@@ -16,6 +17,9 @@
         <!-- Подсветка событий/типов -->
         <local:EventKeyToBrushConverter x:Key="EventKeyToBrush"/>
         <local:EquipTypeGroupToBrushConverter x:Key="TypeGroupToBrush"/>
+
+        <!-- SVG иконка Scan QR из ресурсов проекта -->
+        <dx:SvgImageSource x:Key="ScanQrGlyph" Uri="/TechEquipments;component/Resources/Icons/scan_qr.svg"/>
 
         <!-- DataModeToVisibilityConverter УДАЛЁН (не используется после перехода на вкладки) -->
     </dx:ThemedWindow.Resources>
@@ -44,6 +48,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- Верх: Station + Type в одной строке -->
@@ -59,11 +64,7 @@
                         </Grid.RowDefinitions>
 
                         <!-- Station -->
-                        <TextBlock Grid.Row="0" Grid.Column="0"
-                                   Text="Station"
-                                   Style="{StaticResource AppLabelTextStyle}"/>
-
-                        <dxe:ComboBoxEdit Grid.Row="1" Grid.Column="0"
+                        <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="0"
                                           HorizontalContentAlignment ="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Stations"
@@ -71,18 +72,22 @@
                                           ItemsSource="{Binding Stations}"
                                           EditValue="{Binding SelectedStation, UpdateSourceTrigger=PropertyChanged}"/>
 
-                        <!-- Type -->
-                        <TextBlock Grid.Row="0" Grid.Column="2"
-                                   Text="Type"
-                                   Style="{StaticResource AppLabelTextStyle}"/>
+                        <!--<TextBlock Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center"
+                                   Text="Station"
+                                   Style="{StaticResource AppLabelTextStyle}"/>-->
 
-                        <dxe:ComboBoxEdit Grid.Row="1" Grid.Column="2"
+                        <!-- Type -->
+                        <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
                                           HorizontalContentAlignment ="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Types"
                                           IsTextEditable="False"
                                           ItemsSource="{Binding TypeFilters}"
                                           EditValue="{Binding SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        
+                        <!--<TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center"
+                                   Text="Type"
+                                   Style="{StaticResource AppLabelTextStyle}"/>-->
                     </Grid>
 
                     <!-- Список оборудования -->
@@ -93,7 +98,15 @@
                              ItemContainerStyle="{StaticResource AppListBoxItemStyle}"
                              SelectedItem="{Binding SelectedListBoxEquipment}"
                              SelectionChanged="Equipments_SelectionChanged"/>
+
+                    <!-- Версия -->
+                    <TextBlock Grid.Row="2"                               
+                               Margin="0,6,-10,-5"
+                               VerticalAlignment="Bottom"
+                               HorizontalAlignment="Left"                               
+                               Text="{Binding AppVersionText}"/>
                 </Grid>
+
             </Border>
 
             <!-- ============ RIGHT PANEL ============ -->
@@ -168,27 +181,46 @@
                                Visibility="{Binding IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
 
                     <dxe:DateEdit Width="140"
-                                Margin="0,0,12,0"
-                                Style="{StaticResource AppBaseEditStyle}"
-                                EditValue="{Binding DbDate, UpdateSourceTrigger=PropertyChanged}"
-                                Visibility="{Binding IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
+                                  Margin="0,0,12,0"
+                                  Style="{StaticResource AppBaseEditStyle}"
+                                  EditValue="{Binding DbDate, UpdateSourceTrigger=PropertyChanged}"
+                                  Visibility="{Binding IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- ===== Search (всегда) ===== -->
                     <dxe:TextEdit x:Name="SearchTextEdit"
                                   Width="240"
                                   Style="{StaticResource AppBaseEditStyle}"
-                                  HorizontalContentAlignment ="Left"
+                                  HorizontalContentAlignment="Left"
                                   NullText="Equipment name..."
                                   EditValue="{Binding EquipName, UpdateSourceTrigger=PropertyChanged}"/>
 
                     <!-- ===== ONE multifunction button ===== -->
                     <dx:SimpleButton Content="{Binding MainActionButtonText}"
-                                 Width="110"
-                                 Margin="8,0,0,0"
-                                 Style="{StaticResource AppButtonStyle}"
-                                 IsEnabled="{Binding CanMainAction}"
-                                 Click="MainAction_Click"/>
+                                     Width="110"
+                                     Margin="8,0,0,0"
+                                     Style="{StaticResource AppButtonStyle}"
+                                     IsEnabled="{Binding CanMainAction}"
+                                     Click="MainAction_Click"
+                                     Visibility="{Binding ShowMainActionButton, Converter={StaticResource BoolToVis}}"/>
 
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,8,0" HorizontalAlignment="Right">
+                    
+                    <!-- ===== Scan QR (показываем только на Param) ===== -->
+                    <dx:SimpleButton Width="40" 
+                                     Height="40"
+                                     Margin="8,0,0,0"
+                                     Padding="0"
+                                     GlyphWidth="32"
+                                     GlyphHeight="32"
+                                     Click="ToolbarScanQr_Click"
+                                     ToolTip="Scan QR"
+                                     Glyph="{StaticResource ScanQrGlyph}"
+                                     Style="{StaticResource AppButtonStyle}"/>
+                    <!--Visibility="{Binding ShowToolbarScanQrButton, Converter={StaticResource BoolToVis}}"/>-->
+
+                    <Image Height="40" Width="152" Margin="10,0,0,0" Stretch="Uniform" SnapsToDevicePixels="True" Source="/TIS_logo_intellegence_g.png"/>
                 </StackPanel>
 
                 <!-- TABS -->
@@ -200,55 +232,29 @@
 
                     <!-- ============ PARAM TAB ============ -->
 
-                    <dx:DXTabItem Header="Param">
-                        <!-- Вынесенный UI вкладки Param -->
+                    <dx:DXTabItem>
+
+                        <dx:DXTabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Width="20" Height="20" Margin="0,0,6,0" Source="{dx:DXImage 'SvgImages/Spreadsheet/LightBlueDataBarSolid.svg'}" />
+                                <TextBlock Text="Param" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </dx:DXTabItem.Header>
+
+                            <!-- Вынесенный UI вкладки Param -->
                         <views:ParamTabHost />
                     </dx:DXTabItem>
 
-                    <!--<dx:DXTabItem Header="Param">
-                        <Grid Margin="8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            --><!-- Строка состояния именно для Param --><!--
-                            <TextBlock Grid.Row="0" Grid.Column="1"
-                                       Text="{Binding ParamStatusText}"
-                                       Style="{StaticResource AppTextStyle}"
-                                       Margin="0,0,0,8"/>
-
-                            --><!-- Вывод параметров: слева имя, справа значение --><!--
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding ParamItems}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,2">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="220"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-
-                                                <TextBlock Grid.Column="0"
-                                                           Text="{Binding Name}"
-                                                           VerticalAlignment="Center"
-                                                           Style="{StaticResource AppTextBlockStyle}"/>
-
-                                                <dxe:TextEdit Grid.Column="1"
-                                                              Style="{StaticResource AppBaseEditStyle}"
-                                                              IsReadOnly="True"
-                                                              EditValue="{Binding Value}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                            
-                        </Grid>
-                    </dx:DXTabItem>-->
-
                     <!-- ============ OPERATION ACTIONS TAB ============ -->
-                    <dx:DXTabItem Header="Operation actions" IsEnabled="{Binding IsDbConnected}">
+                    <dx:DXTabItem IsEnabled="{Binding IsDbConnected}">
+
+                        <dx:DXTabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Width="20" Height="20" Margin="0,0,6,0" Source="{dx:DXImage 'SvgImages/Business Objects/BO_MyDetails.svg'}" />
+                                <TextBlock Text="Operation actions" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </dx:DXTabItem.Header>
+
                         <Grid>
 
                             <!-- Таблица -->
@@ -278,7 +284,15 @@
                     </dx:DXTabItem>
 
                     <!-- ============ ALARM HISTORY TAB ============ -->
-                    <dx:DXTabItem Header="Alarm history" IsEnabled="{Binding IsDbConnected}">
+                    <dx:DXTabItem IsEnabled="{Binding IsDbConnected}">
+
+                        <dx:DXTabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Width="20" Height="20" Margin="0,0,6,0" Source="{dx:DXImage 'SvgImages/Business Objects/BO_Audit_ChangeHistory.svg'}" />
+                                <TextBlock Text="Alarm history" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </dx:DXTabItem.Header>
+
                         <Grid>
 
                             <dxg:GridControl ItemsSource="{Binding AlarmHistoryRows}" AutoGenerateColumns="None">
@@ -306,7 +320,15 @@
                     </dx:DXTabItem>
 
                     <!-- ============ SOE TAB ============ -->
-                    <dx:DXTabItem Header="SOE">
+                    <dx:DXTabItem>
+
+                        <dx:DXTabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Width="20" Height="20" Margin="0,0,6,0" Source="{dx:DXImage 'SvgImages/Spreadsheet/Hyperlink.svg'}" />
+                                <TextBlock Text="SOE" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </dx:DXTabItem.Header>
+
                         <dxg:GridControl ItemsSource="{Binding equipmentSOEDtos}" AutoGenerateColumns="None">
                             <dxg:GridControl.Columns>
                                 <dxg:GridColumn FieldName="TimeLocal" Header="Date" Width="90" MinWidth="90" MaxWidth="90" ReadOnly="True">

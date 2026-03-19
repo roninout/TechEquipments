@@ -9,6 +9,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -495,6 +496,9 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(CanMainAction));
                 OnPropertyChanged(nameof(IsBottomLoading));
 
+                OnPropertyChanged(nameof(ShowToolbarScanQrButton));
+                OnPropertyChanged(nameof(ShowMainActionButton));
+
                 // ВАЖНО: во время восстановления состояния никаких автодействий
                 if (_uiState.IsRestoringState) return;                
 
@@ -547,6 +551,16 @@ namespace TechEquipments
             MainTabKind.SOE => IsNotLoading,
             _ => IsDbConnected && !IsDbLoading,
         };
+
+        /// <summary>
+        /// Показываем кнопку Scan QR только на вкладке Param.
+        /// </summary>
+        public bool ShowToolbarScanQrButton => SelectedMainTab == MainTabKind.Param;
+
+        /// <summary>
+        /// Основную кнопку Run/Search/Load на вкладке Param пока скрываем.
+        /// </summary>
+        public bool ShowMainActionButton => SelectedMainTab != MainTabKind.Param;
 
         /// <summary>Показываем нижний прогресс только когда что-то грузим</summary>
         public bool IsBottomProgressVisible => IsEquipListLoading || IsDbLoading || (!UseParamAreaOverlay && IsParamCenterLoading);
@@ -979,6 +993,35 @@ namespace TechEquipments
         public string? LinkedAtvEquipName { get; private set; }
         public AtvModel? LinkedAtvModel { get; private set; }
 
+        #endregion
+
+        #region Version
+        /// <summary>
+        /// Отображаемая версия приложения.
+        /// </summary>
+        public string AppVersionText
+        {
+            get
+            {
+                var asm = Assembly.GetExecutingAssembly();
+
+                string raw =
+                    asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                    ?? asm.GetName().Version?.ToString()
+                    ?? "unknown";
+
+                int plusIndex = raw.IndexOf('+');
+                if (plusIndex >= 0)
+                    raw = raw.Substring(0, plusIndex);
+
+                return raw;
+            }
+        }
+
+        /// <summary>
+        /// Заголовок окна с именем программы и версией.
+        /// </summary>
+        public string WindowTitle => $"TechEquipments";
         #endregion
 
         #endregion
@@ -1728,6 +1771,21 @@ namespace TechEquipments
             await _soeController.LoadAndShowAsync(text);
         }
 
+        /// <summary>
+        /// Верхняя toolbar-кнопка Scan QR:
+        /// сканирует QR -> пишет во ExternalTag -> выполняет поиск и открывает Param.
+        /// </summary>
+        private async void ToolbarScanQr_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await Param_ScanQrToExternalTagAndSearchAsync();
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(this, ex.Message, "Scan QR", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
 
         #endregion
 

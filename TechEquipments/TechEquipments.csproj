@@ -4,6 +4,17 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net6.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <AssemblyName>TechEquipments</AssemblyName>
+    <Product>TechEquipments</Product>
+    <Title>TechEquipments</Title>
+    <AssemblyTitle>TechEquipments</AssemblyTitle>
+    <ApplicationIcon>Resources\Icons\app.ico</ApplicationIcon>
+
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0-build-$([System.DateTime]::Now.ToString('yyyyMMdd-HHmm'))</InformationalVersion>
+    
   </PropertyGroup>
 
   <ItemGroup>
@@ -67,6 +78,16 @@
     <Page Update="Styles\PlcTemplateStyles.xaml">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Page>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Icons\app.ico">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Icons\scan_qr.svg">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="TIS_logo_intellegence_g.png" />
   </ItemGroup>
 
 </Project>
