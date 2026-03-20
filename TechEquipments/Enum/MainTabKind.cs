@@ -13,8 +13,9 @@ namespace TechEquipments
     public enum MainTabKind
     {
         Param = 0,
-        OperationActions = 1,
-        AlarmHistory = 2,
-        SOE = 3
+        Info = 1,
+        OperationActions = 2,
+        AlarmHistory = 3,
+        SOE = 4
     }
 }

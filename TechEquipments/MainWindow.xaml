@@ -6,6 +6,7 @@
     xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
     xmlns:local="clr-namespace:TechEquipments"
     xmlns:views="clr-namespace:TechEquipments.Views.Param"
+    xmlns:infoviews="clr-namespace:TechEquipments.Views.Info"
     x:Class="TechEquipments.MainWindow"
     Icon="/TechEquipments;component/Resources/Icons/app.ico"
     Title="{Binding WindowTitle}" Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
@@ -241,7 +242,6 @@
                                  SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
 
                     <!-- ============ PARAM TAB ============ -->
-
                     <dx:DXTabItem>
 
                         <dx:DXTabItem.Header>
@@ -253,6 +253,19 @@
 
                             <!-- Вынесенный UI вкладки Param -->
                         <views:ParamTabHost />
+                    </dx:DXTabItem>
+
+                    <!-- ============ INFO TAB ============ -->
+                    <dx:DXTabItem IsEnabled="{Binding IsDbConnected}">
+
+                        <dx:DXTabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Width="20" Height="20" Margin="0,0,6,0" Source="{dx:DXImage 'SvgImages/Icon Builder/Actions_Info.svg'}" />
+                                <TextBlock Text="Info" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </dx:DXTabItem.Header>
+
+                        <infoviews:InfoTabHost/>
                     </dx:DXTabItem>
 
                     <!-- ============ OPERATION ACTIONS TAB ============ -->

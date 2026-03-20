@@ -20,6 +20,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using TechEquipments.Services.QR;
 using TechEquipments.Views.Settings;
+using Microsoft.Win32;
 
 namespace TechEquipments
 {
@@ -30,7 +31,7 @@ namespace TechEquipments
     /// - Нижняя панель прогресса: используется для загрузки списка оборудования и DB (индетерминантно).
     /// - Overlay: используется для загрузки SOE (тренды).
     /// </summary>
-    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged, IParamHost, IParamRefsHost, IDbHost, IQrHost, ISoeHost, IUiStateHost
+    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged, IParamHost, IParamRefsHost, IDbHost, IQrHost, ISoeHost, IUiStateHost, IInfoHost
     {
         private ParamController _paramController;
         private ParamWriteController _paramWriteController;
@@ -39,6 +40,7 @@ namespace TechEquipments
         private readonly QrController _qrController;
         private readonly SoeController _soeController;
         private readonly UiStateController _uiState;
+        private readonly InfoController _infoController;
 
         #region Fields
 
@@ -48,6 +50,7 @@ namespace TechEquipments
         private readonly IConfiguration _config;
         private readonly IUserStateService _stateService;
         private readonly IQrScannerService _qrScannerService;
+        private readonly IEquipInfoService _equipInfoService;
 
         #endregion
 
@@ -408,12 +411,13 @@ namespace TechEquipments
         }
 
         /// <summary>
-        /// Нижняя панель видна, если:
-        /// - грузится EquipList
-        /// - грузится DB
-        /// - либо активна Param-загрузка и overlay в центре отключён
+        /// Param-загрузка влияет на нижний progress bar только на вкладке Param.
+        /// Иначе при переходе на Info/DB/SOE можно получить "залипший" нижний индикатор.
         /// </summary>
-        public bool IsBottomLoading => IsEquipListLoading || IsDbLoading || (!UseParamAreaOverlay && IsParamCenterLoading);
+        public bool IsBottomLoading =>
+            IsEquipListLoading ||
+            IsDbLoading ||
+            (!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading);
 
         private string _bottomText = "";
 
@@ -429,7 +433,7 @@ namespace TechEquipments
                 if (IsEquipListLoading)
                     return EquipListText;
 
-                if (!UseParamAreaOverlay && IsParamCenterLoading)
+                if (!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading)
                     return ParamBottomLoadingText;
 
                 return _bottomText;
@@ -542,6 +546,7 @@ namespace TechEquipments
             MainTabKind.SOE => "Load",
             MainTabKind.OperationActions => "Search",
             MainTabKind.AlarmHistory => "Search",
+            MainTabKind.Info => "",
             _ => "Run",
         };
 
@@ -549,6 +554,8 @@ namespace TechEquipments
         public bool CanMainAction => SelectedMainTab switch
         {
             MainTabKind.SOE => IsNotLoading,
+            MainTabKind.Info => false,
+            MainTabKind.Param => false,
             _ => IsDbConnected && !IsDbLoading,
         };
 
@@ -558,19 +565,24 @@ namespace TechEquipments
         public bool ShowToolbarScanQrButton => SelectedMainTab == MainTabKind.Param;
 
         /// <summary>
-        /// Основную кнопку Run/Search/Load на вкладке Param пока скрываем.
+        /// Основную кнопку Run/Search/Load на вкладках Param и Info скрываем.
         /// </summary>
-        public bool ShowMainActionButton => SelectedMainTab != MainTabKind.Param;
+        public bool ShowMainActionButton => SelectedMainTab != MainTabKind.Param && SelectedMainTab != MainTabKind.Info;
 
         /// <summary>Показываем нижний прогресс только когда что-то грузим</summary>
-        public bool IsBottomProgressVisible => IsEquipListLoading || IsDbLoading || (!UseParamAreaOverlay && IsParamCenterLoading);
+        public bool IsBottomProgressVisible =>
+            IsEquipListLoading ||
+            IsDbLoading ||
+            (!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading);
 
         /// <summary>
         /// Режим нижнего прогресса:
         /// - список оборудования: детерминированный
         /// - DB: индетерминированный
         /// </summary>
-        public bool BottomProgressIsIndeterminate => (!UseParamAreaOverlay && IsParamCenterLoading && !IsEquipListLoading) || (IsDbLoading && !IsEquipListLoading);
+        public bool BottomProgressIsIndeterminate =>
+            ((!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading && !IsEquipListLoading))
+            || (IsDbLoading && !IsEquipListLoading);
 
         /// <summary>Максимум для нижнего прогресса</summary>
         public int BottomProgressMaximum => IsEquipListLoading ? EquipListMax : 100;        
@@ -1024,9 +1036,69 @@ namespace TechEquipments
         public string WindowTitle => $"TechEquipments";
         #endregion
 
+        #region Info
+
+        private EquipmentInfoDto? _currentEquipInfo;
+        public EquipmentInfoDto? CurrentEquipInfo
+        {
+            get => _currentEquipInfo;
+            set
+            {
+                if (ReferenceEquals(_currentEquipInfo, value))
+                    return;
+
+                _currentEquipInfo = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private bool _isInfoLoading;
+        public bool IsInfoLoading
+        {
+            get => _isInfoLoading;
+            private set
+            {
+                if (_isInfoLoading == value) return;
+                _isInfoLoading = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanEditInfoButtons));
+            }
+        }
+
+        private bool _isInfoEditMode;
+        public bool IsInfoEditMode
+        {
+            get => _isInfoEditMode;
+            private set
+            {
+                if (_isInfoEditMode == value) return;
+                _isInfoEditMode = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsInfoReadOnly));
+            }
+        }
+
+        public bool IsInfoReadOnly => !IsInfoEditMode;
+
+        private string _infoStatusText = "";
+        public string InfoStatusText
+        {
+            get => _infoStatusText;
+            private set
+            {
+                if (_infoStatusText == value) return;
+                _infoStatusText = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool CanEditInfoButtons => !IsInfoLoading;
+
         #endregion
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
+        #endregion
+
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
         {
             InitializeComponent();
 
@@ -1034,6 +1106,7 @@ namespace TechEquipments
             _stateService = stateService;
             _ctApiService = ctApiService;
             _qrScannerService = qrScannerService;
+            _equipInfoService = equipInfoService;
 
             _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
             Closed += (_, __) => _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
@@ -1042,6 +1115,7 @@ namespace TechEquipments
 
             _config = config;
             _dbController = new DbController(dbService, this);
+            _infoController = new InfoController(equipInfoService, this);
             _qrController = new QrController(_equipmentService, qrCodeService, qrScannerService, this);
             _soeController = new SoeController(_equipmentService, this);
             _uiState = new UiStateController(_stateService, _equipmentService, this);
@@ -1575,10 +1649,15 @@ namespace TechEquipments
                 _isApplyingFilterSelection = false;
             }
 
-            // Если сейчас уже открыта вкладка Param —
-            // сразу обновляем её, чтобы не оставалась пустая страница.
-            if (!_uiState.IsRestoringState && SelectedMainTab == MainTabKind.Param)
-                StartParamPolling();
+            // Если сейчас уже открыта вкладка Param или Info —
+            // сразу обновляем соответствующую область.
+            if (!_uiState.IsRestoringState)
+            {
+                if (SelectedMainTab == MainTabKind.Param)
+                    StartParamPolling();
+                else if (SelectedMainTab == MainTabKind.Info)
+                    _ = _infoController.LoadCurrentAsync();
+            }
         }
 
         #endregion
@@ -1592,14 +1671,22 @@ namespace TechEquipments
         /// </summary>
         private async Task OnTabActivatedLikeSearchAsync(bool force)
         {
-            // стопаем Param чтение, если уходим
+            // Уходим с Param:
+            // останавливаем polling и сбрасываем ожидание overlay/progress.
             if ((MainTabKind)SelectedMainTabIndex != MainTabKind.Param)
+            {
                 StopParamPolling();
+                StopParamOverlayWait();
+            }
 
             switch ((MainTabKind)SelectedMainTabIndex)
             {
                 case MainTabKind.Param:
                     StartParamPolling();
+                    break;
+
+                case MainTabKind.Info:
+                    await _infoController.LoadCurrentAsync();
                     break;
 
                 case MainTabKind.OperationActions:
@@ -1608,8 +1695,6 @@ namespace TechEquipments
                     break;
 
                 case MainTabKind.SOE:
-                    // Обычно SOE не надо автoload при каждом клике по вкладке
-                    // но если хочешь — можно включить:
                     await LoadSoeFromUiAsync();
                     break;
 
@@ -1645,17 +1730,25 @@ namespace TechEquipments
                 EquipName = eq;
                 RememberEquipmentForCurrentFilters(eq);
 
-                // Ждём обновление центра Param:
-                // - главной модели
-                // - и текущей активной секции, если сейчас открыта Settings-страница
-                BeginParamOverlayWait(eq, CurrentParamSettingsPage, needMainModel: true);
+                // Param overlay нужен только если реально работаем с Param.
+                if (SelectedMainTab == MainTabKind.Param)
+                    BeginParamOverlayWait(eq, CurrentParamSettingsPage, needMainModel: true);
+                else
+                    StopParamOverlayWait();
             }
             else
             {
                 StopParamOverlayWait();
             }
 
-            // Переключаемся на Param
+            // Если сейчас открыта Info — остаёмся на Info и просто перегружаем карточку.
+            if (SelectedMainTab == MainTabKind.Info)
+            {
+                _ = _infoController.LoadCurrentAsync();
+                return;
+            }
+
+            // Старое поведение: клик по списку переводит на Param.
             if (SelectedMainTab != MainTabKind.Param)
             {
                 SelectedMainTabIndex = (int)MainTabKind.Param;
@@ -1741,6 +1834,10 @@ namespace TechEquipments
             {
                 case MainTabKind.SOE:
                     await LoadSoeFromUiAsync();
+                    break;
+
+                case MainTabKind.Info:
+                    await _infoController.LoadCurrentAsync();
                     break;
 
                 case MainTabKind.OperationActions:
@@ -1991,6 +2088,46 @@ namespace TechEquipments
 
         System.Collections.ObjectModel.ObservableCollection<OperatorActDTO> IDbHost.OperatorActRows => OperatorActRows;
         System.Collections.ObjectModel.ObservableCollection<AlarmHistoryDTO> IDbHost.AlarmHistoryRows => AlarmHistoryRows;
+
+        #endregion
+
+        #region IInfoHost
+
+        Window IInfoHost.OwnerWindow => this;
+
+        EquipListBoxItem? IInfoHost.SelectedListBoxEquipment => SelectedListBoxEquipment;
+
+        string IInfoHost.EquipName
+        {
+            get => EquipName;
+            set => EquipName = value;
+        }
+
+        bool IInfoHost.IsDbConnected => IsDbConnected;
+
+        EquipmentInfoDto? IInfoHost.CurrentEquipInfo
+        {
+            get => CurrentEquipInfo;
+            set => CurrentEquipInfo = value;
+        }
+
+        bool IInfoHost.IsInfoLoading
+        {
+            get => IsInfoLoading;
+            set => IsInfoLoading = value;
+        }
+
+        bool IInfoHost.IsInfoEditMode
+        {
+            get => IsInfoEditMode;
+            set => IsInfoEditMode = value;
+        }
+
+        string IInfoHost.InfoStatusText
+        {
+            get => InfoStatusText;
+            set => InfoStatusText = value;
+        }
 
         #endregion
 
@@ -2376,6 +2513,40 @@ namespace TechEquipments
         {
             return Path.Combine(AppContext.BaseDirectory, "appsettings.json");
         }
+
+        #endregion
+
+        #region Info
+
+        /// <summary>
+        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// </summary>
+        public Task LoadInfoForCurrentEquipmentAsync()
+            => _infoController.LoadCurrentAsync();
+
+        /// <summary>
+        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// </summary>
+        public void Info_BeginEdit()
+            => _infoController.BeginEdit();
+
+        /// <summary>
+        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// </summary>
+        public Task Info_SaveAsync()
+            => _infoController.SaveAsync();
+
+        /// <summary>
+        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// </summary>
+        public Task Info_LoadPdfFromFileAsync()
+            => _infoController.LoadPdfFromFileAsync();
+
+        /// <summary>
+        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// </summary>
+        public void Info_ClearPdf()
+            => _infoController.ClearPdf();
 
         #endregion
     }

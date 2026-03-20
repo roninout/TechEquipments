@@ -1,0 +1,171 @@
+﻿<UserControl x:Class="TechEquipments.Views.Info.InfoTabHost"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+             xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+             xmlns:dxpdf="http://schemas.devexpress.com/winfx/2008/xaml/pdf">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Верхняя панель -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <dx:SimpleButton Grid.Column="0"
+                             Content="Edit"
+                             Width="110"
+                             Style="{StaticResource AppButtonStyle}"
+                             Click="Edit_Click"
+                             IsEnabled="{Binding CanEditInfoButtons}"/>
+
+            <dx:SimpleButton Grid.Column="2"
+                             Content="Save"
+                             Width="110"
+                             Style="{StaticResource AppButtonStyle}"
+                             Click="Save_Click"
+                             IsEnabled="{Binding IsInfoEditMode}"/>
+
+            <TextBlock Grid.Column="3"
+                       Margin="12,0,0,0"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Text="{Binding InfoStatusText}"
+                       Style="{StaticResource AppTextStyle}"/>
+        </Grid>
+
+        <!-- Имя оборудования -->
+        <Border Grid.Row="1"
+                Margin="0,0,0,12"
+                Padding="10"
+                BorderThickness="1"
+                BorderBrush="#D0D0D0">
+            <TextBlock FontSize="16"
+                       FontWeight="SemiBold"
+                       Text="{Binding CurrentEquipInfo.EquipName}"/>
+        </Border>
+
+        <!-- Основное содержимое -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="430"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Левая часть -->
+            <Border Grid.Column="0"
+                    Padding="12"
+                    BorderThickness="1"
+                    BorderBrush="#D0D0D0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+
+                        <TextBlock Margin="0,0,0,6"
+                                   Text="Installation time"
+                                   Style="{StaticResource AppLabelTextStyle}"/>
+
+                        <dxe:DateEdit Margin="0,0,0,12"
+                                      Style="{StaticResource AppBaseEditStyle}"
+                                      EditValue="{Binding CurrentEquipInfo.InstallTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsReadOnly="{Binding IsInfoReadOnly}"
+                                      NullText="Not set"
+                                      Mask="g"
+                                      MaskUseAsDisplayFormat="True"/>
+
+                        <TextBlock Margin="0,0,0,6"
+                                   Text="Revision time"
+                                   Style="{StaticResource AppLabelTextStyle}"/>
+
+                        <dxe:DateEdit Margin="0,0,0,12"
+                                      Style="{StaticResource AppBaseEditStyle}"
+                                      EditValue="{Binding CurrentEquipInfo.RevisionTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsReadOnly="{Binding IsInfoReadOnly}"
+                                      NullText="Not set"
+                                      Mask="g"
+                                      MaskUseAsDisplayFormat="True"/>
+
+                        <TextBlock Margin="0,0,0,6"
+                                   Text="Image"
+                                   Style="{StaticResource AppLabelTextStyle}"/>
+
+                        <!--
+                        ImageEdit:
+                        - показывает картинку из byte[]
+                        - в edit mode пользователь может загрузить/заменить картинку
+                        -->
+                        <dxe:ImageEdit Height="340"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Stretch"
+                                       Stretch="Uniform"
+                                       NullText="Image is empty"
+                                       EditValue="{Binding CurrentEquipInfo.ImageData, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                       IsReadOnly="{Binding IsInfoReadOnly}"
+                                       ShowLoadDialogOnClickMode="Always"/>
+
+                        <TextBlock Margin="0,8,0,0"
+                                   Text="{Binding CurrentEquipInfo.ImageFileName}"
+                                   TextWrapping="Wrap"
+                                   Style="{StaticResource AppTextStyle}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Правая часть -->
+            <Border Grid.Column="2"
+                    Padding="12"
+                    BorderThickness="1"
+                    BorderBrush="#D0D0D0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,10">
+                        <dx:SimpleButton Content="Load PDF"
+                                         Width="120"
+                                         Margin="0,0,8,0"
+                                         Style="{StaticResource AppButtonStyle}"
+                                         Click="LoadPdf_Click"
+                                         IsEnabled="{Binding IsInfoEditMode}"/>
+
+                        <dx:SimpleButton Content="Clear PDF"
+                                         Width="120"
+                                         Style="{StaticResource AppButtonStyle}"
+                                         Click="ClearPdf_Click"
+                                         IsEnabled="{Binding IsInfoEditMode}"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,0,0,10"
+                               Text="{Binding CurrentEquipInfo.PdfFileName}"
+                               TextWrapping="Wrap"
+                               Style="{StaticResource AppTextStyle}"/>
+
+                    <!--
+                    PdfViewerControl:
+                    - DocumentSource можно давать byte[]
+                    - встроенный toolbar скрываем, чтобы вкладка была компактнее
+                    -->
+                    <dxpdf:PdfViewerControl Grid.Row="2"
+                                            CommandBarStyle="None"
+                                            ShowStartScreen="False"
+                                            DocumentSource="{Binding CurrentEquipInfo.PdfData}"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
