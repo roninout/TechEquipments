@@ -1,8 +1,13 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Data;
 using System.Data.Common;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,48 +15,129 @@ using System.Threading.Tasks;
 namespace TechEquipments
 {
     /// <summary>
-    /// Raw SQL сервис для таблицы EquipInfo.
-    /// Имя таблицы берётся из appsettings.json.
-    /// Не используем DbSet, потому что имя таблицы динамическое.
+    /// Raw SQL сервис для Info.
+    /// *_equip_photo / *_equip_instruction / *_equip_scheme — библиотеки файлов
+    /// *_equip_info_photo / *_equip_info_instruction / *_equip_info_scheme — связи equipment -> file
     /// </summary>
     public sealed class EquipInfoService : IEquipInfoService
     {
         private readonly IDbContextFactory<PgDbContext> _dbFactory;
 
         private readonly string _schemaName;
-        private readonly string _tableName;
-        private readonly string _qualifiedTableName;
+        private readonly string _tablePrefix;
+
+        private readonly string _qualifiedInfoTable;
+        private readonly string _qualifiedPhotoTable;
+        private readonly string _qualifiedInstructionTable;
+        private readonly string _qualifiedSchemeTable;
+
+        private readonly string _qualifiedInfoPhotoLinkTable;
+        private readonly string _qualifiedInfoInstructionLinkTable;
+        private readonly string _qualifiedInfoSchemeLinkTable;
 
         public EquipInfoService(IDbContextFactory<PgDbContext> dbFactory, IConfiguration config)
         {
             _dbFactory = dbFactory;
 
-            var configuredTableName = (config["EquipInfo:TableName"] ?? "srd_equip_info").Trim();
-            (_schemaName, _tableName) = ParseQualifiedName(configuredTableName);
-            _qualifiedTableName = $"{QuoteIdentifier(_schemaName)}.{QuoteIdentifier(_tableName)}";
+            var configuredPrefix = (config["EquipInfo:TableName"] ?? "srd").Trim();
+            (_schemaName, _tablePrefix) = ParseQualifiedPrefix(configuredPrefix);
+
+            _qualifiedInfoTable = Qualify($"{_tablePrefix}_equip_info");
+            _qualifiedPhotoTable = Qualify($"{_tablePrefix}_equip_photo");
+            _qualifiedInstructionTable = Qualify($"{_tablePrefix}_equip_instruction");
+            _qualifiedSchemeTable = Qualify($"{_tablePrefix}_equip_scheme");
+
+            _qualifiedInfoPhotoLinkTable = Qualify($"{_tablePrefix}_equip_info_photo");
+            _qualifiedInfoInstructionLinkTable = Qualify($"{_tablePrefix}_equip_info_instruction");
+            _qualifiedInfoSchemeLinkTable = Qualify($"{_tablePrefix}_equip_info_scheme");
         }
 
         public async Task EnsureTableAsync(CancellationToken ct = default)
         {
             await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
-            var createSchemaSql = $@"CREATE SCHEMA IF NOT EXISTS {QuoteIdentifier(_schemaName)};";
-            await db.Database.ExecuteSqlRawAsync(createSchemaSql, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE SCHEMA IF NOT EXISTS {QuoteIdentifier(_schemaName)};", ct);
 
-            var sql = $@"
-                CREATE TABLE IF NOT EXISTS {_qualifiedTableName}
-                (
-                    equip_name      text PRIMARY KEY,
-                    install_time    timestamp NULL,
-                    revision_time   timestamp NULL,
-                    image_data      bytea NULL,
-                    image_file_name text NULL,
-                    pdf_data        bytea NULL,
-                    pdf_file_name   text NULL,
-                    updated_at      timestamp NOT NULL DEFAULT now()
-                );";
+            var sqlInfo = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
+(
+    equip_name      text PRIMARY KEY,
+    install_time    timestamp NULL,
+    revision_time   timestamp NULL,
+    updated_at      timestamp NOT NULL DEFAULT now()
+);";
 
-            await db.Database.ExecuteSqlRawAsync(sql, ct);
+            var sqlPhoto = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
+(
+    id              bigserial PRIMARY KEY,
+    file_name       text NOT NULL,
+    display_name    text NOT NULL,
+    file_hash       text NOT NULL,
+    file_data       bytea NOT NULL,
+    updated_at      timestamp NOT NULL DEFAULT now(),
+    CONSTRAINT uq_{_tablePrefix}_equip_photo_hash UNIQUE (file_hash)
+);";
+
+            var sqlInstruction = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
+(
+    id              bigserial PRIMARY KEY,
+    file_name       text NOT NULL,
+    display_name    text NOT NULL,
+    file_hash       text NOT NULL,
+    file_data       bytea NOT NULL,
+    updated_at      timestamp NOT NULL DEFAULT now(),
+    CONSTRAINT uq_{_tablePrefix}_equip_instruction_hash UNIQUE (file_hash)
+);";
+
+            var sqlScheme = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
+(
+    id              bigserial PRIMARY KEY,
+    file_name       text NOT NULL,
+    display_name    text NOT NULL,
+    file_hash       text NOT NULL,
+    file_data       bytea NOT NULL,
+    updated_at      timestamp NOT NULL DEFAULT now(),
+    CONSTRAINT uq_{_tablePrefix}_equip_scheme_hash UNIQUE (file_hash)
+);";
+
+            var sqlInfoPhotoLink = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
+(
+    equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    photo_id        bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
+    sort_order      integer NOT NULL DEFAULT 0,
+    PRIMARY KEY (equip_name, photo_id)
+);";
+
+            var sqlInfoInstructionLink = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
+(
+    equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
+    sort_order      integer NOT NULL DEFAULT 0,
+    PRIMARY KEY (equip_name, instruction_id)
+);";
+
+            var sqlInfoSchemeLink = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
+(
+    equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    scheme_id       bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
+    sort_order      integer NOT NULL DEFAULT 0,
+    PRIMARY KEY (equip_name, scheme_id)
+);";
+
+            await db.Database.ExecuteSqlRawAsync(sqlInfo, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlPhoto, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlInstruction, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlScheme, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlInfoPhotoLink, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlInfoInstructionLink, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlInfoSchemeLink, ct);
         }
 
         public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
@@ -64,38 +150,37 @@ namespace TechEquipments
             var conn = db.Database.GetDbConnection();
             await EnsureConnectionOpenAsync(conn, ct);
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $@"
-                SELECT
-                    equip_name,
-                    install_time,
-                    revision_time,
-                    image_data,
-                    image_file_name,
-                    pdf_data,
-                    pdf_file_name,
-                    updated_at
-                FROM {_qualifiedTableName}
-                WHERE equip_name = @equip_name
-                LIMIT 1;";
+            var model = EquipmentInfoDto.CreateEmpty(equipName);
 
-            AddParameter(cmd, "@equip_name", equipName);
-
-            using var reader = await cmd.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct))
-                return EquipmentInfoDto.CreateEmpty(equipName);
-
-            return new EquipmentInfoDto
+            using (var cmd = conn.CreateCommand())
             {
-                EquipName = reader.IsDBNull(0) ? equipName : reader.GetString(0),
-                InstallTime = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTime>(1),
-                RevisionTime = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTime>(2),
-                ImageData = reader.IsDBNull(3) ? null : (byte[])reader.GetValue(3),
-                ImageFileName = reader.IsDBNull(4) ? null : reader.GetString(4),
-                PdfData = reader.IsDBNull(5) ? null : (byte[])reader.GetValue(5),
-                PdfFileName = reader.IsDBNull(6) ? null : reader.GetString(6),
-                UpdatedAt = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTime>(7)
-            };
+                cmd.CommandText = $@"
+SELECT
+    equip_name,
+    install_time,
+    revision_time,
+    updated_at
+FROM {_qualifiedInfoTable}
+WHERE equip_name = @equip_name
+LIMIT 1;";
+
+                AddParameter(cmd, "@equip_name", equipName);
+
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    model.EquipName = reader.IsDBNull(0) ? equipName : reader.GetString(0);
+                    model.InstallTime = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTime>(1);
+                    model.RevisionTime = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTime>(2);
+                    model.UpdatedAt = reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTime>(3);
+                }
+            }
+
+            await LoadLinkedFilesAsync(conn, _qualifiedInfoPhotoLinkTable, _qualifiedPhotoTable, "photo_id", model.Photos, equipName, ct);
+            await LoadLinkedFilesAsync(conn, _qualifiedInfoInstructionLinkTable, _qualifiedInstructionTable, "instruction_id", model.Instructions, equipName, ct);
+            await LoadLinkedFilesAsync(conn, _qualifiedInfoSchemeLinkTable, _qualifiedSchemeTable, "scheme_id", model.Schemes, equipName, ct);
+
+            return model;
         }
 
         public async Task SaveAsync(EquipmentInfoDto model, CancellationToken ct = default)
@@ -107,56 +192,383 @@ namespace TechEquipments
             if (string.IsNullOrWhiteSpace(equipName))
                 throw new InvalidOperationException("EquipName is empty.");
 
-            var imageFileName = model.ImageData is { Length: > 0 } ? model.ImageFileName : null;
-            var pdfFileName = model.PdfData is { Length: > 0 } ? model.PdfFileName : null;
+            NormalizeSortOrders(model.Photos, equipName);
+            NormalizeSortOrders(model.Instructions, equipName);
+            NormalizeSortOrders(model.Schemes, equipName);
 
             await using var db = await _dbFactory.CreateDbContextAsync(ct);
             var conn = db.Database.GetDbConnection();
             await EnsureConnectionOpenAsync(conn, ct);
 
+            await using var tx = await conn.BeginTransactionAsync(ct);
+
+            try
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+INSERT INTO {_qualifiedInfoTable}
+(
+    equip_name,
+    install_time,
+    revision_time,
+    updated_at
+)
+VALUES
+(
+    @equip_name,
+    @install_time,
+    @revision_time,
+    now()
+)
+ON CONFLICT (equip_name)
+DO UPDATE SET
+    install_time  = EXCLUDED.install_time,
+    revision_time = EXCLUDED.revision_time,
+    updated_at    = now();";
+
+                    AddParameter(cmd, "@equip_name", equipName);
+                    AddParameter(cmd, "@install_time", model.InstallTime);
+                    AddParameter(cmd, "@revision_time", model.RevisionTime);
+
+                    await cmd.ExecuteNonQueryAsync(ct);
+                }
+
+                await ReplaceLinksAsync(conn, tx, _qualifiedInfoPhotoLinkTable, "photo_id", equipName, model.Photos, ct);
+                await ReplaceLinksAsync(conn, tx, _qualifiedInfoInstructionLinkTable, "instruction_id", equipName, model.Instructions, ct);
+                await ReplaceLinksAsync(conn, tx, _qualifiedInfoSchemeLinkTable, "scheme_id", equipName, model.Schemes, ct);
+
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        public async Task<IReadOnlyList<EquipmentInfoFileDto>> GetLibraryAsync(InfoFileKind kind, CancellationToken ct = default)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            var table = GetLibraryTable(kind);
+
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                INSERT INTO {_qualifiedTableName}
-                (
-                    equip_name,
-                    install_time,
-                    revision_time,
-                    image_data,
-                    image_file_name,
-                    pdf_data,
-                    pdf_file_name,
-                    updated_at
-                )
-                VALUES
-                (
-                    @equip_name,
-                    @install_time,
-                    @revision_time,
-                    @image_data,
-                    @image_file_name,
-                    @pdf_data,
-                    @pdf_file_name,
-                    now()
-                )
-                ON CONFLICT (equip_name)
-                DO UPDATE SET
-                    install_time    = EXCLUDED.install_time,
-                    revision_time   = EXCLUDED.revision_time,
-                    image_data      = EXCLUDED.image_data,
-                    image_file_name = EXCLUDED.image_file_name,
-                    pdf_data        = EXCLUDED.pdf_data,
-                    pdf_file_name   = EXCLUDED.pdf_file_name,
-                    updated_at      = now();";
+SELECT
+    id,
+    file_name,
+    display_name,
+    file_hash,
+    file_data,
+    updated_at
+FROM {table}
+ORDER BY display_name, file_name;";
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            var result = new List<EquipmentInfoFileDto>();
+            while (await reader.ReadAsync(ct))
+                result.Add(ReadLibraryItem(reader));
+
+            return result;
+        }
+
+        public async Task<EquipInfoLibraryAddResult> AddFilesToLibraryAsync(
+            InfoFileKind kind,
+            IEnumerable<string> filePaths,
+            CancellationToken ct = default)
+        {
+            var result = new EquipInfoLibraryAddResult();
+
+            var normalizedPaths = (filePaths ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (normalizedPaths.Count == 0)
+                return result;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            var table = GetLibraryTable(kind);
+
+            await using var tx = await conn.BeginTransactionAsync(ct);
+
+            try
+            {
+                foreach (var path in normalizedPaths)
+                {
+                    if (!File.Exists(path))
+                        continue;
+
+                    var bytes = await File.ReadAllBytesAsync(path, ct);
+                    if (bytes.Length == 0)
+                        continue;
+
+                    var hash = ComputeFileHash(bytes);
+
+                    var existing = await FindLibraryItemByHashAsync(conn, tx, table, hash, ct);
+                    if (existing != null)
+                    {
+                        if (result.ResolvedAssets.All(x => x.Id != existing.Id))
+                            result.ResolvedAssets.Add(existing);
+
+                        result.ExistingInLibraryFileNames.Add(Path.GetFileName(path));
+                        continue;
+                    }
+
+                    var inserted = await InsertLibraryItemAsync(
+                        conn,
+                        tx,
+                        table,
+                        Path.GetFileName(path),
+                        Path.GetFileName(path),
+                        hash,
+                        bytes,
+                        ct);
+
+                    result.ResolvedAssets.Add(inserted);
+                    result.AddedToLibraryFileNames.Add(inserted.FileName);
+                }
+
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+
+            return result;
+        }
+
+        private string GetLibraryTable(InfoFileKind kind)
+        {
+            return kind switch
+            {
+                InfoFileKind.Photo => _qualifiedPhotoTable,
+                InfoFileKind.Instruction => _qualifiedInstructionTable,
+                InfoFileKind.Scheme => _qualifiedSchemeTable,
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
+        }
+
+        private static async Task LoadLinkedFilesAsync(
+            DbConnection conn,
+            string qualifiedLinkTable,
+            string qualifiedLibraryTable,
+            string linkIdColumn,
+            ObservableCollection<EquipmentInfoFileDto> target,
+            string equipName,
+            CancellationToken ct)
+        {
+            target.Clear();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT
+    lib.id,
+    lib.file_name,
+    lib.display_name,
+    lib.file_hash,
+    lib.file_data,
+    link.sort_order,
+    lib.updated_at
+FROM {qualifiedLinkTable} link
+INNER JOIN {qualifiedLibraryTable} lib
+    ON lib.id = link.{linkIdColumn}
+WHERE link.equip_name = @equip_name
+ORDER BY link.sort_order, lib.display_name, lib.file_name;";
 
             AddParameter(cmd, "@equip_name", equipName);
-            AddParameter(cmd, "@install_time", model.InstallTime);
-            AddParameter(cmd, "@revision_time", model.RevisionTime);
-            AddParameter(cmd, "@image_data", model.ImageData);
-            AddParameter(cmd, "@image_file_name", imageFileName);
-            AddParameter(cmd, "@pdf_data", model.PdfData);
-            AddParameter(cmd, "@pdf_file_name", pdfFileName);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                target.Add(new EquipmentInfoFileDto
+                {
+                    Id = reader.IsDBNull(0) ? 0 : reader.GetInt64(0),
+                    EquipName = equipName,
+                    FileName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    DisplayName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    FileHash = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    FileData = reader.IsDBNull(4) ? null : (byte[])reader.GetValue(4),
+                    SortOrder = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                    UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6)
+                });
+            }
+        }
+
+        private static async Task ReplaceLinksAsync(
+            DbConnection conn,
+            DbTransaction tx,
+            string qualifiedLinkTable,
+            string linkIdColumn,
+            string equipName,
+            IEnumerable<EquipmentInfoFileDto> files,
+            CancellationToken ct)
+        {
+            using (var deleteCmd = conn.CreateCommand())
+            {
+                deleteCmd.Transaction = tx;
+                deleteCmd.CommandText = $@"DELETE FROM {qualifiedLinkTable} WHERE equip_name = @equip_name;";
+                AddParameter(deleteCmd, "@equip_name", equipName);
+                await deleteCmd.ExecuteNonQueryAsync(ct);
+            }
+
+            var usedIds = new HashSet<long>();
+            var sortOrder = 0;
+
+            foreach (var file in files ?? Enumerable.Empty<EquipmentInfoFileDto>())
+            {
+                if (file == null || file.Id <= 0)
+                    continue;
+
+                if (!usedIds.Add(file.Id))
+                    continue;
+
+                using var insertCmd = conn.CreateCommand();
+                insertCmd.Transaction = tx;
+                insertCmd.CommandText = $@"
+INSERT INTO {qualifiedLinkTable}
+(
+    equip_name,
+    {linkIdColumn},
+    sort_order
+)
+VALUES
+(
+    @equip_name,
+    @file_id,
+    @sort_order
+);";
+
+                AddParameter(insertCmd, "@equip_name", equipName);
+                AddParameter(insertCmd, "@file_id", file.Id);
+                AddParameter(insertCmd, "@sort_order", sortOrder++);
+
+                await insertCmd.ExecuteNonQueryAsync(ct);
+            }
+        }
+
+        private static async Task<EquipmentInfoFileDto?> FindLibraryItemByHashAsync(
+            DbConnection conn,
+            DbTransaction tx,
+            string qualifiedTable,
+            string hash,
+            CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+SELECT
+    id,
+    file_name,
+    display_name,
+    file_hash,
+    file_data,
+    updated_at
+FROM {qualifiedTable}
+WHERE file_hash = @file_hash
+LIMIT 1;";
+
+            AddParameter(cmd, "@file_hash", hash);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            return ReadLibraryItem(reader);
+        }
+
+        private static async Task<EquipmentInfoFileDto> InsertLibraryItemAsync(
+            DbConnection conn,
+            DbTransaction tx,
+            string qualifiedTable,
+            string fileName,
+            string displayName,
+            string fileHash,
+            byte[] fileData,
+            CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+INSERT INTO {qualifiedTable}
+(
+    file_name,
+    display_name,
+    file_hash,
+    file_data,
+    updated_at
+)
+VALUES
+(
+    @file_name,
+    @display_name,
+    @file_hash,
+    @file_data,
+    now()
+)
+RETURNING
+    id,
+    file_name,
+    display_name,
+    file_hash,
+    file_data,
+    updated_at;";
+
+            AddParameter(cmd, "@file_name", fileName);
+            AddParameter(cmd, "@display_name", displayName);
+            AddParameter(cmd, "@file_hash", fileHash);
+            AddParameter(cmd, "@file_data", fileData);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+
+            return ReadLibraryItem(reader);
+        }
+
+        private static EquipmentInfoFileDto ReadLibraryItem(DbDataReader reader)
+        {
+            return new EquipmentInfoFileDto
+            {
+                Id = reader.IsDBNull(0) ? 0 : reader.GetInt64(0),
+                FileName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                DisplayName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                FileHash = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                FileData = reader.IsDBNull(4) ? null : (byte[])reader.GetValue(4),
+                UpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5)
+            };
+        }
+
+        private static void NormalizeSortOrders(IEnumerable<EquipmentInfoFileDto> files, string equipName)
+        {
+            if (files == null)
+                return;
+
+            var index = 0;
+            foreach (var item in files)
+            {
+                if (item == null)
+                    continue;
+
+                item.EquipName = equipName;
+                item.SortOrder = index++;
+            }
+        }
+
+        private static string ComputeFileHash(byte[] data)
+        {
+            var hash = SHA256.HashData(data);
+            return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
         private static async Task EnsureConnectionOpenAsync(DbConnection conn, CancellationToken ct)
@@ -175,10 +587,10 @@ namespace TechEquipments
 
         /// <summary>
         /// Поддерживаем:
-        /// - srd_equip_info
-        /// - public.srd_equip_info
+        /// - srd
+        /// - public.srd
         /// </summary>
-        private static (string schema, string table) ParseQualifiedName(string raw)
+        private static (string schema, string prefix) ParseQualifiedPrefix(string raw)
         {
             var parts = (raw ?? "").Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -186,7 +598,7 @@ namespace TechEquipments
             {
                 1 => ("public", ValidateIdentifier(parts[0])),
                 2 => (ValidateIdentifier(parts[0]), ValidateIdentifier(parts[1])),
-                _ => throw new InvalidOperationException($"Invalid EquipInfo:TableName '{raw}'. Use 'table' or 'schema.table'.")
+                _ => throw new InvalidOperationException($"Invalid EquipInfo:TableName '{raw}'. Use 'prefix' or 'schema.prefix'.")
             };
         }
 
@@ -202,6 +614,10 @@ namespace TechEquipments
             return value;
         }
 
-        private static string QuoteIdentifier(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+        private string Qualify(string tableName)
+            => $"{QuoteIdentifier(_schemaName)}.{QuoteIdentifier(tableName)}";
+
+        private static string QuoteIdentifier(string value)
+            => "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 }

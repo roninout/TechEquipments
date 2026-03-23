@@ -1,8 +1,12 @@
 ﻿using DevExpress.Xpf.Core;
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -13,12 +17,14 @@ namespace TechEquipments
     /// - загрузка карточки
     /// - edit/save
     /// - page switching
-    /// - PDF cache/export flow через .\PdfFiles
+    /// - работа с фото / instruction / scheme
+    /// - cache PDF рядом с exe: .\Instruction и .\Schemes
     /// </summary>
     public sealed class InfoController
     {
         private readonly IEquipInfoService _equipInfoService;
         private readonly IInfoHost _host;
+        private int _loadCurrentRequestId;
 
         public InfoController(IEquipInfoService equipInfoService, IInfoHost host)
         {
@@ -26,10 +32,6 @@ namespace TechEquipments
             _host = host ?? throw new ArgumentNullException(nameof(host));
         }
 
-        /// <summary>
-        /// Текущее выбранное оборудование для вкладки Info.
-        /// Приоритет: selected item в ListBox, затем текст поиска.
-        /// </summary>
         private string ResolveSelectedEquipForInfo()
         {
             var text = (_host.EquipName ?? "").Trim();
@@ -41,31 +43,46 @@ namespace TechEquipments
             return text;
         }
 
-        /// <summary>
-        /// Загружает карточку Info для текущего выбранного оборудования.
-        /// Если записи в БД нет — создаём пустую DTO в памяти.
-        /// </summary>
         public async Task LoadCurrentAsync()
         {
+            // Версия запроса.
+            // Нужна, чтобы более старый async-вызов не перетёр результат нового.
+            var requestId = Interlocked.Increment(ref _loadCurrentRequestId);
+
             var equipName = ResolveSelectedEquipForInfo();
+
+            void ClearInfoUiState()
+            {
+                _host.SelectedInfoPhotoFile = null;
+                _host.SelectedInfoInstructionFile = null;
+                _host.SelectedInfoSchemeFile = null;
+
+                // Важно:
+                // очищаем checked-combo выбор,
+                // иначе он может остаться от предыдущего equipment.
+                _host.SelectedInfoPhotoLibraryIds = new List<object>();
+                _host.SelectedInfoInstructionLibraryIds = new List<object>();
+                _host.SelectedInfoSchemeLibraryIds = new List<object>();
+
+                _host.CurrentInfoDocumentPreviewPath = null;
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
+                _host.IsInfoEditMode = false;
+            }
 
             if (string.IsNullOrWhiteSpace(equipName))
             {
                 _host.CurrentEquipInfo = null;
+                ClearInfoUiState();
                 _host.InfoStatusText = "";
-                _host.InfoDocumentMessage = "";
-                _host.IsInfoDocumentExportVisible = false;
-                _host.IsInfoEditMode = false;
                 return;
             }
 
             if (!_host.IsDbConnected)
             {
                 _host.CurrentEquipInfo = EquipmentInfoDto.CreateEmpty(equipName);
+                ClearInfoUiState();
                 _host.InfoStatusText = "Info: DB is disconnected.";
-                _host.InfoDocumentMessage = "";
-                _host.IsInfoDocumentExportVisible = false;
-                _host.IsInfoEditMode = false;
                 return;
             }
 
@@ -74,38 +91,61 @@ namespace TechEquipments
                 _host.IsInfoLoading = true;
                 _host.InfoStatusText = $"Loading info: {equipName}...";
 
-                _host.CurrentEquipInfo = await _equipInfoService.GetAsync(equipName);
+                // Сначала читаем карточку в локальную переменную.
+                // Не применяем её в UI, пока не убедимся, что этот запрос ещё актуален.
+                var info = await _equipInfoService.GetAsync(equipName);
 
-                // Сбрасываем document-area state для новой карточки.
-                _host.CurrentEquipInfo.PdfPreviewPath = null;
+                if (requestId != Volatile.Read(ref _loadCurrentRequestId))
+                    return;
+
+                await LoadLibrariesAsync();
+
+                if (requestId != Volatile.Read(ref _loadCurrentRequestId))
+                    return;
+
+                _host.CurrentEquipInfo = info;
+
+                SyncCheckedSelectionsFromCurrentModel();
+
+                _host.SelectedInfoPhotoFile = info.Photos.FirstOrDefault();
+                _host.SelectedInfoInstructionFile = info.Instructions.FirstOrDefault();
+                _host.SelectedInfoSchemeFile = info.Schemes.FirstOrDefault();
+
+                _host.CurrentInfoDocumentPreviewPath = null;
                 _host.InfoDocumentMessage = "";
                 _host.IsInfoDocumentExportVisible = false;
-
-                // Если пользователь уже находится на Pdf/Scheme —
-                // сразу готовим документную область под новую карточку.
-                if (_host.IsInfoDocumentPage)
-                    await PrepareCurrentDocumentAsync();
 
                 _host.IsInfoEditMode = false;
                 _host.InfoStatusText = $"Info loaded: {equipName}";
+
+                if (_host.IsInfoDocumentPage)
+                {
+                    await PrepareCurrentDocumentAsync();
+
+                    // Пока ждали PrepareCurrentDocumentAsync(),
+                    // пользователь тоже мог успеть выбрать другое оборудование.
+                    if (requestId != Volatile.Read(ref _loadCurrentRequestId))
+                        return;
+                }
             }
             catch (Exception ex)
             {
+                // Старый запрос не должен ломать UI нового запроса.
+                if (requestId != Volatile.Read(ref _loadCurrentRequestId))
+                    return;
+
                 _host.CurrentEquipInfo = EquipmentInfoDto.CreateEmpty(equipName);
-                _host.InfoDocumentMessage = "";
-                _host.IsInfoDocumentExportVisible = false;
-                _host.IsInfoEditMode = false;
+                ClearInfoUiState();
                 _host.InfoStatusText = $"Info error: {ex.Message}";
             }
             finally
             {
-                _host.IsInfoLoading = false;
+                // Только самый свежий запрос имеет право выключать loading.
+                if (requestId == Volatile.Read(ref _loadCurrentRequestId))
+                    _host.IsInfoLoading = false;
             }
         }
 
-        /// <summary>
-        /// Переводим вкладку Info в режим редактирования.
-        /// </summary>
         public void BeginEdit()
         {
             var equipName = ResolveSelectedEquipForInfo();
@@ -119,9 +159,6 @@ namespace TechEquipments
             _host.InfoStatusText = $"Editing info: {equipName}";
         }
 
-        /// <summary>
-        /// Сохраняем карточку Info в БД.
-        /// </summary>
         public async Task SaveAsync()
         {
             if (_host.CurrentEquipInfo == null)
@@ -136,10 +173,22 @@ namespace TechEquipments
                 _host.IsInfoLoading = true;
 
                 _host.CurrentEquipInfo.EquipName = equipName;
+
+                NormalizeSortOrder(_host.CurrentEquipInfo.Photos, equipName);
+                NormalizeSortOrder(_host.CurrentEquipInfo.Instructions, equipName);
+                NormalizeSortOrder(_host.CurrentEquipInfo.Schemes, equipName);
+
+                ValidateNoDuplicates(_host.CurrentEquipInfo.Photos, "photo");
+                ValidateNoDuplicates(_host.CurrentEquipInfo.Instructions, "instruction");
+                ValidateNoDuplicates(_host.CurrentEquipInfo.Schemes, "scheme");
+
                 await _equipInfoService.SaveAsync(_host.CurrentEquipInfo);
 
                 _host.IsInfoEditMode = false;
                 _host.InfoStatusText = $"Info saved: {equipName}";
+
+                if (_host.IsInfoDocumentPage)
+                    await PrepareCurrentDocumentAsync();
             }
             catch (Exception ex)
             {
@@ -153,13 +202,7 @@ namespace TechEquipments
             }
         }
 
-        /// <summary>
-        /// Загружаем PDF с диска:
-        /// - в DTO как byte[]
-        /// - в .\PdfFiles как cached-файл
-        /// - сразу открываем через PdfPreviewPath
-        /// </summary>
-        public async Task LoadPdfFromFileAsync()
+        public async Task LoadPhotoFilesAsync()
         {
             if (!_host.IsInfoEditMode)
                 return;
@@ -173,85 +216,174 @@ namespace TechEquipments
 
             var dlg = new OpenFileDialog
             {
-                Title = "Select PDF file",
-                Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*",
+                Title = "Select image files",
+                Filter = "Image files (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|All files (*.*)|*.*",
                 CheckFileExists = true,
-                Multiselect = false
+                Multiselect = true
             };
 
             if (dlg.ShowDialog(_host.OwnerWindow) != true)
                 return;
 
-            var bytes = await File.ReadAllBytesAsync(dlg.FileName);
+            var addResult = await _equipInfoService.AddFilesToLibraryAsync(InfoFileKind.Photo, dlg.FileNames);
 
-            _host.CurrentEquipInfo.PdfData = bytes;
-            _host.CurrentEquipInfo.PdfFileName = Path.GetFileName(dlg.FileName);
+            await LoadLibrariesAsync();
 
-            var path = GetExpectedInfoPdfPath(
-                _host.CurrentInfoPage,
-                _host.CurrentEquipInfo.EquipName,
-                _host.CurrentEquipInfo.PdfFileName);
+            MergeAssetsIntoSelection(_host.CurrentEquipInfo.Photos, addResult.ResolvedAssets, equipName);
+            SyncCheckedSelectionsFromCurrentModel();
 
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllBytesAsync(path, bytes);
+            _host.SelectedInfoPhotoFile = _host.CurrentEquipInfo.Photos.FirstOrDefault();
 
-            _host.CurrentEquipInfo.PdfPreviewPath = path;
+            if (addResult.ExistingInLibraryFileNames.Count > 0)
+            {
+                DXMessageBox.Show(
+                    _host.OwnerWindow,
+                    "These image files already existed in the shared library and were linked to the equipment:\n\n" +
+                    string.Join("\n", addResult.ExistingInLibraryFileNames),
+                    "Existing images",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
 
-            _host.InfoDocumentMessage = "";
-            _host.IsInfoDocumentExportVisible = false;
-
-            _host.InfoStatusText = $"PDF loaded: {_host.CurrentEquipInfo.PdfFileName}";
+            _host.InfoStatusText =
+                $"Images linked: {_host.CurrentEquipInfo.Photos.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
         }
 
-        /// <summary>
-        /// Очищаем PDF в DTO.
-        /// </summary>
-        public void ClearPdf()
+        public void RemoveSelectedPhoto()
         {
             if (!_host.IsInfoEditMode || _host.CurrentEquipInfo == null)
                 return;
 
-            _host.CurrentEquipInfo.PdfData = null;
-            _host.CurrentEquipInfo.PdfFileName = null;
-            _host.CurrentEquipInfo.PdfPreviewPath = null;
+            var selected = _host.SelectedInfoPhotoFile;
+            if (selected == null)
+                return;
 
-            _host.InfoDocumentMessage = "PDF cleared.";
-            _host.IsInfoDocumentExportVisible = false;
+            var list = _host.CurrentEquipInfo.Photos;
+            var index = list.IndexOf(selected);
 
-            _host.InfoStatusText = "PDF cleared.";
+            if (index >= 0)
+                list.RemoveAt(index);
+
+            NormalizeSortOrder(list, _host.CurrentEquipInfo.EquipName);
+
+            _host.SelectedInfoPhotoFile =
+                index >= 0 && index < list.Count ? list[index] : list.LastOrDefault();
+
+            _host.InfoStatusText = "Photo removed from current card.";
+
+            SyncCheckedSelectionsFromCurrentModel();
         }
 
-        /// <summary>
-        /// Переключение страниц Info.
-        /// General -> просто скрываем document-area state.
-        /// Pdf/Scheme -> пытаемся сразу показать cached-файл.
-        /// </summary>
+        public async Task LoadCurrentDocumentFilesAsync()
+        {
+            if (!_host.IsInfoEditMode || !_host.IsInfoDocumentPage)
+                return;
+
+            var equipName = ResolveSelectedEquipForInfo();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            _host.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(equipName);
+            _host.CurrentEquipInfo.EquipName = equipName;
+
+            var kind = _host.CurrentInfoPage == InfoPageKind.Scheme
+                ? InfoFileKind.Scheme
+                : InfoFileKind.Instruction;
+
+            var dlg = new OpenFileDialog
+            {
+                Title = kind == InfoFileKind.Scheme
+                    ? "Select scheme PDF files"
+                    : "Select instruction PDF files",
+                Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = true
+            };
+
+            if (dlg.ShowDialog(_host.OwnerWindow) != true)
+                return;
+
+            var addResult = await _equipInfoService.AddFilesToLibraryAsync(kind, dlg.FileNames);
+
+            await LoadLibrariesAsync();
+
+            var target = GetModelCollection(kind);
+            MergeAssetsIntoSelection(target, addResult.ResolvedAssets, equipName);
+            SyncCheckedSelectionsFromCurrentModel();
+
+            var first = target.FirstOrDefault();
+            if (kind == InfoFileKind.Instruction)
+                _host.SelectedInfoInstructionFile = first;
+            else
+                _host.SelectedInfoSchemeFile = first;
+
+            await PrepareCurrentDocumentAsync();
+
+            if (addResult.ExistingInLibraryFileNames.Count > 0)
+            {
+                DXMessageBox.Show(
+                    _host.OwnerWindow,
+                    "These PDF files already existed in the shared library and were linked to the equipment:\n\n" +
+                    string.Join("\n", addResult.ExistingInLibraryFileNames),
+                    "Existing PDF files",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+
+            _host.InfoStatusText =
+                $"Documents linked: {target.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
+        }
+
+        public async Task RemoveCurrentDocumentAsync()
+        {
+            if (!_host.IsInfoEditMode || !_host.IsInfoDocumentPage)
+                return;
+
+            var selected = GetCurrentSelectedDocument();
+            if (selected == null)
+                return;
+
+            var list = GetCurrentDocumentCollection();
+            var index = list.IndexOf(selected);
+
+            if (index >= 0)
+                list.RemoveAt(index);
+
+            NormalizeSortOrder(list, _host.CurrentEquipInfo?.EquipName ?? "");
+
+            var newSelected =
+                index >= 0 && index < list.Count ? list[index] : list.LastOrDefault();
+
+            SetCurrentSelectedDocument(newSelected);
+            _host.CurrentInfoDocumentPreviewPath = null;
+
+            await PrepareCurrentDocumentAsync();
+
+            _host.InfoStatusText = "Document removed from current card.";
+
+            SyncCheckedSelectionsFromCurrentModel();
+        }
+
         public async Task ShowPageAsync(InfoPageKind page)
         {
             _host.CurrentInfoPage = page;
+            _host.CurrentInfoDocumentPreviewPath = null;
+            _host.InfoDocumentMessage = "";
+            _host.IsInfoDocumentExportVisible = false;
 
             if (page == InfoPageKind.General)
-            {
-                _host.InfoDocumentMessage = "";
-                _host.IsInfoDocumentExportVisible = false;
-
-                if (_host.CurrentEquipInfo != null)
-                    _host.CurrentEquipInfo.PdfPreviewPath = null;
-
                 return;
-            }
+
+            if (GetCurrentSelectedDocument() == null)
+                SetCurrentSelectedDocument(GetCurrentDocumentCollection().FirstOrDefault());
 
             await PrepareCurrentDocumentAsync();
         }
 
-        /// <summary>
-        /// При открытии Pdf/Scheme:
-        /// 1) если cached-файл уже есть в .\PdfFiles — сразу показываем;
-        /// 2) если cached-файла нет, но PDF есть в БД — показываем кнопку выгрузки;
-        /// 3) если PDF нет вообще — показываем сообщение.
-        /// </summary>
         public Task PrepareCurrentDocumentAsync()
         {
+            _host.CurrentInfoDocumentPreviewPath = null;
+
             if (!_host.IsInfoDocumentPage)
                 return Task.CompletedTask;
 
@@ -263,7 +395,16 @@ namespace TechEquipments
                 return Task.CompletedTask;
             }
 
-            model.PdfPreviewPath = null;
+            var selected = GetCurrentSelectedDocument();
+            if (selected == null)
+            {
+                _host.InfoDocumentMessage = _host.CurrentInfoPage == InfoPageKind.Scheme
+                    ? "No scheme file is stored for this equipment."
+                    : "No instruction file is stored for this equipment.";
+
+                _host.IsInfoDocumentExportVisible = false;
+                return Task.CompletedTask;
+            }
 
             var equipName = (model.EquipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
@@ -273,52 +414,42 @@ namespace TechEquipments
                 return Task.CompletedTask;
             }
 
-            var hasDbPdf = model.PdfData is { Length: > 0 };
-            var dbFileName = model.PdfFileName;
+            var expectedPath = GetExpectedDocumentPath(_host.CurrentInfoPage, selected.FileName);
 
-            if (string.IsNullOrWhiteSpace(dbFileName) && !hasDbPdf)
-            {
-                _host.InfoDocumentMessage = "No PDF file is stored for this equipment.";
-                _host.IsInfoDocumentExportVisible = false;
-                return Task.CompletedTask;
-            }
-
-            var expectedPath = GetExpectedInfoPdfPath(_host.CurrentInfoPage, equipName, dbFileName);
-
-            // 1) файл уже есть в кеше -> сразу показываем
             if (File.Exists(expectedPath))
             {
-                model.PdfPreviewPath = expectedPath;
+                _host.CurrentInfoDocumentPreviewPath = expectedPath;
                 _host.InfoDocumentMessage = "";
                 _host.IsInfoDocumentExportVisible = false;
                 return Task.CompletedTask;
             }
 
-            // 2) в БД есть PDF, но локально его ещё нет
-            if (hasDbPdf)
+            if (selected.FileData is { Length: > 0 })
             {
-                _host.InfoDocumentMessage =
-                    $"File '{dbFileName}' is stored in DB but not cached locally. Click 'Export PDF' to save it to .\\PdfFiles and open it.";
+                var folderName = _host.CurrentInfoPage == InfoPageKind.Scheme ? "Schemes" : "Instruction";
+
+                _host.InfoDocumentMessage = $"File '{selected.FileName}' is stored in DB but not cached locally. Click 'Export PDF' to save it to .\\{folderName} and open it.";
+
                 _host.IsInfoDocumentExportVisible = true;
                 return Task.CompletedTask;
             }
 
-            // 3) имя есть, но byte[] нет
-            _host.InfoDocumentMessage = $"PDF '{dbFileName}' is not available in DB.";
+            _host.InfoDocumentMessage = $"File '{selected.FileName}' is not available in DB.";
             _host.IsInfoDocumentExportVisible = false;
             return Task.CompletedTask;
         }
 
-        /// <summary>
-        /// Выгружает PDF из БД в .\PdfFiles и сразу открывает его в viewer.
-        /// </summary>
         public async Task ExportCurrentDocumentAsync()
         {
+            if (!_host.IsInfoDocumentPage)
+                return;
+
             var model = _host.CurrentEquipInfo;
             if (model == null)
                 return;
 
-            if (model.PdfData == null || model.PdfData.Length == 0)
+            var selected = GetCurrentSelectedDocument();
+            if (selected?.FileData == null || selected.FileData.Length == 0)
                 return;
 
             var equipName = (model.EquipName ?? "").Trim();
@@ -329,14 +460,9 @@ namespace TechEquipments
             {
                 _host.IsInfoLoading = true;
 
-                var path = GetExpectedInfoPdfPath(_host.CurrentInfoPage, equipName, model.PdfFileName);
+                var path = await EnsureDocumentCachedFromMemoryAsync(_host.CurrentInfoPage, selected);
 
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-                if (!File.Exists(path))
-                    await File.WriteAllBytesAsync(path, model.PdfData);
-
-                model.PdfPreviewPath = path;
+                _host.CurrentInfoDocumentPreviewPath = path;
                 _host.InfoDocumentMessage = "";
                 _host.IsInfoDocumentExportVisible = false;
 
@@ -354,18 +480,116 @@ namespace TechEquipments
             }
         }
 
-        /// <summary>
-        /// Папка кеша PDF рядом с exe, по аналогии с QRCodes:
-        /// .\PdfFiles
-        /// </summary>
-        private static string GetPdfFilesFolder()
+        private ObservableCollection<EquipmentInfoFileDto> GetCurrentDocumentCollection()
         {
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PdfFiles");
+            _host.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(ResolveSelectedEquipForInfo());
+
+            return _host.CurrentInfoPage switch
+            {
+                InfoPageKind.Instruction => _host.CurrentEquipInfo.Instructions,
+                InfoPageKind.Scheme => _host.CurrentEquipInfo.Schemes,
+                _ => _host.CurrentEquipInfo.Instructions
+            };
         }
 
-        /// <summary>
-        /// Делает имя файла безопасным для файловой системы.
-        /// </summary>
+        private EquipmentInfoFileDto? GetCurrentSelectedDocument()
+        {
+            return _host.CurrentInfoPage switch
+            {
+                InfoPageKind.Instruction => _host.SelectedInfoInstructionFile,
+                InfoPageKind.Scheme => _host.SelectedInfoSchemeFile,
+                _ => null
+            };
+        }
+
+        private void SetCurrentSelectedDocument(EquipmentInfoFileDto? file)
+        {
+            switch (_host.CurrentInfoPage)
+            {
+                case InfoPageKind.Instruction:
+                    _host.SelectedInfoInstructionFile = file;
+                    break;
+
+                case InfoPageKind.Scheme:
+                    _host.SelectedInfoSchemeFile = file;
+                    break;
+            }
+        }
+
+        private static async Task<(List<EquipmentInfoFileDto> added, List<string> duplicates)> AddFilesToCollectionAsync(IEnumerable<string> fileNames, ObservableCollection<EquipmentInfoFileDto> target, string equipName)
+        {
+            var added = new List<EquipmentInfoFileDto>();
+            var duplicates = new List<string>();
+
+            foreach (var path in fileNames ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    continue;
+
+                var bytes = await File.ReadAllBytesAsync(path);
+                if (bytes.Length == 0)
+                    continue;
+
+                var hash = ComputeFileHash(bytes);
+
+                if (target.Any(x => string.Equals(x.FileHash, hash, StringComparison.OrdinalIgnoreCase)))
+                {
+                    duplicates.Add(Path.GetFileName(path));
+                    continue;
+                }
+
+                var item = new EquipmentInfoFileDto
+                {
+                    EquipName = equipName,
+                    FileName = Path.GetFileName(path),
+                    DisplayName = Path.GetFileName(path),
+                    FileHash = hash,
+                    FileData = bytes,
+                    SortOrder = target.Count
+                };
+
+                target.Add(item);
+                added.Add(item);
+            }
+
+            return (added, duplicates);
+        }
+
+        private static void NormalizeSortOrder(ObservableCollection<EquipmentInfoFileDto> files, string equipName)
+        {
+            if (files == null)
+                return;
+
+            for (int i = 0; i < files.Count; i++)
+            {
+                files[i].EquipName = equipName;
+                files[i].SortOrder = i;
+            }
+        }
+
+        private static void ValidateNoDuplicates(IEnumerable<EquipmentInfoFileDto> files, string sectionName)
+        {
+            var dup = files
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.FileHash))
+                .GroupBy(x => x.FileHash, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(g => g.Count() > 1);
+
+            if (dup != null)
+                throw new InvalidOperationException($"Duplicate {sectionName} files detected in current card.");
+        }
+
+        private static string ComputeFileHash(byte[] data)
+        {
+            var hash = SHA256.HashData(data);
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+
+        private static string GetInstructionFolder()
+            => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Instruction");
+
+        private static string GetSchemesFolder()
+            => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Schemes");
+
         private static string MakeSafeFileName(string text)
         {
             var name = (text ?? "").Trim();
@@ -381,25 +605,230 @@ namespace TechEquipments
             return safe;
         }
 
-        /// <summary>
-        /// Детерминированный путь cached PDF-файла.
-        /// Пока Pdf и Scheme используют один и тот же PdfFileName/PdfData,
-        /// но page включаем в имя уже сейчас — на будущее.
-        /// </summary>
-        private string GetExpectedInfoPdfPath(InfoPageKind page, string equipName, string? originalFileName)
+        private string GetExpectedDocumentPath(InfoPageKind page, string? originalFileName)
         {
-            var folder = GetPdfFilesFolder();
+            var folder = page == InfoPageKind.Scheme ? GetSchemesFolder() : GetInstructionFolder();
 
-            var safeEquip = MakeSafeFileName(equipName);
-            var safeName = MakeSafeFileName(string.IsNullOrWhiteSpace(originalFileName) ? "document.pdf" : originalFileName!);
+            Directory.CreateDirectory(folder);
 
-            if (!safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                safeName += ".pdf";
+            var safeName = MakeSafeFileName((originalFileName ?? "").Trim());
 
-            var pagePart = page.ToString(); // Pdf / Scheme
-            var fileName = $"{safeEquip}_{pagePart}_{safeName}";
+            if (string.IsNullOrWhiteSpace(safeName))
+                safeName = "document";
 
-            return Path.Combine(folder, fileName);
+            return Path.Combine(folder, safeName);
+        }
+
+        private async Task<string> EnsureDocumentCachedFromMemoryAsync(InfoPageKind page, EquipmentInfoFileDto file)
+        {
+            if (file.FileData == null || file.FileData.Length == 0)
+                throw new InvalidOperationException("Selected document has no data.");
+
+            var path = GetExpectedDocumentPath(page, file.FileName);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+            if (!File.Exists(path))
+                await File.WriteAllBytesAsync(path, file.FileData);
+
+            return path;
+        }
+
+        private static EquipmentInfoFileDto CloneFile(EquipmentInfoFileDto src, string equipName = "")
+        {
+            return new EquipmentInfoFileDto
+            {
+                Id = src.Id,
+                EquipName = equipName,
+                FileName = src.FileName,
+                DisplayName = src.DisplayName,
+                FileHash = src.FileHash,
+                FileData = src.FileData,
+                SortOrder = src.SortOrder,
+                UpdatedAt = src.UpdatedAt
+            };
+        }
+
+        private static void ReplaceCollection(ObservableCollection<EquipmentInfoFileDto> target, IEnumerable<EquipmentInfoFileDto> source)
+        {
+            target.Clear();
+
+            foreach (var item in source ?? Enumerable.Empty<EquipmentInfoFileDto>())
+                target.Add(item);
+        }
+
+        private async Task LoadLibrariesAsync()
+        {
+            var photos = await _equipInfoService.GetLibraryAsync(InfoFileKind.Photo);
+            var instructions = await _equipInfoService.GetLibraryAsync(InfoFileKind.Instruction);
+            var schemes = await _equipInfoService.GetLibraryAsync(InfoFileKind.Scheme);
+
+            ReplaceCollection(_host.AvailableInfoPhotoLibrary, photos);
+            ReplaceCollection(_host.AvailableInfoInstructionLibrary, instructions);
+            ReplaceCollection(_host.AvailableInfoSchemeLibrary, schemes);
+        }
+
+        private static List<object>? ToCheckedIds(IEnumerable<EquipmentInfoFileDto>? items)
+        {
+            var list = items?
+                .Where(x => x != null && x.Id > 0)
+                .Select(x => (object)x.Id)
+                .Distinct()
+                .ToList();
+
+            return list is { Count: > 0 } ? list : new List<object>();
+        }
+
+        private void SyncCheckedSelectionsFromCurrentModel()
+        {
+            _host.SelectedInfoPhotoLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Photos);
+            _host.SelectedInfoInstructionLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Instructions);
+            _host.SelectedInfoSchemeLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Schemes);
+        }
+
+        private ObservableCollection<EquipmentInfoFileDto> GetLibraryCollection(InfoFileKind kind)
+        {
+            return kind switch
+            {
+                InfoFileKind.Photo => _host.AvailableInfoPhotoLibrary,
+                InfoFileKind.Instruction => _host.AvailableInfoInstructionLibrary,
+                InfoFileKind.Scheme => _host.AvailableInfoSchemeLibrary,
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
+        }
+
+        private ObservableCollection<EquipmentInfoFileDto> GetModelCollection(InfoFileKind kind)
+        {
+            _host.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(ResolveSelectedEquipForInfo());
+
+            return kind switch
+            {
+                InfoFileKind.Photo => _host.CurrentEquipInfo.Photos,
+                InfoFileKind.Instruction => _host.CurrentEquipInfo.Instructions,
+                InfoFileKind.Scheme => _host.CurrentEquipInfo.Schemes,
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
+        }
+
+        private List<object>? GetCheckedIds(InfoFileKind kind)
+        {
+            return kind switch
+            {
+                InfoFileKind.Photo => _host.SelectedInfoPhotoLibraryIds,
+                InfoFileKind.Instruction => _host.SelectedInfoInstructionLibraryIds,
+                InfoFileKind.Scheme => _host.SelectedInfoSchemeLibraryIds,
+                _ => null
+            };
+        }
+
+        private void ApplyCheckedSelectionToModel(InfoFileKind kind)
+        {
+            if (_host.CurrentEquipInfo == null)
+                return;
+
+            var equipName = (_host.CurrentEquipInfo.EquipName ?? "").Trim();
+            var library = GetLibraryCollection(kind);
+            var target = GetModelCollection(kind);
+            var checkedIds = GetCheckedIds(kind) ?? new List<object>();
+
+            var selectedIds = checkedIds
+                .Select(TryConvertToInt64)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+
+            target.Clear();
+
+            foreach (var id in selectedIds)
+            {
+                var libItem = library.FirstOrDefault(x => x.Id == id);
+                if (libItem == null)
+                    continue;
+
+                target.Add(CloneFile(libItem, equipName));
+            }
+
+            NormalizeSortOrder(target, equipName);
+
+            switch (kind)
+            {
+                case InfoFileKind.Photo:
+                    _host.SelectedInfoPhotoFile = target.FirstOrDefault();
+                    break;
+
+                case InfoFileKind.Instruction:
+                    _host.SelectedInfoInstructionFile = target.FirstOrDefault();
+                    break;
+
+                case InfoFileKind.Scheme:
+                    _host.SelectedInfoSchemeFile = target.FirstOrDefault();
+                    break;
+            }
+        }
+
+        private static long TryConvertToInt64(object? value)
+        {
+            if (value == null)
+                return 0;
+
+            return value switch
+            {
+                long l => l,
+                int i => i,
+                short s => s,
+                string str when long.TryParse(str, out var parsed) => parsed,
+                _ => 0
+            };
+        }
+
+        private static void MergeAssetsIntoSelection(ObservableCollection<EquipmentInfoFileDto> target, IEnumerable<EquipmentInfoFileDto> assets, string equipName)
+        {
+            var existingIds = target
+                .Where(x => x != null && x.Id > 0)
+                .Select(x => x.Id)
+                .ToHashSet();
+
+            foreach (var asset in assets ?? Enumerable.Empty<EquipmentInfoFileDto>())
+            {
+                if (asset == null || asset.Id <= 0)
+                    continue;
+
+                if (existingIds.Contains(asset.Id))
+                    continue;
+
+                target.Add(CloneFile(asset, equipName));
+                existingIds.Add(asset.Id);
+            }
+
+            NormalizeSortOrder(target, equipName);
+        }
+
+        public void SyncPhotoSelectionFromLibrary()
+        {
+            if (!_host.IsInfoEditMode || _host.CurrentEquipInfo == null)
+                return;
+
+            ApplyCheckedSelectionToModel(InfoFileKind.Photo);
+            SyncCheckedSelectionsFromCurrentModel();
+            _host.InfoStatusText = "Photo links updated.";
+        }
+
+        public async Task SyncCurrentDocumentSelectionFromLibraryAsync()
+        {
+            if (!_host.IsInfoEditMode || _host.CurrentEquipInfo == null || !_host.IsInfoDocumentPage)
+                return;
+
+            var kind = _host.CurrentInfoPage == InfoPageKind.Scheme
+                ? InfoFileKind.Scheme
+                : InfoFileKind.Instruction;
+
+            ApplyCheckedSelectionToModel(kind);
+            SyncCheckedSelectionsFromCurrentModel();
+
+            _host.CurrentInfoDocumentPreviewPath = null;
+            await PrepareCurrentDocumentAsync();
+
+            _host.InfoStatusText = "Document links updated.";
         }
     }
 }

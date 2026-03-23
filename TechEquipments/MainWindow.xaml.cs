@@ -1049,8 +1049,111 @@ namespace TechEquipments
 
                 _currentEquipInfo = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CurrentInfoDocumentItems));
+                OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
+                OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
                 OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
                 OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
+            }
+        }
+
+        private EquipmentInfoFileDto? _selectedInfoPhotoFile;
+        public EquipmentInfoFileDto? SelectedInfoPhotoFile
+        {
+            get => _selectedInfoPhotoFile;
+            set
+            {
+                if (ReferenceEquals(_selectedInfoPhotoFile, value))
+                    return;
+
+                _selectedInfoPhotoFile = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private EquipmentInfoFileDto? _selectedInfoInstructionFile;
+        public EquipmentInfoFileDto? SelectedInfoInstructionFile
+        {
+            get => _selectedInfoInstructionFile;
+            set
+            {
+                if (ReferenceEquals(_selectedInfoInstructionFile, value))
+                    return;
+
+                _selectedInfoInstructionFile = value;
+                OnPropertyChanged();
+
+                if (CurrentInfoPage == InfoPageKind.Instruction)
+                {
+                    OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
+                    OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
+                }
+            }
+        }
+
+        private EquipmentInfoFileDto? _selectedInfoSchemeFile;
+        public EquipmentInfoFileDto? SelectedInfoSchemeFile
+        {
+            get => _selectedInfoSchemeFile;
+            set
+            {
+                if (ReferenceEquals(_selectedInfoSchemeFile, value))
+                    return;
+
+                _selectedInfoSchemeFile = value;
+                OnPropertyChanged();
+
+                if (CurrentInfoPage == InfoPageKind.Scheme)
+                {
+                    OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
+                    OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
+                }
+            }
+        }
+
+        public ObservableCollection<EquipmentInfoFileDto> AvailableInfoPhotoLibrary { get; } = new();
+        public ObservableCollection<EquipmentInfoFileDto> AvailableInfoInstructionLibrary { get; } = new();
+        public ObservableCollection<EquipmentInfoFileDto> AvailableInfoSchemeLibrary { get; } = new();
+
+        private List<object>? _selectedInfoPhotoLibraryIds;
+        public List<object>? SelectedInfoPhotoLibraryIds
+        {
+            get => _selectedInfoPhotoLibraryIds;
+            set
+            {
+                _selectedInfoPhotoLibraryIds = value;
+                OnPropertyChanged();
+
+                if (CurrentInfoPage == InfoPageKind.General)
+                    OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
+            }
+        }
+
+        private List<object>? _selectedInfoInstructionLibraryIds;
+        public List<object>? SelectedInfoInstructionLibraryIds
+        {
+            get => _selectedInfoInstructionLibraryIds;
+            set
+            {
+                _selectedInfoInstructionLibraryIds = value;
+                OnPropertyChanged();
+
+                if (CurrentInfoPage == InfoPageKind.Instruction)
+                    OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
+            }
+        }
+
+        private List<object>? _selectedInfoSchemeLibraryIds;
+        public List<object>? SelectedInfoSchemeLibraryIds
+        {
+            get => _selectedInfoSchemeLibraryIds;
+            set
+            {
+                _selectedInfoSchemeLibraryIds = value;
+                OnPropertyChanged();
+
+                if (CurrentInfoPage == InfoPageKind.Scheme)
+                    OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
             }
         }
 
@@ -1114,35 +1217,111 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(IsInfoGeneralPage));
                 OnPropertyChanged(nameof(IsInfoDocumentPage));
                 OnPropertyChanged(nameof(CurrentInfoDocumentHeader));
+                OnPropertyChanged(nameof(CurrentInfoDocumentItems));
+                OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
+                OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
+                OnPropertyChanged(nameof(CurrentInfoAvailableLibraryItems));
+                OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
                 OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
                 OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
             }
         }
 
-        /// <summary>
-        /// Видимость области General.
-        /// </summary>
         public bool IsInfoGeneralPage => CurrentInfoPage == InfoPageKind.General;
 
-        /// <summary>
-        /// Видимость области Pdf/Scheme.
-        /// Пока обе кнопки открывают одну и ту же PDF-область.
-        /// </summary>
         public bool IsInfoDocumentPage =>
-            CurrentInfoPage == InfoPageKind.Pdf ||
+            CurrentInfoPage == InfoPageKind.Instruction ||
             CurrentInfoPage == InfoPageKind.Scheme;
 
-        /// <summary>
-        /// Заголовок документной области.
-        /// Потом по нему удобно будет различать PDF/Scheme-режим.
-        /// </summary>
-        public string CurrentInfoDocumentHeader => CurrentInfoPage == InfoPageKind.Scheme ? "Scheme" : "PDF";
+        public string CurrentInfoDocumentHeader =>
+            CurrentInfoPage == InfoPageKind.Scheme ? "Scheme" : "Instruction";
+
+        public IEnumerable<EquipmentInfoFileDto> CurrentInfoDocumentItems =>
+            CurrentInfoPage switch
+            {
+                InfoPageKind.Instruction => CurrentEquipInfo?.Instructions ?? Enumerable.Empty<EquipmentInfoFileDto>(),
+                InfoPageKind.Scheme => CurrentEquipInfo?.Schemes ?? Enumerable.Empty<EquipmentInfoFileDto>(),
+                _ => Enumerable.Empty<EquipmentInfoFileDto>()
+            };
+
+        public System.Collections.Generic.IEnumerable<EquipmentInfoFileDto> CurrentInfoAvailableLibraryItems => CurrentInfoPage switch
+        {
+            InfoPageKind.Instruction => AvailableInfoInstructionLibrary,
+            InfoPageKind.Scheme => AvailableInfoSchemeLibrary,
+            _ => Enumerable.Empty<EquipmentInfoFileDto>()
+        };
+
+        public List<object>? CurrentInfoCheckedLibraryIds
+        {
+            get => CurrentInfoPage switch
+            {
+                InfoPageKind.Instruction => SelectedInfoInstructionLibraryIds,
+                InfoPageKind.Scheme => SelectedInfoSchemeLibraryIds,
+                _ => null
+            };
+            set
+            {
+                switch (CurrentInfoPage)
+                {
+                    case InfoPageKind.Instruction:
+                        SelectedInfoInstructionLibraryIds = value;
+                        break;
+
+                    case InfoPageKind.Scheme:
+                        SelectedInfoSchemeLibraryIds = value;
+                        break;
+                }
+
+                OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
+            }
+        }
+
+        public EquipmentInfoFileDto? CurrentInfoSelectedDocumentFile
+        {
+            get => CurrentInfoPage switch
+            {
+                InfoPageKind.Instruction => SelectedInfoInstructionFile,
+                InfoPageKind.Scheme => SelectedInfoSchemeFile,
+                _ => null
+            };
+            set
+            {
+                switch (CurrentInfoPage)
+                {
+                    case InfoPageKind.Instruction:
+                        SelectedInfoInstructionFile = value;
+                        break;
+
+                    case InfoPageKind.Scheme:
+                        SelectedInfoSchemeFile = value;
+                        break;
+                }
+
+                OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
+                OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
+            }
+        }
+
+        public string CurrentInfoDocumentFileName =>
+            CurrentInfoSelectedDocumentFile?.FileName ?? "";
+
+        private string? _currentInfoDocumentPreviewPath;
+        public string? CurrentInfoDocumentPreviewPath
+        {
+            get => _currentInfoDocumentPreviewPath;
+            set
+            {
+                if (_currentInfoDocumentPreviewPath == value)
+                    return;
+
+                _currentInfoDocumentPreviewPath = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
+                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
+            }
+        }
 
         private string _infoDocumentMessage = "";
-
-        /// <summary>
-        /// Текст в документной области, если локального файла нет.
-        /// </summary>
         public string InfoDocumentMessage
         {
             get => _infoDocumentMessage;
@@ -1157,10 +1336,6 @@ namespace TechEquipments
         }
 
         private bool _isInfoDocumentExportVisible;
-
-        /// <summary>
-        /// Показывать ли кнопку выгрузки PDF из БД в .\PdfFiles
-        /// </summary>
         public bool IsInfoDocumentExportVisible
         {
             get => _isInfoDocumentExportVisible;
@@ -1176,16 +1351,10 @@ namespace TechEquipments
             }
         }
 
-        /// <summary>
-        /// Viewer показываем только когда реально есть локальный файл.
-        /// </summary>
         public bool IsInfoDocumentViewerVisible =>
             IsInfoDocumentPage &&
-            !string.IsNullOrWhiteSpace(CurrentEquipInfo?.PdfPreviewPath);
+            !string.IsNullOrWhiteSpace(CurrentInfoDocumentPreviewPath);
 
-        /// <summary>
-        /// Сообщение показываем, когда viewer неактивен.
-        /// </summary>
         public bool IsInfoDocumentMessageVisible =>
             IsInfoDocumentPage && !IsInfoDocumentViewerVisible;
 
@@ -1679,12 +1848,25 @@ namespace TechEquipments
                 try
                 {
                     SelectedListBoxEquipment = null;
+
+                    // Важно:
+                    // очищаем строку текущего оборудования,
+                    // иначе Info продолжит жить на старом EquipName.
+                    if (!string.IsNullOrWhiteSpace(EquipName))
+                        EquipName = "";
                 }
                 finally
                 {
                     _suppressEquipNameFromSelection = false;
                     _isApplyingFilterSelection = false;
                 }
+
+                StopParamOverlayWait();
+
+                // Если пользователь сейчас на Info,
+                // нужно явно очистить / перегрузить карточку.
+                if (!_uiState.IsRestoringState && SelectedMainTab == MainTabKind.Info)
+                    _ = _infoController.LoadCurrentAsync();
 
                 return;
             }
@@ -2206,6 +2388,24 @@ namespace TechEquipments
             set => CurrentEquipInfo = value;
         }
 
+        EquipmentInfoFileDto? IInfoHost.SelectedInfoPhotoFile
+        {
+            get => SelectedInfoPhotoFile;
+            set => SelectedInfoPhotoFile = value;
+        }
+
+        EquipmentInfoFileDto? IInfoHost.SelectedInfoInstructionFile
+        {
+            get => SelectedInfoInstructionFile;
+            set => SelectedInfoInstructionFile = value;
+        }
+
+        EquipmentInfoFileDto? IInfoHost.SelectedInfoSchemeFile
+        {
+            get => SelectedInfoSchemeFile;
+            set => SelectedInfoSchemeFile = value;
+        }
+
         bool IInfoHost.IsInfoLoading
         {
             get => IsInfoLoading;
@@ -2232,6 +2432,12 @@ namespace TechEquipments
 
         bool IInfoHost.IsInfoDocumentPage => IsInfoDocumentPage;
 
+        string? IInfoHost.CurrentInfoDocumentPreviewPath
+        {
+            get => CurrentInfoDocumentPreviewPath;
+            set => CurrentInfoDocumentPreviewPath = value;
+        }
+
         string IInfoHost.InfoDocumentMessage
         {
             get => InfoDocumentMessage;
@@ -2242,6 +2448,28 @@ namespace TechEquipments
         {
             get => IsInfoDocumentExportVisible;
             set => IsInfoDocumentExportVisible = value;
+        }
+
+        ObservableCollection<EquipmentInfoFileDto> IInfoHost.AvailableInfoPhotoLibrary => AvailableInfoPhotoLibrary;
+        ObservableCollection<EquipmentInfoFileDto> IInfoHost.AvailableInfoInstructionLibrary => AvailableInfoInstructionLibrary;
+        ObservableCollection<EquipmentInfoFileDto> IInfoHost.AvailableInfoSchemeLibrary => AvailableInfoSchemeLibrary;
+
+        List<object>? IInfoHost.SelectedInfoPhotoLibraryIds
+        {
+            get => SelectedInfoPhotoLibraryIds;
+            set => SelectedInfoPhotoLibraryIds = value;
+        }
+
+        List<object>? IInfoHost.SelectedInfoInstructionLibraryIds
+        {
+            get => SelectedInfoInstructionLibraryIds;
+            set => SelectedInfoInstructionLibraryIds = value;
+        }
+
+        List<object>? IInfoHost.SelectedInfoSchemeLibraryIds
+        {
+            get => SelectedInfoSchemeLibraryIds;
+            set => SelectedInfoSchemeLibraryIds = value;
         }
 
         #endregion
@@ -2652,28 +2880,58 @@ namespace TechEquipments
             => _infoController.SaveAsync();
 
         /// <summary>
-        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// Добавить фото с диска.
         /// </summary>
-        public Task Info_LoadPdfFromFileAsync()
-            => _infoController.LoadPdfFromFileAsync();
+        public Task Info_LoadPhotoFilesAsync()
+            => _infoController.LoadPhotoFilesAsync();
 
         /// <summary>
-        /// Тонкий прокси для InfoTabHost.xaml.cs
+        /// Удалить выбранное фото из карточки.
         /// </summary>
-        public void Info_ClearPdf()
-            => _infoController.ClearPdf();
+        public void Info_RemoveSelectedPhoto()
+            => _infoController.RemoveSelectedPhoto();
 
         /// <summary>
-        /// Тонкий прокси для переключения страниц Info.
+        /// Добавить PDF-файлы для текущей документной страницы.
+        /// </summary>
+        public Task Info_LoadCurrentDocumentFilesAsync()
+            => _infoController.LoadCurrentDocumentFilesAsync();
+
+        /// <summary>
+        /// Удалить выбранный PDF с текущей документной страницы.
+        /// </summary>
+        public Task Info_RemoveCurrentDocumentAsync()
+            => _infoController.RemoveCurrentDocumentAsync();
+
+        /// <summary>
+        /// Переключение страниц Info.
         /// </summary>
         public Task ShowInfoPageAsync(InfoPageKind page)
             => _infoController.ShowPageAsync(page);
 
         /// <summary>
-        /// Тонкий прокси для выгрузки PDF из БД в .\PdfFiles.
+        /// Подготовка preview после смены выбранного документа.
+        /// </summary>
+        public Task Info_OnCurrentDocumentSelectionChangedAsync()
+            => _infoController.PrepareCurrentDocumentAsync();
+
+        /// <summary>
+        /// Выгрузить выбранный документ из БД/модели в локальный cache.
         /// </summary>
         public Task Info_ExportCurrentDocumentAsync()
             => _infoController.ExportCurrentDocumentAsync();
+
+        /// <summary>
+        /// Синхронизировать linked photo files из checked-combo.
+        /// </summary>
+        public void Info_OnPhotoLibraryEditValueChanged()
+            => _infoController.SyncPhotoSelectionFromLibrary();
+
+        /// <summary>
+        /// Синхронизировать linked document files из checked-combo.
+        /// </summary>
+        public Task Info_OnDocumentLibraryEditValueChangedAsync()
+            => _infoController.SyncCurrentDocumentSelectionFromLibraryAsync();
 
         #endregion
     }

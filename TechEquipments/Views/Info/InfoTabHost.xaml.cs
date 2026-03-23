@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using DevExpress.Xpf.Editors;
 
 namespace TechEquipments.Views.Info
 {
@@ -28,15 +29,27 @@ namespace TechEquipments.Views.Info
                 await Host.Info_SaveAsync();
         }
 
-        private async void LoadPdf_Click(object sender, RoutedEventArgs e)
+        private async void LoadPhoto_Click(object sender, RoutedEventArgs e)
         {
             if (Host != null)
-                await Host.Info_LoadPdfFromFileAsync();
+                await Host.Info_LoadPhotoFilesAsync();
         }
 
-        private void ClearPdf_Click(object sender, RoutedEventArgs e)
+        private void RemovePhoto_Click(object sender, RoutedEventArgs e)
         {
-            Host?.Info_ClearPdf();
+            Host?.Info_RemoveSelectedPhoto();
+        }
+
+        private async void LoadDocument_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_LoadCurrentDocumentFilesAsync();
+        }
+
+        private async void RemoveDocument_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_RemoveCurrentDocumentAsync();
         }
 
         private async void ExportPdf_Click(object sender, RoutedEventArgs e)
@@ -45,9 +58,12 @@ namespace TechEquipments.Views.Info
                 await Host.Info_ExportCurrentDocumentAsync();
         }
 
-        /// <summary>
-        /// Кнопки General / Pdf / Scheme справа.
-        /// </summary>
+        private async void DocumentSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_OnCurrentDocumentSelectionChangedAsync();
+        }
+
         private async void PageButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement fe || fe.Tag is not InfoPageKind page)
@@ -55,6 +71,17 @@ namespace TechEquipments.Views.Info
 
             if (Host != null)
                 await Host.ShowInfoPageAsync(page);
+        }
+
+        private void PhotoLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)
+        {
+            Host?.Info_OnPhotoLibraryEditValueChanged();
+        }
+
+        private async void DocumentLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_OnDocumentLibraryEditValueChangedAsync();
         }
     }
 }
