@@ -67,6 +67,18 @@ namespace TechEquipments
             set => SetField(ref _updatedAt, value);
         }
 
+        private string? _pdfPreviewPath;
+
+        /// <summary>
+        /// Локальный cached-файл для PdfViewer.
+        /// В БД не хранится.
+        /// </summary>
+        public string? PdfPreviewPath
+        {
+            get => _pdfPreviewPath;
+            set => SetField(ref _pdfPreviewPath, value);
+        }
+
         public static EquipmentInfoDto CreateEmpty(string equipName) => new()
         {
             EquipName = (equipName ?? "").Trim()

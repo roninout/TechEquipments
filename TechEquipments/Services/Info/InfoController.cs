@@ -2,6 +2,7 @@
 using Microsoft.Win32;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -9,10 +10,10 @@ namespace TechEquipments
 {
     /// <summary>
     /// Контроллер вкладки Info:
-    /// - загрузка карточки по текущему оборудованию
-    /// - перевод в edit mode
-    /// - сохранение
-    /// - загрузка/очистка PDF
+    /// - загрузка карточки
+    /// - edit/save
+    /// - page switching
+    /// - PDF cache/export flow через .\PdfFiles
     /// </summary>
     public sealed class InfoController
     {
@@ -52,6 +53,8 @@ namespace TechEquipments
             {
                 _host.CurrentEquipInfo = null;
                 _host.InfoStatusText = "";
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
                 _host.IsInfoEditMode = false;
                 return;
             }
@@ -60,6 +63,8 @@ namespace TechEquipments
             {
                 _host.CurrentEquipInfo = EquipmentInfoDto.CreateEmpty(equipName);
                 _host.InfoStatusText = "Info: DB is disconnected.";
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
                 _host.IsInfoEditMode = false;
                 return;
             }
@@ -70,13 +75,25 @@ namespace TechEquipments
                 _host.InfoStatusText = $"Loading info: {equipName}...";
 
                 _host.CurrentEquipInfo = await _equipInfoService.GetAsync(equipName);
-                _host.IsInfoEditMode = false;
 
+                // Сбрасываем document-area state для новой карточки.
+                _host.CurrentEquipInfo.PdfPreviewPath = null;
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
+
+                // Если пользователь уже находится на Pdf/Scheme —
+                // сразу готовим документную область под новую карточку.
+                if (_host.IsInfoDocumentPage)
+                    await PrepareCurrentDocumentAsync();
+
+                _host.IsInfoEditMode = false;
                 _host.InfoStatusText = $"Info loaded: {equipName}";
             }
             catch (Exception ex)
             {
                 _host.CurrentEquipInfo = EquipmentInfoDto.CreateEmpty(equipName);
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
                 _host.IsInfoEditMode = false;
                 _host.InfoStatusText = $"Info error: {ex.Message}";
             }
@@ -137,7 +154,10 @@ namespace TechEquipments
         }
 
         /// <summary>
-        /// Загружаем PDF с диска и кладём прямо в DTO.
+        /// Загружаем PDF с диска:
+        /// - в DTO как byte[]
+        /// - в .\PdfFiles как cached-файл
+        /// - сразу открываем через PdfPreviewPath
         /// </summary>
         public async Task LoadPdfFromFileAsync()
         {
@@ -163,8 +183,22 @@ namespace TechEquipments
                 return;
 
             var bytes = await File.ReadAllBytesAsync(dlg.FileName);
+
             _host.CurrentEquipInfo.PdfData = bytes;
             _host.CurrentEquipInfo.PdfFileName = Path.GetFileName(dlg.FileName);
+
+            var path = GetExpectedInfoPdfPath(
+                _host.CurrentInfoPage,
+                _host.CurrentEquipInfo.EquipName,
+                _host.CurrentEquipInfo.PdfFileName);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllBytesAsync(path, bytes);
+
+            _host.CurrentEquipInfo.PdfPreviewPath = path;
+
+            _host.InfoDocumentMessage = "";
+            _host.IsInfoDocumentExportVisible = false;
 
             _host.InfoStatusText = $"PDF loaded: {_host.CurrentEquipInfo.PdfFileName}";
         }
@@ -179,8 +213,193 @@ namespace TechEquipments
 
             _host.CurrentEquipInfo.PdfData = null;
             _host.CurrentEquipInfo.PdfFileName = null;
+            _host.CurrentEquipInfo.PdfPreviewPath = null;
+
+            _host.InfoDocumentMessage = "PDF cleared.";
+            _host.IsInfoDocumentExportVisible = false;
 
             _host.InfoStatusText = "PDF cleared.";
+        }
+
+        /// <summary>
+        /// Переключение страниц Info.
+        /// General -> просто скрываем document-area state.
+        /// Pdf/Scheme -> пытаемся сразу показать cached-файл.
+        /// </summary>
+        public async Task ShowPageAsync(InfoPageKind page)
+        {
+            _host.CurrentInfoPage = page;
+
+            if (page == InfoPageKind.General)
+            {
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
+
+                if (_host.CurrentEquipInfo != null)
+                    _host.CurrentEquipInfo.PdfPreviewPath = null;
+
+                return;
+            }
+
+            await PrepareCurrentDocumentAsync();
+        }
+
+        /// <summary>
+        /// При открытии Pdf/Scheme:
+        /// 1) если cached-файл уже есть в .\PdfFiles — сразу показываем;
+        /// 2) если cached-файла нет, но PDF есть в БД — показываем кнопку выгрузки;
+        /// 3) если PDF нет вообще — показываем сообщение.
+        /// </summary>
+        public Task PrepareCurrentDocumentAsync()
+        {
+            if (!_host.IsInfoDocumentPage)
+                return Task.CompletedTask;
+
+            var model = _host.CurrentEquipInfo;
+            if (model == null)
+            {
+                _host.InfoDocumentMessage = "No equipment selected.";
+                _host.IsInfoDocumentExportVisible = false;
+                return Task.CompletedTask;
+            }
+
+            model.PdfPreviewPath = null;
+
+            var equipName = (model.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+            {
+                _host.InfoDocumentMessage = "Equipment name is empty.";
+                _host.IsInfoDocumentExportVisible = false;
+                return Task.CompletedTask;
+            }
+
+            var hasDbPdf = model.PdfData is { Length: > 0 };
+            var dbFileName = model.PdfFileName;
+
+            if (string.IsNullOrWhiteSpace(dbFileName) && !hasDbPdf)
+            {
+                _host.InfoDocumentMessage = "No PDF file is stored for this equipment.";
+                _host.IsInfoDocumentExportVisible = false;
+                return Task.CompletedTask;
+            }
+
+            var expectedPath = GetExpectedInfoPdfPath(_host.CurrentInfoPage, equipName, dbFileName);
+
+            // 1) файл уже есть в кеше -> сразу показываем
+            if (File.Exists(expectedPath))
+            {
+                model.PdfPreviewPath = expectedPath;
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
+                return Task.CompletedTask;
+            }
+
+            // 2) в БД есть PDF, но локально его ещё нет
+            if (hasDbPdf)
+            {
+                _host.InfoDocumentMessage =
+                    $"File '{dbFileName}' is stored in DB but not cached locally. Click 'Export PDF' to save it to .\\PdfFiles and open it.";
+                _host.IsInfoDocumentExportVisible = true;
+                return Task.CompletedTask;
+            }
+
+            // 3) имя есть, но byte[] нет
+            _host.InfoDocumentMessage = $"PDF '{dbFileName}' is not available in DB.";
+            _host.IsInfoDocumentExportVisible = false;
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Выгружает PDF из БД в .\PdfFiles и сразу открывает его в viewer.
+        /// </summary>
+        public async Task ExportCurrentDocumentAsync()
+        {
+            var model = _host.CurrentEquipInfo;
+            if (model == null)
+                return;
+
+            if (model.PdfData == null || model.PdfData.Length == 0)
+                return;
+
+            var equipName = (model.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            try
+            {
+                _host.IsInfoLoading = true;
+
+                var path = GetExpectedInfoPdfPath(_host.CurrentInfoPage, equipName, model.PdfFileName);
+
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+                if (!File.Exists(path))
+                    await File.WriteAllBytesAsync(path, model.PdfData);
+
+                model.PdfPreviewPath = path;
+                _host.InfoDocumentMessage = "";
+                _host.IsInfoDocumentExportVisible = false;
+
+                _host.InfoStatusText = $"PDF exported: {Path.GetFileName(path)}";
+            }
+            catch (Exception ex)
+            {
+                _host.InfoStatusText = $"PDF export error: {ex.Message}";
+                DXMessageBox.Show(_host.OwnerWindow, ex.Message, "Export PDF",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _host.IsInfoLoading = false;
+            }
+        }
+
+        /// <summary>
+        /// Папка кеша PDF рядом с exe, по аналогии с QRCodes:
+        /// .\PdfFiles
+        /// </summary>
+        private static string GetPdfFilesFolder()
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PdfFiles");
+        }
+
+        /// <summary>
+        /// Делает имя файла безопасным для файловой системы.
+        /// </summary>
+        private static string MakeSafeFileName(string text)
+        {
+            var name = (text ?? "").Trim();
+            if (name.Length == 0)
+                name = "document";
+
+            var invalid = Path.GetInvalidFileNameChars();
+            var safe = new string(name.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+
+            if (safe.Length > 120)
+                safe = safe.Substring(0, 120);
+
+            return safe;
+        }
+
+        /// <summary>
+        /// Детерминированный путь cached PDF-файла.
+        /// Пока Pdf и Scheme используют один и тот же PdfFileName/PdfData,
+        /// но page включаем в имя уже сейчас — на будущее.
+        /// </summary>
+        private string GetExpectedInfoPdfPath(InfoPageKind page, string equipName, string? originalFileName)
+        {
+            var folder = GetPdfFilesFolder();
+
+            var safeEquip = MakeSafeFileName(equipName);
+            var safeName = MakeSafeFileName(string.IsNullOrWhiteSpace(originalFileName) ? "document.pdf" : originalFileName!);
+
+            if (!safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                safeName += ".pdf";
+
+            var pagePart = page.ToString(); // Pdf / Scheme
+            var fileName = $"{safeEquip}_{pagePart}_{safeName}";
+
+            return Path.Combine(folder, fileName);
         }
     }
 }

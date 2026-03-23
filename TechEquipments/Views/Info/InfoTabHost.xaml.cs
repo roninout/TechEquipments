@@ -38,5 +38,23 @@ namespace TechEquipments.Views.Info
         {
             Host?.Info_ClearPdf();
         }
+
+        private async void ExportPdf_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_ExportCurrentDocumentAsync();
+        }
+
+        /// <summary>
+        /// Кнопки General / Pdf / Scheme справа.
+        /// </summary>
+        private async void PageButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.Tag is not InfoPageKind page)
+                return;
+
+            if (Host != null)
+                await Host.ShowInfoPageAsync(page);
+        }
     }
 }

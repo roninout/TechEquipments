@@ -460,7 +460,7 @@
                                  Padding="0" GlyphWidth="40" GlyphHeight="40"
                                  Click="ShowChartButton_Click"
                                  ToolTip="Chart"
-                                 Glyph="{dx:DXImage 'SvgImages/Chart/Chart.svg'}"
+                                 Glyph="{dx:DXImage 'SvgImages/Spreadsheet/CreateScatterChartLinesAndMarkers.svg'}"
                                  Style="{StaticResource AppButtonStyle}" />
 
                             <!-- Params -->

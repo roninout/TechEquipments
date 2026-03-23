@@ -1049,6 +1049,8 @@ namespace TechEquipments
 
                 _currentEquipInfo = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
+                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
             }
         }
 
@@ -1093,6 +1095,99 @@ namespace TechEquipments
         }
 
         public bool CanEditInfoButtons => !IsInfoLoading;
+
+        private InfoPageKind _currentInfoPage = InfoPageKind.General;
+
+        /// <summary>
+        /// Активная страница вкладки Info.
+        /// </summary>
+        public InfoPageKind CurrentInfoPage
+        {
+            get => _currentInfoPage;
+            set
+            {
+                if (_currentInfoPage == value)
+                    return;
+
+                _currentInfoPage = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsInfoGeneralPage));
+                OnPropertyChanged(nameof(IsInfoDocumentPage));
+                OnPropertyChanged(nameof(CurrentInfoDocumentHeader));
+                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
+                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
+            }
+        }
+
+        /// <summary>
+        /// Видимость области General.
+        /// </summary>
+        public bool IsInfoGeneralPage => CurrentInfoPage == InfoPageKind.General;
+
+        /// <summary>
+        /// Видимость области Pdf/Scheme.
+        /// Пока обе кнопки открывают одну и ту же PDF-область.
+        /// </summary>
+        public bool IsInfoDocumentPage =>
+            CurrentInfoPage == InfoPageKind.Pdf ||
+            CurrentInfoPage == InfoPageKind.Scheme;
+
+        /// <summary>
+        /// Заголовок документной области.
+        /// Потом по нему удобно будет различать PDF/Scheme-режим.
+        /// </summary>
+        public string CurrentInfoDocumentHeader => CurrentInfoPage == InfoPageKind.Scheme ? "Scheme" : "PDF";
+
+        private string _infoDocumentMessage = "";
+
+        /// <summary>
+        /// Текст в документной области, если локального файла нет.
+        /// </summary>
+        public string InfoDocumentMessage
+        {
+            get => _infoDocumentMessage;
+            set
+            {
+                if (_infoDocumentMessage == value)
+                    return;
+
+                _infoDocumentMessage = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private bool _isInfoDocumentExportVisible;
+
+        /// <summary>
+        /// Показывать ли кнопку выгрузки PDF из БД в .\PdfFiles
+        /// </summary>
+        public bool IsInfoDocumentExportVisible
+        {
+            get => _isInfoDocumentExportVisible;
+            set
+            {
+                if (_isInfoDocumentExportVisible == value)
+                    return;
+
+                _isInfoDocumentExportVisible = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
+                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
+            }
+        }
+
+        /// <summary>
+        /// Viewer показываем только когда реально есть локальный файл.
+        /// </summary>
+        public bool IsInfoDocumentViewerVisible =>
+            IsInfoDocumentPage &&
+            !string.IsNullOrWhiteSpace(CurrentEquipInfo?.PdfPreviewPath);
+
+        /// <summary>
+        /// Сообщение показываем, когда viewer неактивен.
+        /// </summary>
+        public bool IsInfoDocumentMessageVisible =>
+            IsInfoDocumentPage && !IsInfoDocumentViewerVisible;
 
         #endregion
 
@@ -2129,6 +2224,26 @@ namespace TechEquipments
             set => InfoStatusText = value;
         }
 
+        InfoPageKind IInfoHost.CurrentInfoPage
+        {
+            get => CurrentInfoPage;
+            set => CurrentInfoPage = value;
+        }
+
+        bool IInfoHost.IsInfoDocumentPage => IsInfoDocumentPage;
+
+        string IInfoHost.InfoDocumentMessage
+        {
+            get => InfoDocumentMessage;
+            set => InfoDocumentMessage = value;
+        }
+
+        bool IInfoHost.IsInfoDocumentExportVisible
+        {
+            get => IsInfoDocumentExportVisible;
+            set => IsInfoDocumentExportVisible = value;
+        }
+
         #endregion
 
         #region IQrHost
@@ -2547,6 +2662,18 @@ namespace TechEquipments
         /// </summary>
         public void Info_ClearPdf()
             => _infoController.ClearPdf();
+
+        /// <summary>
+        /// Тонкий прокси для переключения страниц Info.
+        /// </summary>
+        public Task ShowInfoPageAsync(InfoPageKind page)
+            => _infoController.ShowPageAsync(page);
+
+        /// <summary>
+        /// Тонкий прокси для выгрузки PDF из БД в .\PdfFiles.
+        /// </summary>
+        public Task Info_ExportCurrentDocumentAsync()
+            => _infoController.ExportCurrentDocumentAsync();
 
         #endregion
     }

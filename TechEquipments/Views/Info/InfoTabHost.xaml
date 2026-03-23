@@ -3,169 +3,258 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
              xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
-             xmlns:dxpdf="http://schemas.devexpress.com/winfx/2008/xaml/pdf">
+             xmlns:dxpdf="http://schemas.devexpress.com/winfx/2008/xaml/pdf"
+             xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
+             xmlns:local="clr-namespace:TechEquipments">
 
-    <Grid Margin="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
 
-        <!-- Верхняя панель -->
-        <Grid Grid.Row="0" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="8"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+    <dxlc:LayoutControl Margin="0">
+        <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light" Orientation="Vertical">
 
-            <dx:SimpleButton Grid.Column="0"
-                             Content="Edit"
-                             Width="110"
-                             Style="{StaticResource AppButtonStyle}"
-                             Click="Edit_Click"
-                             IsEnabled="{Binding CanEditInfoButtons}"/>
+            <!-- ================= MAIN CONTENT ================= -->
+            <dxlc:LayoutGroup View="Group" Orientation="Horizontal">
 
-            <dx:SimpleButton Grid.Column="2"
-                             Content="Save"
-                             Width="110"
-                             Style="{StaticResource AppButtonStyle}"
-                             Click="Save_Click"
-                             IsEnabled="{Binding IsInfoEditMode}"/>
+                <!-- ===== CENTER AREA ===== -->
+                <dxlc:LayoutGroup View="Group" Orientation="Vertical" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
-            <TextBlock Grid.Column="3"
-                       Margin="12,0,0,0"
-                       VerticalAlignment="Center"
-                       HorizontalAlignment="Right"
-                       Text="{Binding InfoStatusText}"
-                       Style="{StaticResource AppTextStyle}"/>
-        </Grid>
+                    <!-- ===== GENERAL ===== -->
+                    <dxlc:LayoutGroup View="GroupBox" GroupBoxDisplayMode="Light" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                      Visibility="{Binding IsInfoGeneralPage, Converter={StaticResource BoolToVis}}">
 
-        <!-- Имя оборудования -->
-        <Border Grid.Row="1"
-                Margin="0,0,0,12"
-                Padding="10"
-                BorderThickness="1"
-                BorderBrush="#D0D0D0">
-            <TextBlock FontSize="16"
-                       FontWeight="SemiBold"
-                       Text="{Binding CurrentEquipInfo.EquipName}"/>
-        </Border>
+                        <dxlc:LayoutGroup Orientation="Vertical">
 
-        <!-- Основное содержимое -->
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="430"/>
-                <ColumnDefinition Width="12"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+                            <Grid>
 
-            <!-- Левая часть -->
-            <Border Grid.Column="0"
-                    Padding="12"
-                    BorderThickness="1"
-                    BorderBrush="#D0D0D0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
 
-                        <TextBlock Margin="0,0,0,6"
-                                   Text="Installation time"
-                                   Style="{StaticResource AppLabelTextStyle}"/>
+                                <Grid Margin="6,0,0,0" Grid.Row="0">
 
-                        <dxe:DateEdit Margin="0,0,0,12"
-                                      Style="{StaticResource AppBaseEditStyle}"
-                                      EditValue="{Binding CurrentEquipInfo.InstallTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      IsReadOnly="{Binding IsInfoReadOnly}"
-                                      NullText="Not set"
-                                      Mask="g"
-                                      MaskUseAsDisplayFormat="True"/>
+                                    <Grid.ColumnDefinitions >
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
 
-                        <TextBlock Margin="0,0,0,6"
-                                   Text="Revision time"
-                                   Style="{StaticResource AppLabelTextStyle}"/>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
 
-                        <dxe:DateEdit Margin="0,0,0,12"
-                                      Style="{StaticResource AppBaseEditStyle}"
-                                      EditValue="{Binding CurrentEquipInfo.RevisionTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      IsReadOnly="{Binding IsInfoReadOnly}"
-                                      NullText="Not set"
-                                      Mask="g"
-                                      MaskUseAsDisplayFormat="True"/>
+                                    <!-- Equipment name -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,0,0" Text="Equipment:" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,16" Text="{Binding CurrentEquipInfo.EquipName}"/>
 
-                        <TextBlock Margin="0,0,0,6"
-                                   Text="Image"
-                                   Style="{StaticResource AppLabelTextStyle}"/>
+                                    <!-- Installation time -->
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Installation time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                        <!--
-                        ImageEdit:
-                        - показывает картинку из byte[]
-                        - в edit mode пользователь может загрузить/заменить картинку
-                        -->
-                        <dxe:ImageEdit Height="340"
-                                       HorizontalAlignment="Stretch"
-                                       VerticalAlignment="Stretch"
-                                       Stretch="Uniform"
-                                       NullText="Image is empty"
-                                       EditValue="{Binding CurrentEquipInfo.ImageData, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                       IsReadOnly="{Binding IsInfoReadOnly}"
-                                       ShowLoadDialogOnClickMode="Always"/>
+                                    <dxlc:LayoutItem Grid.Row="1" Grid.Column="1">
+                                        <dxe:DateEdit Style="{StaticResource AppBaseEditStyle}"
+                                                  EditValue="{Binding CurrentEquipInfo.InstallTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  IsReadOnly="{Binding IsInfoReadOnly}"
+                                                  NullText="Not set"
+                                                  Mask="g"
+                                                  MaskUseAsDisplayFormat="True"/>
+                                    </dxlc:LayoutItem>
 
-                        <TextBlock Margin="0,8,0,0"
-                                   Text="{Binding CurrentEquipInfo.ImageFileName}"
-                                   TextWrapping="Wrap"
-                                   Style="{StaticResource AppTextStyle}"/>
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
+                                    <!-- Revision time -->
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Revision time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-            <!-- Правая часть -->
-            <Border Grid.Column="2"
-                    Padding="12"
-                    BorderThickness="1"
-                    BorderBrush="#D0D0D0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+                                    <dxlc:LayoutItem Grid.Row="2" Grid.Column="1" Padding="0,6">
+                                        <dxe:DateEdit Style="{StaticResource AppBaseEditStyle}"
+                                                  EditValue="{Binding CurrentEquipInfo.RevisionTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  IsReadOnly="{Binding IsInfoReadOnly}"
+                                                  NullText="Not set"
+                                                  Mask="g"
+                                                  MaskUseAsDisplayFormat="True"/>
+                                    </dxlc:LayoutItem>
 
-                    <StackPanel Grid.Row="0"
-                                Orientation="Horizontal"
-                                Margin="0,0,0,10">
-                        <dx:SimpleButton Content="Load PDF"
-                                         Width="120"
-                                         Margin="0,0,8,0"
-                                         Style="{StaticResource AppButtonStyle}"
-                                         Click="LoadPdf_Click"
-                                         IsEnabled="{Binding IsInfoEditMode}"/>
+                                </Grid>
 
-                        <dx:SimpleButton Content="Clear PDF"
-                                         Width="120"
-                                         Style="{StaticResource AppButtonStyle}"
-                                         Click="ClearPdf_Click"
-                                         IsEnabled="{Binding IsInfoEditMode}"/>
-                    </StackPanel>
+                                <!-- Image -->
+                                <dxlc:LayoutItem Grid.Row="1">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition MinHeight="455" Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="1"
-                               Margin="0,0,0,10"
-                               Text="{Binding CurrentEquipInfo.PdfFileName}"
-                               TextWrapping="Wrap"
-                               Style="{StaticResource AppTextStyle}"/>
+                                        <dxe:ImageEdit Grid.Row="0" Stretch="Uniform"
+                                                   NullText="Image is empty"
+                                                   EditValue="{Binding CurrentEquipInfo.ImageData, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                   IsReadOnly="{Binding IsInfoReadOnly}"
+                                                   ShowLoadDialogOnClickMode="Always"/>
 
-                    <!--
-                    PdfViewerControl:
-                    - DocumentSource можно давать byte[]
-                    - встроенный toolbar скрываем, чтобы вкладка была компактнее
-                    -->
-                    <dxpdf:PdfViewerControl Grid.Row="2"
-                                            CommandBarStyle="None"
-                                            ShowStartScreen="False"
-                                            DocumentSource="{Binding CurrentEquipInfo.PdfData}"/>
-                </Grid>
-            </Border>
-        </Grid>
-    </Grid>
+                                        <TextBlock Grid.Row="1" Margin="0,6,0,0"
+                                               Text="{Binding CurrentEquipInfo.ImageFileName}"
+                                               TextWrapping="Wrap"
+                                               Style="{StaticResource AppTextStyle}"/>
+                                    </Grid>
+                                </dxlc:LayoutItem>
+
+                            </Grid>
+
+                        </dxlc:LayoutGroup>
+                    </dxlc:LayoutGroup>
+
+                    <!-- ===== PDF / SCHEME ===== -->
+                    <dxlc:LayoutGroup Header="{Binding CurrentInfoDocumentHeader}"
+                                      View="GroupBox"
+                                      GroupBoxDisplayMode="Light"
+                                      Visibility="{Binding IsInfoDocumentPage, Converter={StaticResource BoolToVis}}"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch">
+
+                        <dxlc:LayoutGroup Orientation="Vertical">
+
+                            <dxlc:LayoutGroup View="Group" Orientation="Horizontal">
+                                <dxlc:LayoutItem Label="" Width="130">
+                                    <dx:SimpleButton Content="Load PDF"
+                                                     Width="120"
+                                                     Style="{StaticResource AppButtonStyle}"
+                                                     Click="LoadPdf_Click"
+                                                     IsEnabled="{Binding IsInfoEditMode}"/>
+                                </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="" Width="130">
+                                    <dx:SimpleButton Content="Clear PDF"
+                                                     Width="120"
+                                                     Style="{StaticResource AppButtonStyle}"
+                                                     Click="ClearPdf_Click"
+                                                     IsEnabled="{Binding IsInfoEditMode}"/>
+                                </dxlc:LayoutItem>
+                            </dxlc:LayoutGroup>
+
+                            <dxlc:LayoutItem Label="">
+                                <TextBlock Text="{Binding CurrentEquipInfo.PdfFileName}"
+                                           TextWrapping="Wrap"
+                                           Style="{StaticResource AppTextStyle}"/>
+                            </dxlc:LayoutItem>
+
+                            <dxlc:LayoutItem Label="" VerticalAlignment="Stretch">
+                                <Grid MinHeight="520">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Сообщение + кнопка выгрузки -->
+                                    <StackPanel Grid.Row="0" Margin="0,0,0,12" Visibility="{Binding IsInfoDocumentMessageVisible, Converter={StaticResource BoolToVis}}">
+
+                                        <TextBlock Text="{Binding InfoDocumentMessage}" TextWrapping="Wrap" Style="{StaticResource AppTextStyle}"/>
+
+                                        <dx:SimpleButton Content="Export PDF"
+                                                         Width="140"
+                                                         Margin="0,10,0,0"
+                                                         HorizontalAlignment="Left"
+                                                         Style="{StaticResource AppButtonStyle}"
+                                                         Click="ExportPdf_Click"
+                                                         Visibility="{Binding IsInfoDocumentExportVisible, Converter={StaticResource BoolToVis}}"/>
+                                    </StackPanel>
+
+                                    <!-- Viewer -->
+                                    <dxpdf:PdfViewerControl Grid.Row="1"
+                                CommandBarStyle="None"
+                                ShowStartScreen="False"
+                                DocumentSource="{Binding CurrentEquipInfo.PdfPreviewPath}"
+                                Visibility="{Binding IsInfoDocumentViewerVisible, Converter={StaticResource BoolToVis}}"/>
+                                </Grid>
+                            </dxlc:LayoutItem>
+
+                        </dxlc:LayoutGroup>
+                    </dxlc:LayoutGroup>
+
+                </dxlc:LayoutGroup>
+
+                <!-- ================= RIGHT BLOCK (buttons) ================= -->
+                <dxlc:LayoutGroup View="Group" GroupBoxDisplayMode="Light" HorizontalAlignment="Right">
+                    <!--<dxlc:LayoutItem Label="">
+                            <TextBlock Text="{Binding InfoStatusText}"
+                                       TextAlignment="Right"
+                                       TextWrapping="Wrap"
+                                       Style="{StaticResource AppTextStyle}"/>
+                        </dxlc:LayoutItem>-->
+
+                    <!-- Один LayoutItem, внутри Grid с "пружиной" -->
+                    <dxlc:LayoutItem VerticalAlignment="Stretch">
+                        <Grid VerticalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <!-- верхние кнопки -->
+                                <RowDefinition Height="*"/>
+                                <!-- пружина -->
+                                <RowDefinition Height="Auto"/>
+                                <!-- нижняя кнопка -->
+                            </Grid.RowDefinitions>
+
+                            <!-- Верх -->
+                            <StackPanel Grid.Row="0" Orientation="Vertical" VerticalAlignment="Top">
+
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60" Height="60" Padding="0"
+                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Spreadsheet/NameManager.svg'}"
+                                                     Tag="{x:Static local:InfoPageKind.General}"
+                                                     Click="PageButton_Click" ToolTip="General"
+                                                     Style="{StaticResource AppButtonStyle}" />
+                                    </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
+                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/XAF/OutlookNavigation_Reading.svg'}"
+                                                     Tag="{x:Static local:InfoPageKind.Pdf}"
+                                                     Click="PageButton_Click" ToolTip="Instruction"
+                                                     Style="{StaticResource AppButtonStyle}" />
+                                </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
+                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Spreadsheet/ShowTabularFormPivotTable.svg'}"
+                                                     Tag="{x:Static local:InfoPageKind.Scheme}"
+                                                     Click="PageButton_Click" ToolTip="Scheme"
+                                                     Style="{StaticResource AppButtonStyle}" />
+                                </dxlc:LayoutItem>
+                                
+                            </StackPanel>
+
+                            <!-- Низ -->
+                            <StackPanel Grid.Row="2" Orientation="Vertical" VerticalAlignment="Top">
+
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60" Height="60" Padding="0"
+                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/XAF/Action_Edit.svg'}"                                                     
+                                                     Click="Edit_Click" ToolTip="Edit"
+                                                     Style="{StaticResource AppButtonStyle}"
+                                                     IsEnabled="{Binding CanEditInfoButtons}"/>
+                                </dxlc:LayoutItem>
+
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
+                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"                                                     
+                                                     Click="Save_Click" ToolTip="Save"
+                                                     Style="{StaticResource AppButtonStyle}"
+                                                     IsEnabled="{Binding IsInfoEditMode}"/>
+                                </dxlc:LayoutItem>
+
+                            </StackPanel>
+
+
+
+
+                        </Grid>
+                    </dxlc:LayoutItem>
+
+                </dxlc:LayoutGroup>
+                    
+            </dxlc:LayoutGroup>
+
+        </dxlc:LayoutGroup>
+
+    </dxlc:LayoutControl>
 </UserControl>

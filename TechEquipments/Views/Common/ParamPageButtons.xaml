@@ -26,7 +26,7 @@
                          Tag="{x:Static local:ParamSettingsPage.None}"
                          Click="PageButton_Click"
                          ToolTip="Chart"
-                         Glyph="{dx:DXImage 'SvgImages/Chart/Chart.svg'}"
+                         Glyph="{dx:DXImage 'SvgImages/Spreadsheet/CreateScatterChartLinesAndMarkers.svg'}"
                          Style="{StaticResource AppButtonStyle}" />
 
         <!-- PLC -->

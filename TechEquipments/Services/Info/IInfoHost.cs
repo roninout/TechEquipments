@@ -23,5 +23,15 @@ namespace TechEquipments
         bool IsInfoEditMode { get; set; }
 
         string InfoStatusText { get; set; }
+
+        // ===== Document/page state =====
+
+        InfoPageKind CurrentInfoPage { get; set; }
+
+        bool IsInfoDocumentPage { get; }
+
+        string InfoDocumentMessage { get; set; }
+
+        bool IsInfoDocumentExportVisible { get; set; }
     }
 }
