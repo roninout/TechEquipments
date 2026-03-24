@@ -12,6 +12,7 @@ namespace TechEquipments
     {
         private long _id;
         private string _equipName = "";
+        private string _equipTypeGroupKey = "";
         private string _fileName = "";
         private string _displayName = "";
         private string _fileHash = "";
@@ -33,6 +34,16 @@ namespace TechEquipments
         {
             get => _equipName;
             set => SetField(ref _equipName, value);
+        }
+
+        /// <summary>
+        /// Ключ группы типа оборудования, например:
+        /// Motor, AI, DI, VGA, VGD, Atv...
+        /// </summary>
+        public string EquipTypeGroupKey
+        {
+            get => _equipTypeGroupKey;
+            set => SetField(ref _equipTypeGroupKey, value);
         }
 
         public string FileName

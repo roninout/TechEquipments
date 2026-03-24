@@ -15,11 +15,10 @@ namespace TechEquipments
 
         Task SaveAsync(EquipmentInfoDto model, CancellationToken ct = default);
 
-        Task<IReadOnlyList<EquipmentInfoFileDto>> GetLibraryAsync(InfoFileKind kind, CancellationToken ct = default);
+        Task<IReadOnlyList<EquipmentInfoFileDto>> GetLibraryAsync(InfoFileKind kind, string equipTypeGroupKey, CancellationToken ct = default);
 
-        Task<EquipInfoLibraryAddResult> AddFilesToLibraryAsync(
-            InfoFileKind kind,
-            IEnumerable<string> filePaths,
-            CancellationToken ct = default);
+        Task<EquipInfoLibraryAddResult> AddFilesToLibraryAsync( InfoFileKind kind, string equipTypeGroupKey, IEnumerable<string> filePaths, CancellationToken ct = default);
+
+        Task<EquipmentInfoFileDto?> GetLibraryFileByIdAsync(InfoFileKind kind, long id, CancellationToken ct = default);
     }
 }

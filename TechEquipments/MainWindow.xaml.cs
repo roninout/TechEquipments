@@ -2924,8 +2924,8 @@ namespace TechEquipments
         /// <summary>
         /// Синхронизировать linked photo files из checked-combo.
         /// </summary>
-        public void Info_OnPhotoLibraryEditValueChanged()
-            => _infoController.SyncPhotoSelectionFromLibrary();
+        public Task Info_OnPhotoLibraryEditValueChangedAsync()
+            => _infoController.SyncPhotoSelectionFromLibraryAsync();
 
         /// <summary>
         /// Синхронизировать linked document files из checked-combo.

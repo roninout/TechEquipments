@@ -73,9 +73,10 @@ namespace TechEquipments.Views.Info
                 await Host.ShowInfoPageAsync(page);
         }
 
-        private void PhotoLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)
+        private async void PhotoLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)
         {
-            Host?.Info_OnPhotoLibraryEditValueChanged();
+            if (Host != null)
+                await Host.Info_OnPhotoLibraryEditValueChangedAsync();
         }
 
         private async void DocumentLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)

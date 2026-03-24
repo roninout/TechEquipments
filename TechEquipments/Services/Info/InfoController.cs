@@ -25,6 +25,7 @@ namespace TechEquipments
         private readonly IEquipInfoService _equipInfoService;
         private readonly IInfoHost _host;
         private int _loadCurrentRequestId;
+        private bool _suppressLibrarySelectionSync;
 
         public InfoController(IEquipInfoService equipInfoService, IInfoHost host)
         {
@@ -225,14 +226,32 @@ namespace TechEquipments
             if (dlg.ShowDialog(_host.OwnerWindow) != true)
                 return;
 
-            var addResult = await _equipInfoService.AddFilesToLibraryAsync(InfoFileKind.Photo, dlg.FileNames);
+            var equipTypeGroupKey = ResolveSelectedEquipTypeGroupKey();
+            if (string.IsNullOrWhiteSpace(equipTypeGroupKey))
+                return;
+
+            var addResult = await _equipInfoService.AddFilesToLibraryAsync(
+                InfoFileKind.Photo,
+                equipTypeGroupKey,
+                dlg.FileNames);
 
             await LoadLibrariesAsync();
 
             MergeAssetsIntoSelection(_host.CurrentEquipInfo.Photos, addResult.ResolvedAssets, equipName);
             SyncCheckedSelectionsFromCurrentModel();
 
-            _host.SelectedInfoPhotoFile = _host.CurrentEquipInfo.Photos.FirstOrDefault();
+            // После Add выбираем именно добавленный/подцепленный файл, а не первый в списке.
+            var selectedPhoto = addResult.ResolvedAssets.LastOrDefault(asset => asset != null && asset.Id > 0);
+
+            if (selectedPhoto != null)
+            {
+                _host.SelectedInfoPhotoFile = _host.CurrentEquipInfo.Photos
+                    .FirstOrDefault(x => x.Id == selectedPhoto.Id);
+            }
+            else
+            {
+                _host.SelectedInfoPhotoFile = _host.CurrentEquipInfo.Photos.FirstOrDefault();
+            }
 
             if (addResult.ExistingInLibraryFileNames.Count > 0)
             {
@@ -245,8 +264,7 @@ namespace TechEquipments
                     MessageBoxImage.Information);
             }
 
-            _host.InfoStatusText =
-                $"Images linked: {_host.CurrentEquipInfo.Photos.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
+            _host.InfoStatusText = $"Images linked: {_host.CurrentEquipInfo.Photos.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
         }
 
         public void RemoveSelectedPhoto()
@@ -303,7 +321,14 @@ namespace TechEquipments
             if (dlg.ShowDialog(_host.OwnerWindow) != true)
                 return;
 
-            var addResult = await _equipInfoService.AddFilesToLibraryAsync(kind, dlg.FileNames);
+            var equipTypeGroupKey = ResolveSelectedEquipTypeGroupKey();
+            if (string.IsNullOrWhiteSpace(equipTypeGroupKey))
+                return;
+
+            var addResult = await _equipInfoService.AddFilesToLibraryAsync(
+                kind,
+                equipTypeGroupKey,
+                dlg.FileNames);
 
             await LoadLibrariesAsync();
 
@@ -414,7 +439,7 @@ namespace TechEquipments
                 return Task.CompletedTask;
             }
 
-            var expectedPath = GetExpectedDocumentPath(_host.CurrentInfoPage, selected.FileName);
+            var expectedPath = GetExpectedDocumentPath(_host.CurrentInfoPage, selected.EquipTypeGroupKey, selected.FileName);
 
             if (File.Exists(expectedPath))
             {
@@ -516,45 +541,6 @@ namespace TechEquipments
             }
         }
 
-        private static async Task<(List<EquipmentInfoFileDto> added, List<string> duplicates)> AddFilesToCollectionAsync(IEnumerable<string> fileNames, ObservableCollection<EquipmentInfoFileDto> target, string equipName)
-        {
-            var added = new List<EquipmentInfoFileDto>();
-            var duplicates = new List<string>();
-
-            foreach (var path in fileNames ?? Enumerable.Empty<string>())
-            {
-                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                    continue;
-
-                var bytes = await File.ReadAllBytesAsync(path);
-                if (bytes.Length == 0)
-                    continue;
-
-                var hash = ComputeFileHash(bytes);
-
-                if (target.Any(x => string.Equals(x.FileHash, hash, StringComparison.OrdinalIgnoreCase)))
-                {
-                    duplicates.Add(Path.GetFileName(path));
-                    continue;
-                }
-
-                var item = new EquipmentInfoFileDto
-                {
-                    EquipName = equipName,
-                    FileName = Path.GetFileName(path),
-                    DisplayName = Path.GetFileName(path),
-                    FileHash = hash,
-                    FileData = bytes,
-                    SortOrder = target.Count
-                };
-
-                target.Add(item);
-                added.Add(item);
-            }
-
-            return (added, duplicates);
-        }
-
         private static void NormalizeSortOrder(ObservableCollection<EquipmentInfoFileDto> files, string equipName)
         {
             if (files == null)
@@ -584,11 +570,9 @@ namespace TechEquipments
             return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
-        private static string GetInstructionFolder()
-            => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Instruction");
+        private static string GetInstructionFolder() => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Instruction");
 
-        private static string GetSchemesFolder()
-            => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Schemes");
+        private static string GetSchemesFolder() => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Schemes");
 
         private static string MakeSafeFileName(string text)
         {
@@ -605,12 +589,22 @@ namespace TechEquipments
             return safe;
         }
 
-        private string GetExpectedDocumentPath(InfoPageKind page, string? originalFileName)
+        private string GetExpectedDocumentPath(InfoPageKind page, string? equipTypeGroupKey, string? originalFileName)
         {
-            var folder = page == InfoPageKind.Scheme ? GetSchemesFolder() : GetInstructionFolder();
+            var rootFolder = page == InfoPageKind.Scheme
+                ? GetSchemesFolder()
+                : GetInstructionFolder();
 
+            var safeTypeGroup = MakeSafeFileName((equipTypeGroupKey ?? "").Trim());
+            if (string.IsNullOrWhiteSpace(safeTypeGroup))
+                safeTypeGroup = "Unknown";
+
+            var folder = Path.Combine(rootFolder, safeTypeGroup);
             Directory.CreateDirectory(folder);
 
+            // ВАЖНО:
+            // сохраняем оригинальное имя файла без префикса,
+            // но разводим кеш по подпапкам типа оборудования.
             var safeName = MakeSafeFileName((originalFileName ?? "").Trim());
 
             if (string.IsNullOrWhiteSpace(safeName))
@@ -624,7 +618,10 @@ namespace TechEquipments
             if (file.FileData == null || file.FileData.Length == 0)
                 throw new InvalidOperationException("Selected document has no data.");
 
-            var path = GetExpectedDocumentPath(page, file.FileName);
+            var path = GetExpectedDocumentPath(
+                page,
+                file.EquipTypeGroupKey,
+                file.FileName);
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
@@ -640,6 +637,7 @@ namespace TechEquipments
             {
                 Id = src.Id,
                 EquipName = equipName,
+                EquipTypeGroupKey = src.EquipTypeGroupKey,
                 FileName = src.FileName,
                 DisplayName = src.DisplayName,
                 FileHash = src.FileHash,
@@ -659,9 +657,19 @@ namespace TechEquipments
 
         private async Task LoadLibrariesAsync()
         {
-            var photos = await _equipInfoService.GetLibraryAsync(InfoFileKind.Photo);
-            var instructions = await _equipInfoService.GetLibraryAsync(InfoFileKind.Instruction);
-            var schemes = await _equipInfoService.GetLibraryAsync(InfoFileKind.Scheme);
+            var equipTypeGroupKey = ResolveSelectedEquipTypeGroupKey();
+
+            if (string.IsNullOrWhiteSpace(equipTypeGroupKey))
+            {
+                _host.AvailableInfoPhotoLibrary.Clear();
+                _host.AvailableInfoInstructionLibrary.Clear();
+                _host.AvailableInfoSchemeLibrary.Clear();
+                return;
+            }
+
+            var photos = await _equipInfoService.GetLibraryAsync(InfoFileKind.Photo, equipTypeGroupKey);
+            var instructions = await _equipInfoService.GetLibraryAsync(InfoFileKind.Instruction, equipTypeGroupKey);
+            var schemes = await _equipInfoService.GetLibraryAsync(InfoFileKind.Scheme, equipTypeGroupKey);
 
             ReplaceCollection(_host.AvailableInfoPhotoLibrary, photos);
             ReplaceCollection(_host.AvailableInfoInstructionLibrary, instructions);
@@ -681,9 +689,18 @@ namespace TechEquipments
 
         private void SyncCheckedSelectionsFromCurrentModel()
         {
-            _host.SelectedInfoPhotoLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Photos);
-            _host.SelectedInfoInstructionLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Instructions);
-            _host.SelectedInfoSchemeLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Schemes);
+            _suppressLibrarySelectionSync = true;
+
+            try
+            {
+                _host.SelectedInfoPhotoLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Photos);
+                _host.SelectedInfoInstructionLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Instructions);
+                _host.SelectedInfoSchemeLibraryIds = ToCheckedIds(_host.CurrentEquipInfo?.Schemes);
+            }
+            finally
+            {
+                _suppressLibrarySelectionSync = false;
+            }
         }
 
         private ObservableCollection<EquipmentInfoFileDto> GetLibraryCollection(InfoFileKind kind)
@@ -737,16 +754,36 @@ namespace TechEquipments
                 .Distinct()
                 .ToList();
 
-            target.Clear();
+            // Сохраняем уже существующие linked items,
+            // потому что в них может быть FileData, а в library list его нет.
+            var existingById = target
+                .Where(x => x != null && x.Id > 0)
+                .GroupBy(x => x.Id)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var rebuilt = new List<EquipmentInfoFileDto>();
 
             foreach (var id in selectedIds)
             {
+                // 1) Если item уже есть в linked model — берём его,
+                // чтобы не потерять FileData.
+                if (existingById.TryGetValue(id, out var existing))
+                {
+                    rebuilt.Add(CloneFile(existing, equipName));
+                    continue;
+                }
+
+                // 2) Иначе берём из library list
                 var libItem = library.FirstOrDefault(x => x.Id == id);
                 if (libItem == null)
                     continue;
 
-                target.Add(CloneFile(libItem, equipName));
+                rebuilt.Add(CloneFile(libItem, equipName));
             }
+
+            target.Clear();
+            foreach (var item in rebuilt)
+                target.Add(item);
 
             NormalizeSortOrder(target, equipName);
 
@@ -764,6 +801,55 @@ namespace TechEquipments
                     _host.SelectedInfoSchemeFile = target.FirstOrDefault();
                     break;
             }
+        }
+
+        private async Task ApplyCheckedPhotoSelectionToModelAsync()
+        {
+            if (_host.CurrentEquipInfo == null)
+                return;
+
+            var equipName = (_host.CurrentEquipInfo.EquipName ?? "").Trim();
+            var target = _host.CurrentEquipInfo.Photos;
+            var checkedIds = _host.SelectedInfoPhotoLibraryIds ?? new List<object>();
+
+            var selectedIds = checkedIds
+                .Select(TryConvertToInt64)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+
+            // Что уже есть в linked model — сохраняем, включая FileData
+            var existingById = target
+                .Where(x => x != null && x.Id > 0)
+                .GroupBy(x => x.Id)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var rebuilt = new List<EquipmentInfoFileDto>();
+
+            foreach (var id in selectedIds)
+            {
+                // Уже есть в linked model -> не теряем FileData
+                if (existingById.TryGetValue(id, out var existing))
+                {
+                    rebuilt.Add(CloneFile(existing, equipName));
+                    continue;
+                }
+
+                // Новый выбор из library -> догружаем полный record с FileData
+                var fullPhoto = await _equipInfoService.GetLibraryFileByIdAsync(InfoFileKind.Photo, id);
+                if (fullPhoto == null)
+                    continue;
+
+                rebuilt.Add(CloneFile(fullPhoto, equipName));
+            }
+
+            target.Clear();
+            foreach (var item in rebuilt)
+                target.Add(item);
+
+            NormalizeSortOrder(target, equipName);
+
+            _host.SelectedInfoPhotoFile = target.FirstOrDefault();
         }
 
         private static long TryConvertToInt64(object? value)
@@ -803,18 +889,24 @@ namespace TechEquipments
             NormalizeSortOrder(target, equipName);
         }
 
-        public void SyncPhotoSelectionFromLibrary()
+        public async Task SyncPhotoSelectionFromLibraryAsync()
         {
+            if (_suppressLibrarySelectionSync)
+                return;
+
             if (!_host.IsInfoEditMode || _host.CurrentEquipInfo == null)
                 return;
 
-            ApplyCheckedSelectionToModel(InfoFileKind.Photo);
-            SyncCheckedSelectionsFromCurrentModel();
+            await ApplyCheckedPhotoSelectionToModelAsync();
+
             _host.InfoStatusText = "Photo links updated.";
         }
 
         public async Task SyncCurrentDocumentSelectionFromLibraryAsync()
         {
+            if (_suppressLibrarySelectionSync)
+                return;
+
             if (!_host.IsInfoEditMode || _host.CurrentEquipInfo == null || !_host.IsInfoDocumentPage)
                 return;
 
@@ -823,12 +915,20 @@ namespace TechEquipments
                 : InfoFileKind.Instruction;
 
             ApplyCheckedSelectionToModel(kind);
-            SyncCheckedSelectionsFromCurrentModel();
 
             _host.CurrentInfoDocumentPreviewPath = null;
             await PrepareCurrentDocumentAsync();
 
             _host.InfoStatusText = "Document links updated.";
+        }
+
+        private string ResolveSelectedEquipTypeGroupKey()
+        {
+            var group = _host.SelectedListBoxEquipment?.TypeGroup ?? EquipTypeGroup.All;
+
+            return group == EquipTypeGroup.All
+                ? ""
+                : group.ToString();
         }
     }
 }
