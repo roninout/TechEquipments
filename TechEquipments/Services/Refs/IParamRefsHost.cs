@@ -50,7 +50,7 @@ namespace TechEquipments
         void NotifySectionLoaded(string equipName, ParamSettingsPage page, ParamLoadState state);
 
         // Helpers из MainWindow
-        (string equipName, string equipType) ResolveSelectedEquipForParam();
+        (string equipName, string equipType, string equipDescription) ResolveSelectedEquipForParam();
         bool IsEquipmentVisible(EquipListBoxItem item);
         void ApplyFilters();
         void DoIncrementalSearch(string text);

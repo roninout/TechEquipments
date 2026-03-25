@@ -1,11 +1,12 @@
-﻿using DevExpress.Xpf.Editors;
+﻿using CtApi;
+using DevExpress.Xpf.Editors;
+using DevExpress.XtraRichEdit.Import.Html;
 using System;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using CtApi;
 
 namespace TechEquipments
 {
@@ -17,7 +18,7 @@ namespace TechEquipments
     {
         private readonly IEquipmentService _equipmentService;
         private readonly Func<MainTabKind> _getSelectedTab;
-        private readonly Func<(string equipName, string equipType)> _resolveSelectedEquip;
+        private readonly Func<(string equipName, string equipType, string equipDescription)> _resolveSelectedEquip;
         private readonly Func<object, string> _resolveEquipNameForWrite;
         private readonly Func<bool> _getSuppressWritesFromPolling;
         private readonly Func<bool> _getSuppressWritesFromUiRollback;
@@ -39,7 +40,7 @@ namespace TechEquipments
             int requiredWriteArea,
             string requiredUserNameContains,
             Func<MainTabKind> getSelectedTab,
-            Func<(string equipName, string equipType)> resolveSelectedEquip,
+            Func<(string equipName, string equipType, string equipDescription)> resolveSelectedEquip,
             Func<object, string> resolveEquipNameForWrite,
             Func<bool> getSuppressWritesFromPolling,
             Func<bool> getSuppressWritesFromUiRollback,
@@ -226,7 +227,7 @@ namespace TechEquipments
             if (_getSelectedTab() != MainTabKind.Param)
                 return;
 
-            var (equipName, _) = _resolveSelectedEquip();
+            var (equipName, _, _) = _resolveSelectedEquip();
             var equip = (equipName ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(equip))
@@ -307,7 +308,7 @@ namespace TechEquipments
 
                 _setBottomText($"Write: {equipItem}={writeValueStr} ...");
 
-                await _equipmentService.WriteTagNameAsync(tagName, writeValueStr);               
+                await _equipmentService.WriteTagNameAsync(tagName, writeValueStr);
 
                 // Логируем действие оператора
                 await TrySaveOperatorActionAsync(name: $"{row.EquipName}.{row.RefItem}", currentValue: row.Value, newValue: writeValueStr, description: row.Comment);
@@ -415,7 +416,9 @@ namespace TechEquipments
                 var safeCurrent = ToCicodeValueArg(currentValue);
                 var safeNew = ToCicodeValueArg(newValue);
                 var safeDescription = ToCicodeStringArg((description ?? ""));
+                var (_, _, equipDescription) = _resolveSelectedEquip();
 
+                await _ctApiService.TagWriteAsync("sWndTitle", $"\"{equipDescription}\"");
                 await _ctApiService.CicodeAsync($"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription})");
             }
             catch
@@ -572,49 +575,6 @@ namespace TechEquipments
                 return false;
             }
         }
-
-
-        /// <summary>
-        /// Checks whether the current SCADA operator has enough privilege to write.
-        /// If access is denied, shows an English DX message and returns false.
-        /// </summary>
-        //private async Task<bool> EnsureWritePrivilegeAsync()
-        //{
-        //    try
-        //    {
-        //        var hasPrivilege = await _ctApiService.GetPrivAsync(_requiredWritePrivilege, _requiredWriteArea);
-        //        if (hasPrivilege)
-        //            return true;
-
-        //        var userName = "";
-        //        try
-        //        {
-        //            userName = (await _ctApiService.UserInfoAsync(2)).Trim();
-        //        }
-        //        catch
-        //        {
-        //            // best-effort only
-        //        }
-
-        //        if (string.IsNullOrWhiteSpace(userName))
-        //            userName = "Unknown user";
-
-        //        DevExpress.Xpf.Core.DXMessageBox.Show(_getOwnerWindow(), $"User '{userName}' does not have sufficient access level to perform this operation.", "Access denied",
-        //            MessageBoxButton.OK, MessageBoxImage.Warning);
-
-        //        _setBottomText($"Write denied: insufficient access for {userName}");
-        //        return false;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _setBottomText($"Security check error: {ex.Message}");
-
-        //        DevExpress.Xpf.Core.DXMessageBox.Show( _getOwnerWindow(), "Unable to verify access level. The write operation has been cancelled.", "Security check error",
-        //            MessageBoxButton.OK, MessageBoxImage.Warning);
-
-        //        return false;
-        //    }
-        //}
 
         #endregion
     }

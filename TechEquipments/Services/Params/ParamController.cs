@@ -181,14 +181,14 @@ namespace TechEquipments
             {
                 _host.BottomText = $"Param read error: {ex.Message}";
 
-                var (equipName, _) = _host.ResolveSelectedEquipForParam();
+                var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
                 _host.NotifyMainParamLoaded((equipName ?? "").Trim(), ParamLoadState.Error);
             }
         }
 
         private async Task PollParamOnceAsync(CancellationToken ct)
         {
-            var (equipName, equipType) = _host.ResolveSelectedEquipForParam();
+            var (equipName, equipType, _) = _host.ResolveSelectedEquipForParam();
 
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
@@ -340,7 +340,7 @@ namespace TechEquipments
         /// </summary>
         private string BuildPollKey()
         {
-            var (equipName, equipType) = _host.ResolveSelectedEquipForParam();
+            var (equipName, equipType, _) = _host.ResolveSelectedEquipForParam();
 
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();

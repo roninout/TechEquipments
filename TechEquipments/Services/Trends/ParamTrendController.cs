@@ -27,7 +27,7 @@ namespace TechEquipments
         private readonly ICtApiService _ctApiService;
 
         // Как получить контекст (из MainWindow)
-        private readonly Func<(string equipName, string equipType)> _resolveEquip;
+        private readonly Func<(string equipName, string equipType, string equipDescription)> _resolveEquip;
         private readonly Func<object?> _getParamModel;
         private readonly Func<int> _getParamCycles;
 
@@ -70,7 +70,7 @@ namespace TechEquipments
 
         #endregion
 
-        public ParamTrendController(ParamTrendVm vm, Dispatcher ui, IEquipmentService equipmentService, ICtApiService ctApiService, Func<(string equipName, string equipType)> resolveEquip, Func<object?> getParamModel,Func<int> getParamCycles)
+        public ParamTrendController(ParamTrendVm vm, Dispatcher ui, IEquipmentService equipmentService, ICtApiService ctApiService, Func<(string equipName, string equipType, string equipDescription)> resolveEquip, Func<object?> getParamModel,Func<int> getParamCycles)
         {
             _vm = vm;
             _ui = ui;
@@ -290,7 +290,7 @@ namespace TechEquipments
         /// </summary>
         private async Task PollOnceAsync(CancellationToken ct)
         {
-            var (equipName, _) = _resolveEquip();
+            var (equipName, _, _) = _resolveEquip();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
 
@@ -495,7 +495,7 @@ namespace TechEquipments
         /// </summary>
         private async Task LoadHistoryWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
         {
-            var (equipName, _) = _resolveEquip();
+            var (equipName, _, _) = _resolveEquip();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
 

@@ -754,7 +754,7 @@ namespace TechEquipments
             if (page != ParamSettingsPage.None && !CurrentParamSupportsPage(page))
                 return;
 
-            var (equipName, _) = ResolveSelectedEquipForParam();
+            var (equipName, _, _) = ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
 
             SetParamSettingsPage(page);
@@ -2251,16 +2251,13 @@ namespace TechEquipments
             _paramController?.Stop();
         }
 
-        private (string equipName, string equipType) ResolveSelectedEquipForParam()
+        private (string equipName, string equipType, string equipDescription) ResolveSelectedEquipForParam()
         {
-            // Приоритет: выбранный элемент списка
-            if (SelectedListBoxEquipment != null && !string.IsNullOrWhiteSpace(SelectedListBoxEquipment.Equipment))
-            {
-                return (SelectedListBoxEquipment.Equipment.Trim(), (SelectedListBoxEquipment.Type ?? "").Trim());
-            }
+            var selected = SelectedListBoxEquipment;
+            if (selected == null)
+                return ("", "", "");
 
-            // Фолбэк: то, что в строке поиска
-            return ((EquipName ?? "").Trim(), "");
+            return (selected.Equipment ?? "", selected.Type ?? "", selected.Description ?? "");
         }
 
         public void BeginParamFieldEdit()
@@ -2645,7 +2642,7 @@ namespace TechEquipments
 
         ObservableCollection<ParamItem> IParamHost.ParamItems => ParamItems;
 
-        (string equipName, string equipType) IParamHost.ResolveSelectedEquipForParam()
+        (string equipName, string equipType, string equipDescription) IParamHost.ResolveSelectedEquipForParam()
             => ResolveSelectedEquipForParam();
 
         void IParamHost.Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup)
@@ -2713,7 +2710,7 @@ namespace TechEquipments
             OnPropertyChanged(nameof(DryRunModel));
         }
 
-        (string equipName, string equipType) IParamRefsHost.ResolveSelectedEquipForParam()
+        (string equipName, string equipType, string equipDescription) IParamRefsHost.ResolveSelectedEquipForParam()
             => ResolveSelectedEquipForParam();
 
         bool IParamRefsHost.IsEquipmentVisible(EquipListBoxItem item)
@@ -2864,7 +2861,7 @@ namespace TechEquipments
                 // ATV секция внутри Motor работает с linked ATV equipment
                 if (fe.DataContext is AtvParam)
                 {
-                    var (_, equipType) = ResolveSelectedEquipForParam();
+                    var (_, equipType, _) = ResolveSelectedEquipForParam();
                     var currentGroup = EquipTypeRegistry.GetGroup(equipType ?? "");
 
                     if (currentGroup == EquipTypeGroup.Motor &&

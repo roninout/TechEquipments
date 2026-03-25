@@ -61,7 +61,7 @@ namespace TechEquipments
             if (page == ParamSettingsPage.None)
                 return;
 
-            var (equipName, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
 
             // Нет выбранного оборудования -> секция недоступна
@@ -248,7 +248,7 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshDiDoSectionAsync(CancellationToken ct)
         {
-            var (equipName, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
@@ -357,7 +357,7 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshPlcSectionAsync(CancellationToken ct)
         {
-            var (equipName, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
@@ -537,7 +537,7 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshDryRunSectionAsync(CancellationToken ct)
         {
-            var (equipName, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
             {
@@ -995,7 +995,7 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshAtvSectionAsync(CancellationToken ct)
         {
-            var (equipName, equipType) = _host.ResolveSelectedEquipForParam();
+            var (equipName, equipType, _) = _host.ResolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
 

@@ -36,7 +36,7 @@ namespace TechEquipments
         void NotifyMainParamLoaded(string equipName, ParamLoadState state);
 
         // Core callbacks
-        (string equipName, string equipType) ResolveSelectedEquipForParam();
+        (string equipName, string equipType, string equipDescription) ResolveSelectedEquipForParam();
         void Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup);
 
         // Extra periodic updates

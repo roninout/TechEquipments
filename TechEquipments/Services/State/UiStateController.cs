@@ -150,7 +150,7 @@ namespace TechEquipments
                     _host.ImportRememberedEquipmentsByFilter(state.LastEquipmentsByFilter);
 
                     _host.EquipName = state.LastEquipName ?? "";
-                    _host.DbDate = state.DbDate.Date;
+                    //_host.DbDate = state.DbDate.Date; // не восстанавливаем дату для истории
 
                     _host.SelectedStation = state.SelectedStation ?? "All";
                     _host.SelectedTypeFilter = state.SelectedTypeFilter;
