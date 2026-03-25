@@ -177,6 +177,58 @@ namespace CtApi
             return _ctApi.UserInfo(type);
         }
 
+        public async Task<bool> GetPrivAsync(int priv, int area)
+        {
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.GetPrivAsync(priv, area);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
+        }
+
+        public async Task<string> LoginAsync(string userName, string password, bool sync = false, string language = "")
+        {
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.LoginAsync(userName, password, sync, language);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
+        }
+
+        public async Task<string> LogoutAsync()
+        {
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.LogoutAsync();
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
+        }
+
+        public async Task<string> UserInfoAsync(int type)
+        {
+            await _apiGate.WaitAsync();
+            try
+            {
+                return await _ctApi.UserInfoAsync(type);
+            }
+            finally
+            {
+                _apiGate.Release();
+            }
+        }
+
         public async Task<List<TrnData>> GetTrnData(string tagName, DateTime startTime, DateTime endTime)
         {
             await _apiGate.WaitAsync();

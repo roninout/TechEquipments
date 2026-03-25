@@ -65,6 +65,22 @@ namespace CtApi
         }
 
         /// <summary>
+        /// Logs out the current operator from Plant SCADA.
+        /// </summary>
+        public static string Logout(this CtApi ctApi)
+        {
+            return ctApi.Cicode("Logout()");
+        }
+
+        /// <summary>
+        /// Logs out the current operator from Plant SCADA.
+        /// </summary>
+        public static async Task<string> LogoutAsync(this CtApi ctApi)
+        {
+            return await ctApi.CicodeAsync("Logout()");
+        }
+
+        /// <summary>
         /// Gets information about the operator who is currently logged-in to the system.
         /// </summary>
         /// <param name="ctApi"></param>

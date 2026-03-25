@@ -58,7 +58,7 @@ namespace TechEquipments.Views.Info
                 await Host.Info_ExportCurrentDocumentAsync();
         }
 
-        private async void DocumentSelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void DocumentSelectionChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
         {
             if (Host != null)
                 await Host.Info_OnCurrentDocumentSelectionChangedAsync();

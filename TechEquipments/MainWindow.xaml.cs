@@ -1033,7 +1033,7 @@ namespace TechEquipments
         /// <summary>
         /// Заголовок окна с именем программы и версией.
         /// </summary>
-        public string WindowTitle => $"TechEquipments";
+        public string WindowTitle => string.IsNullOrWhiteSpace(CurrentCtUserName) ? "TechEquipments" : $"TechEquipments ({CurrentCtUserName})";
         #endregion
 
         #region Info
@@ -1360,7 +1360,29 @@ namespace TechEquipments
 
         #endregion
 
+        #region Security
+
+        private string _currentCtUserName = "";
+        public string CurrentCtUserName
+        {
+            get => _currentCtUserName;
+            set
+            {
+                if (_currentCtUserName == value)
+                    return;
+
+                _currentCtUserName = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(WindowTitle));
+            }
+        }
+
+        private bool _isLogoLoginToggleInProgress;
+
         #endregion
+
+        #endregion
+
 
         public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
         {
@@ -1406,6 +1428,9 @@ namespace TechEquipments
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
                 ctApiService: _ctApiService,
+                requiredWritePrivilege: _config.GetValue("CtApiSecurity:WritePrivilege", 1),
+                requiredWriteArea: _config.GetValue("CtApiSecurity:WriteArea", 0),
+                requiredUserNameContains: _config["CtApiSecurity:RequiredUserNameContains"] ?? "Tab",
                 getSelectedTab: () => SelectedMainTab,
                 resolveSelectedEquip: ResolveSelectedEquipForParam,
                 resolveEquipNameForWrite: ResolveEquipNameForWrite,
@@ -2159,6 +2184,56 @@ namespace TechEquipments
             catch (Exception ex)
             {
                 DXMessageBox.Show(this, ex.Message, "Scan QR", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void Logo_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isLogoLoginToggleInProgress)
+                return;
+
+            _isLogoLoginToggleInProgress = true;
+
+            try
+            {
+                var toggleUser = (_config["CtApiSecurity:ToggleLoginUser"] ?? "").Trim();
+                var togglePassword = (_config["CtApiSecurity:ToggleLoginPassword"] ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(toggleUser))
+                {
+                    DXMessageBox.Show(this, "Toggle login user is not configured.", "CtApi security", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Current SCADA login name
+                var currentUserName = (await _ctApiService.UserInfoAsync(1)).Trim();
+                var currentFullName = (await _ctApiService.UserInfoAsync(2)).Trim();
+
+                var isTabLoggedIn = currentUserName.Equals(toggleUser, StringComparison.OrdinalIgnoreCase) || currentFullName.IndexOf("Tab", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (isTabLoggedIn)
+                {
+                    await _ctApiService.LogoutAsync();                    
+
+                    DXMessageBox.Show(this, "Tab user has been logged out.", "CtApi security", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var loginResult = await _ctApiService.LoginAsync(toggleUser, togglePassword);
+
+                // Plant SCADA Login returns 0 on success
+                if (string.Equals(loginResult?.Trim(), "0", StringComparison.OrdinalIgnoreCase))
+                    DXMessageBox.Show(this, "Tab user has been logged in.", "CtApi security", MessageBoxButton.OK, MessageBoxImage.Information);
+                else
+                    DXMessageBox.Show(this, $"Login failed. Result: {loginResult}", "CtApi security", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(this, $"Unable to toggle login state.\n\n{ex.Message}", "CtApi security", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _isLogoLoginToggleInProgress = false;
             }
         }
 

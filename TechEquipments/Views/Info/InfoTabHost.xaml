@@ -20,10 +20,8 @@
                 <dxlc:LayoutGroup View="Group" Orientation="Vertical" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
                     <!-- ===== GENERAL ===== -->
-                    <dxlc:LayoutGroup View="GroupBox"
-                                      GroupBoxDisplayMode="Light"
-                                      HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch"
+                    <dxlc:LayoutGroup View="GroupBox" GroupBoxDisplayMode="Light"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                       Visibility="{Binding IsInfoGeneralPage, Converter={StaticResource BoolToVis}}">
 
                         <dxlc:LayoutGroup Orientation="Vertical">
@@ -37,9 +35,11 @@
                                 <!-- Верхние поля -->
                                 <Grid Margin="6,0,0,0" Grid.Row="0">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="120"/>
                                         <ColumnDefinition Width="200"/>
-                                        <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
 
                                     <Grid.RowDefinitions>
@@ -48,12 +48,14 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Equipment:" FontWeight="SemiBold"/>
-                                    <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,16" Text="{Binding CurrentEquipInfo.EquipName}"/>
+                                    <!--Equipment:-->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Equipment:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentEquipInfo.EquipName}" VerticalAlignment="Center"/>
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Installation time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <!--Installation time:-->
+                                    <TextBlock Grid.Row="0" Grid.Column="3" Text="Installation time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                                    <dxlc:LayoutItem Grid.Row="1" Grid.Column="1">
+                                    <dxlc:LayoutItem Grid.Row="0" Grid.Column="4">
                                         <dxe:DateEdit Style="{StaticResource AppBaseEditStyle}"
                                                       EditValue="{Binding CurrentEquipInfo.InstallTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       IsReadOnly="{Binding IsInfoReadOnly}"
@@ -62,9 +64,10 @@
                                                       MaskUseAsDisplayFormat="True"/>
                                     </dxlc:LayoutItem>
 
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Revision time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <!--Revision time:-->
+                                    <TextBlock Grid.Row="1" Grid.Column="3" Padding="0,4" Text="Revision time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                                    <dxlc:LayoutItem Grid.Row="2" Grid.Column="1" Padding="0,6">
+                                    <dxlc:LayoutItem Grid.Row="1" Grid.Column="4" Padding="0,6">
                                         <dxe:DateEdit Style="{StaticResource AppBaseEditStyle}"
                                                       EditValue="{Binding CurrentEquipInfo.RevisionTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       IsReadOnly="{Binding IsInfoReadOnly}"
@@ -74,67 +77,81 @@
                                     </dxlc:LayoutItem>
                                 </Grid>
 
-                                <!-- Фото -->
+                                <!-- ===== PHOTO ===== -->
                                 <dxlc:LayoutItem Grid.Row="1">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition MinHeight="430" Height="*"/>
-                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition MinHeight="400" Height="*"/>
                                         </Grid.RowDefinitions>
 
-                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                                            <dx:SimpleButton Content="Add image(s)"
-                                                             Width="120"
-                                                             Style="{StaticResource AppButtonStyle}"
-                                                             Click="LoadPhoto_Click"
-                                                             IsEnabled="{Binding IsInfoEditMode}"/>
-
-                                            <dx:SimpleButton Content="Remove image"
-                                                             Width="120"
-                                                             Margin="8,0,0,0"
-                                                             Style="{StaticResource AppButtonStyle}"
-                                                             Click="RemovePhoto_Click"
-                                                             IsEnabled="{Binding IsInfoEditMode}"/>
-                                        </StackPanel>
-
-                                        <dxe:ComboBoxEdit Grid.Row="1"
-                                                          Height="28"
-                                                          Margin="0,0,0,8"
+                                        <!-- Checked-combo: только в Edit mode -->
+                                        <dxe:ComboBoxEdit Grid.Row="0" Height="40" Padding="10,0" Margin="0,0,0,8"
                                                           ItemsSource="{Binding AvailableInfoPhotoLibrary}"
                                                           DisplayMember="DisplayName"
-                                                          ValueMember="Id"
+                                                          ValueMember="Id"                                                          
                                                           EditValue="{Binding SelectedInfoPhotoLibraryIds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           SeparatorString="; "
                                                           NullText="Select existing images"
-                                                          Visibility="{Binding IsInfoEditMode, Converter={StaticResource BoolToVis}}"
                                                           EditValueChanged="PhotoLibraryEditValueChanged">
+                                            
+                                            <dxe:ComboBoxEdit.Style>
+                                                <Style TargetType="{x:Type dxe:ComboBoxEdit}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </dxe:ComboBoxEdit.Style>
+
                                             <dxe:ComboBoxEdit.StyleSettings>
                                                 <dxe:CheckedComboBoxStyleSettings ShowSelectAllItem="True"/>
                                             </dxe:ComboBoxEdit.StyleSettings>
                                         </dxe:ComboBoxEdit>
 
-                                        <ComboBox Grid.Row="2"
-                                                  Height="28"
-                                                  Margin="0,0,0,8"
+                                        <!-- Обычный ComboBox: только вне Edit mode -->
+                                        <dxe:ComboBoxEdit Grid.Row="1" Height="40" Padding="10,0" Margin="0,0,0,8"
                                                   ItemsSource="{Binding CurrentEquipInfo.Photos}"
                                                   SelectedItem="{Binding SelectedInfoPhotoFile, Mode=TwoWay}"
-                                                  DisplayMemberPath="DisplayName"
-                                                  IsSynchronizedWithCurrentItem="False"/>
+                                                  IsTextEditable="False"
+                                                  DisplayMember="DisplayName"
+                                                  IsSynchronizedWithCurrentItem="False">
 
-                                        <dxe:ImageEdit Grid.Row="3"
+                                            <dxe:ComboBoxEdit.Style>
+                                                <Style TargetType="{x:Type dxe:ComboBoxEdit}">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                </Style>
+                                            </dxe:ComboBoxEdit.Style>
+                                            
+                                        </dxe:ComboBoxEdit>
+                                        
+                                        <!--ImageEdit-->
+                                        <!--<dxe:ImageEdit Grid.Row="2" Stretch="Uniform" NullText="Image is empty" EditValue="{Binding SelectedInfoPhotoFile.FileData}" IsReadOnly="false" ShowMenuMode="Hover" ShowMenu="True"/>-->
+                                        <dxe:ImageEdit Grid.Row="2"
                                                        Stretch="Uniform"
                                                        NullText="Image is empty"
                                                        EditValue="{Binding SelectedInfoPhotoFile.FileData}"
-                                                       IsReadOnly="True"/>
-
-                                        <TextBlock Grid.Row="4"
-                                                   Margin="0,6,0,0"
-                                                   Text="{Binding SelectedInfoPhotoFile.FileName}"
-                                                   TextWrapping="Wrap"
-                                                   Style="{StaticResource AppTextStyle}"/>
+                                                       IsReadOnly="False"
+                                                       ShowMenuMode="Hover">
+                                            <dxe:ImageEdit.Style>
+                                                <Style TargetType="{x:Type dxe:ImageEdit}">
+                                                    <Setter Property="ShowMenu" Value="False"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                            <Setter Property="ShowMenu" Value="True"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </dxe:ImageEdit.Style>
+                                        </dxe:ImageEdit>
                                     </Grid>
 
                                 </dxlc:LayoutItem>
@@ -145,58 +162,61 @@
                     </dxlc:LayoutGroup>
 
                     <!-- ===== INSTRUCTION / SCHEME ===== -->
-                    <dxlc:LayoutGroup Header="{Binding CurrentInfoDocumentHeader}"
-                                      View="GroupBox"
-                                      GroupBoxDisplayMode="Light"
+                    <dxlc:LayoutGroup Header="{Binding CurrentInfoDocumentHeader}" 
+                                      View="GroupBox" GroupBoxDisplayMode="Light"
                                       Visibility="{Binding IsInfoDocumentPage, Converter={StaticResource BoolToVis}}"
-                                      HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch">
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
                         <dxlc:LayoutGroup Orientation="Vertical">
 
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <dx:SimpleButton Content="Add PDF(s)"
-                                                 Width="120"
-                                                 Style="{StaticResource AppButtonStyle}"
-                                                 Click="LoadDocument_Click"
-                                                 IsEnabled="{Binding IsInfoEditMode}"/>
-
-                                <dx:SimpleButton Content="Remove PDF"
-                                                 Width="120"
-                                                 Margin="8,0,0,0"
-                                                 Style="{StaticResource AppButtonStyle}"
-                                                 Click="RemoveDocument_Click"
-                                                 IsEnabled="{Binding IsInfoEditMode}"/>
-                            </StackPanel>
-
-                            <dxe:ComboBoxEdit Height="28"
-                                              Margin="0,0,0,8"
+                            <!-- Checked-combo: только в Edit mode -->
+                            <dxe:ComboBoxEdit Height="40" Padding="10,0" Margin="0,0,0,8"
                                               ItemsSource="{Binding CurrentInfoAvailableLibraryItems}"
                                               DisplayMember="DisplayName"
                                               ValueMember="Id"
                                               EditValue="{Binding CurrentInfoCheckedLibraryIds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               SeparatorString="; "
                                               NullText="Select existing PDF files"
-                                              Visibility="{Binding IsInfoEditMode, Converter={StaticResource BoolToVis}}"
                                               EditValueChanged="DocumentLibraryEditValueChanged">
+                                <dxe:ComboBoxEdit.Style>
+                                    <Style TargetType="{x:Type dxe:ComboBoxEdit}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </dxe:ComboBoxEdit.Style>
+
                                 <dxe:ComboBoxEdit.StyleSettings>
                                     <dxe:CheckedComboBoxStyleSettings ShowSelectAllItem="True"/>
                                 </dxe:ComboBoxEdit.StyleSettings>
                             </dxe:ComboBoxEdit>
 
-                            <ComboBox Height="28"
-                                      Margin="0,0,0,8"
+                            <!-- Обычный ComboBox: только вне Edit mode -->
+                            <dxe:ComboBoxEdit Height="40" Padding="10,0" Margin="0,0,0,8"
                                       ItemsSource="{Binding CurrentInfoDocumentItems}"
                                       SelectedItem="{Binding CurrentInfoSelectedDocumentFile, Mode=TwoWay}"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectionChanged="DocumentSelectionChanged"
-                                      IsSynchronizedWithCurrentItem="False"/>
+                                      DisplayMember="DisplayName"
+                                      IsTextEditable="False"
+                                      EditValueChanged="DocumentSelectionChanged"
+                                      IsSynchronizedWithCurrentItem="False">
+                                
+                                <dxe:ComboBoxEdit.Style>
+                                    <Style TargetType="{x:Type dxe:ComboBoxEdit}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </dxe:ComboBoxEdit.Style>
+                                
+                            </dxe:ComboBoxEdit>
 
-                            <TextBlock Text="{Binding CurrentInfoDocumentFileName}"
-                                       Margin="0,0,0,8"
-                                       TextWrapping="Wrap"
-                                       Style="{StaticResource AppTextStyle}"/>
-
+                            
                             <dxlc:LayoutItem Label="" VerticalAlignment="Stretch">
                                 <Grid MinHeight="520">
                                     <Grid.RowDefinitions>
@@ -243,6 +263,7 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
+                            <!-- Up -->
                             <StackPanel Grid.Row="0" Orientation="Vertical" VerticalAlignment="Top">
 
                                 <dxlc:LayoutItem Label="">
@@ -271,25 +292,175 @@
 
                             </StackPanel>
 
+                            <!-- Bottom -->
                             <StackPanel Grid.Row="2" Orientation="Vertical" VerticalAlignment="Top">
 
+                                <!-- Add image: только для фото и только в Edit mode -->
                                 <dxlc:LayoutItem Label="">
-                                    <dx:SimpleButton Width="60" Height="60" Padding="0"
-                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/XAF/Action_Edit.svg'}"
-                                                     Click="Edit_Click" ToolTip="Edit"
-                                                     Style="{StaticResource AppButtonStyle}"
-                                                     IsEnabled="{Binding CanEditInfoButtons}"/>
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Dashboards/ImageImport.svg'}"
+                                                     Click="LoadPhoto_Click"
+                                                     ToolTip="Add image"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoGeneralPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
                                 </dxlc:LayoutItem>
 
+                                <!-- Unlink image: только для фото и только в Edit mode -->
                                 <dxlc:LayoutItem Label="">
-                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
-                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"
-                                                     Click="Save_Click" ToolTip="Save"
-                                                     Style="{StaticResource AppButtonStyle}"
-                                                     IsEnabled="{Binding IsInfoEditMode}"/>
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/XAF/Action_LinkUnlink_Unlink.svg'}"
+                                                     Click="RemovePhoto_Click"
+                                                     ToolTip="Unlink image"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoGeneralPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Add PDF: только для Instruction/Scheme и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Spreadsheet/AddDataSource.svg'}"
+                                                     Click="LoadDocument_Click"
+                                                     ToolTip="Add PDF"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoDocumentPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Unlink PDF: только для Instruction/Scheme и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/XAF/Action_LinkUnlink_Unlink.svg'}"
+                                                     Click="RemoveDocument_Click"
+                                                     ToolTip="Unlink PDF"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoDocumentPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Edit: по умолчанию видна, в режиме редактирования скрывается -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/XAF/Action_Edit.svg'}"
+                                                     Click="Edit_Click"
+                                                     ToolTip="Edit"
+                                                     IsEnabled="{Binding CanEditInfoButtons}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Save: по умолчанию скрыта, в режиме редактирования видна -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"
+                                                     Click="Save_Click"
+                                                     ToolTip="Save"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
                                 </dxlc:LayoutItem>
 
                             </StackPanel>
+
                         </Grid>
                     </dxlc:LayoutItem>
                 </dxlc:LayoutGroup>

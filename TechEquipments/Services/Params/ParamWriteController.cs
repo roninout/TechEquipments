@@ -28,10 +28,16 @@ namespace TechEquipments
         private readonly Func<Window> _getOwnerWindow;
         private readonly Action _endParamFieldEdit;
         private readonly ICtApiService _ctApiService;
+        private readonly int _requiredWritePrivilege;
+        private readonly int _requiredWriteArea;
+        private readonly string _requiredUserNameContains;
 
         public ParamWriteController(
             IEquipmentService equipmentService,
             ICtApiService ctApiService,
+            int requiredWritePrivilege,
+            int requiredWriteArea,
+            string requiredUserNameContains,
             Func<MainTabKind> getSelectedTab,
             Func<(string equipName, string equipType)> resolveSelectedEquip,
             Func<object, string> resolveEquipNameForWrite,
@@ -46,6 +52,9 @@ namespace TechEquipments
         {
             _equipmentService = equipmentService;
             _ctApiService = ctApiService;
+            _requiredWritePrivilege = requiredWritePrivilege;
+            _requiredWriteArea = requiredWriteArea;
+            _requiredUserNameContains = (requiredUserNameContains ?? "").Trim();
             _getSelectedTab = getSelectedTab;
             _resolveSelectedEquip = resolveSelectedEquip;
             _resolveEquipNameForWrite = resolveEquipNameForWrite;
@@ -241,6 +250,10 @@ namespace TechEquipments
                 await _paramRwGate.WaitAsync(CancellationToken.None);
                 try
                 {
+                    // Check SCADA security before the actual write.
+                    if (!await EnsureWritePrivilegeAsync())
+                        return;
+
                     // Пауза чтения после записи
                     _setParamReadResumeAtUtc(DateTime.UtcNow.AddMilliseconds(400));
 
@@ -278,6 +291,10 @@ namespace TechEquipments
             await _paramRwGate.WaitAsync(CancellationToken.None);
             try
             {
+                // Check SCADA security before the actual write.
+                if (!await EnsureWritePrivilegeAsync())
+                    return;
+
                 var tagName = (row.TagName ?? "").Trim();
                 if (string.IsNullOrWhiteSpace(tagName) || tagName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                 {
@@ -478,6 +495,126 @@ namespace TechEquipments
 
             return null;
         }
+
+        #endregion
+
+        #region Security
+
+        /// <summary>
+        /// Checks whether the current SCADA operator is allowed to write:
+        /// 1) the operator name must contain the configured token (for example "Tab")
+        /// 2) the operator must have the required privilege/area
+        /// 
+        /// If access is denied, shows an English DX message and returns false.
+        /// </summary>
+        private async Task<bool> EnsureWritePrivilegeAsync()
+        {
+            try
+            {
+                // type 1 = user name, type 2 = full name
+                var userName = (await _ctApiService.UserInfoAsync(1)).Trim();
+                var fullName = (await _ctApiService.UserInfoAsync(2)).Trim();
+
+                var displayName = !string.IsNullOrWhiteSpace(fullName) ? fullName : userName;
+                if (string.IsNullOrWhiteSpace(displayName))
+                    displayName = "Unknown user";
+
+                // 1) Additional check by user name token, e.g. only "Tab user" may write
+                if (!string.IsNullOrWhiteSpace(_requiredUserNameContains))
+                {
+                    var containsRequiredToken =
+                        (!string.IsNullOrWhiteSpace(userName) &&
+                         userName.IndexOf(_requiredUserNameContains, StringComparison.OrdinalIgnoreCase) >= 0)
+                        ||
+                        (!string.IsNullOrWhiteSpace(fullName) &&
+                         fullName.IndexOf(_requiredUserNameContains, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                    if (!containsRequiredToken)
+                    {
+                        DevExpress.Xpf.Core.DXMessageBox.Show(
+                            _getOwnerWindow(),
+                            $"Only user '{_requiredUserNameContains} user' can make changes in this application.\n\nCurrent user: {displayName}",
+                            "Access denied",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+
+                        _setBottomText($"Write denied: only '{_requiredUserNameContains} user' is allowed.");
+                        return false;
+                    }
+                }
+
+                // 2) Standard Plant SCADA privilege check
+                var hasPrivilege = await _ctApiService.GetPrivAsync(_requiredWritePrivilege, _requiredWriteArea);
+                if (hasPrivilege)
+                    return true;
+
+                DevExpress.Xpf.Core.DXMessageBox.Show(
+                    _getOwnerWindow(),
+                    $"User '{displayName}' does not have sufficient access level to perform this operation.\n\nRequired privilege: {_requiredWritePrivilege}, area: {_requiredWriteArea}.",
+                    "Access denied",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                _setBottomText($"Write denied: insufficient access for {displayName}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _setBottomText($"Security check error: {ex.Message}");
+
+                DevExpress.Xpf.Core.DXMessageBox.Show(
+                    _getOwnerWindow(),
+                    "Unable to verify access level. The write operation has been cancelled.",
+                    "Security check error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                return false;
+            }
+        }
+
+
+        /// <summary>
+        /// Checks whether the current SCADA operator has enough privilege to write.
+        /// If access is denied, shows an English DX message and returns false.
+        /// </summary>
+        //private async Task<bool> EnsureWritePrivilegeAsync()
+        //{
+        //    try
+        //    {
+        //        var hasPrivilege = await _ctApiService.GetPrivAsync(_requiredWritePrivilege, _requiredWriteArea);
+        //        if (hasPrivilege)
+        //            return true;
+
+        //        var userName = "";
+        //        try
+        //        {
+        //            userName = (await _ctApiService.UserInfoAsync(2)).Trim();
+        //        }
+        //        catch
+        //        {
+        //            // best-effort only
+        //        }
+
+        //        if (string.IsNullOrWhiteSpace(userName))
+        //            userName = "Unknown user";
+
+        //        DevExpress.Xpf.Core.DXMessageBox.Show(_getOwnerWindow(), $"User '{userName}' does not have sufficient access level to perform this operation.", "Access denied",
+        //            MessageBoxButton.OK, MessageBoxImage.Warning);
+
+        //        _setBottomText($"Write denied: insufficient access for {userName}");
+        //        return false;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _setBottomText($"Security check error: {ex.Message}");
+
+        //        DevExpress.Xpf.Core.DXMessageBox.Show( _getOwnerWindow(), "Unable to verify access level. The write operation has been cancelled.", "Security check error",
+        //            MessageBoxButton.OK, MessageBoxImage.Warning);
+
+        //        return false;
+        //    }
+        //}
 
         #endregion
     }

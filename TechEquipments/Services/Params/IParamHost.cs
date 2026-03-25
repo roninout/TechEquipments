@@ -30,6 +30,8 @@ namespace TechEquipments
         object CurrentParamModel { get; set; }
         ObservableCollection<ParamItem> ParamItems { get; }
 
+        string CurrentCtUserName { get; set; }
+
         // Main Param model loading notifications
         void NotifyMainParamLoaded(string equipName, ParamLoadState state);
 

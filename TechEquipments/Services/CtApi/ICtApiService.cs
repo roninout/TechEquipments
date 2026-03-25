@@ -15,10 +15,14 @@ namespace CtApi
         Task<string> CicodeAsync(string cmd);
         Task<bool> IsConnected();
         string UserInfo(int type);
+        Task<string> UserInfoAsync(int type);
+        Task<bool> GetPrivAsync(int priv, int area);
+        Task<string> LoginAsync(string userName, string password, bool sync = false, string language = "");
+        Task<string> LogoutAsync();
+        Task<List<TrnData>> GetTrnData(string tagName, DateTime startTime, DateTime endTime);
+
 
         void SetCtApiDirectory(string path);
-
-        Task<List<TrnData>> GetTrnData(string tagName, DateTime startTime, DateTime endTime);
 
         // ===== Connection state for UI =====
         bool IsConnectionAvailable { get; }

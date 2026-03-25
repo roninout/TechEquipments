@@ -21,8 +21,6 @@
 
         <!-- SVG иконка Scan QR из ресурсов проекта -->
         <dx:SvgImageSource x:Key="ScanQrGlyph" Uri="/TechEquipments;component/Resources/Icons/scan_qr.svg"/>
-
-        <!-- DataModeToVisibilityConverter УДАЛЁН (не используется после перехода на вкладки) -->
     </dx:ThemedWindow.Resources>
 
     <Grid>
@@ -231,7 +229,7 @@
                                      Style="{StaticResource AppButtonStyle}"/>
                     <!--Visibility="{Binding ShowToolbarScanQrButton, Converter={StaticResource BoolToVis}}"/>-->
 
-                    <Image Height="40" Width="152" Margin="10,0,0,0" Stretch="Uniform" SnapsToDevicePixels="True" Source="/TIS_logo_intellegence_g.png"/>
+                    <Image Height="40" Width="152" Margin="10,0,0,0" Stretch="Uniform" SnapsToDevicePixels="True" Source="/TIS_logo_intellegence_g.png" Cursor="Hand" MouseLeftButtonUp="Logo_MouseLeftButtonUp"/>
                 </StackPanel>
 
                 <!-- TABS -->

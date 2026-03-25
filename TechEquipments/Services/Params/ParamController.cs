@@ -36,6 +36,8 @@ namespace TechEquipments
         private readonly Dictionary<Type, PropertyInfo[]> _uiPropsCache = new();
         private readonly Dictionary<string, int> _rowIndexByName = new(StringComparer.Ordinal);
 
+        private DateTime _nextSecurityTitleReadUtc = DateTime.MinValue;
+
         public ParamController(IEquipmentService equipmentService, IParamHost host, ICtApiService ctApiService)
         {
             _equipmentService = equipmentService;
@@ -96,6 +98,8 @@ namespace TechEquipments
                 {
                     while (!ct.IsCancellationRequested)
                     {
+                        await RefreshWindowTitleFromSecurityAsync(ct);
+
                         // polling только на Param вкладке
                         if (_host.SelectedMainTab != MainTabKind.Param)
                         {
@@ -342,6 +346,33 @@ namespace TechEquipments
             equipType = (equipType ?? "").Trim();
 
             return $"{equipName}|{equipType}";
+        }
+
+        private async Task RefreshWindowTitleFromSecurityAsync(CancellationToken ct)
+        {
+            var nowUtc = DateTime.UtcNow;
+            if (nowUtc < _nextSecurityTitleReadUtc)
+                return;
+
+            _nextSecurityTitleReadUtc = nowUtc.AddSeconds(2);
+
+            try
+            {
+                var fullName = (await _ctApiService.UserInfoAsync(2)).Trim();
+
+                await _host.Dispatcher.InvokeAsync(() =>
+                {
+                    _host.CurrentCtUserName = fullName;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // молча игнорируем transient ошибки чтения security
+            }
         }
     }
 }
