@@ -290,8 +290,7 @@
                                                 View="GroupBox"
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
-                                                Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=Plc}">
                                 <!-- ====== Full running time ====== -->
@@ -349,13 +348,13 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=DiDo}">
 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDiRows, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDiRows, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Grid Margin="2">
@@ -420,13 +419,13 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=DiDo}">
 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDoRows, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDoRows, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Grid Margin="2">
@@ -491,7 +490,7 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=Alarm}">
 

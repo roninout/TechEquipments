@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
@@ -11,11 +12,14 @@ namespace TechEquipments
     /// - debounce автоперезавантаження при зміні дати
     /// - cancel попереднього запиту при новому
     /// - gate (щоб не було паралельних DB-запитів)
+    ///
+    /// Працює напряму з MainViewModel, без IDbHost.
     /// </summary>
     public sealed class DbController
     {
         private readonly IDbService _dbService;
-        private readonly IDbHost _host;
+        private readonly MainViewModel _vm;
+        private readonly Dispatcher _dispatcher;
 
         private readonly SemaphoreSlim _gate = new(1, 1);
         private CancellationTokenSource? _cts;
@@ -27,16 +31,16 @@ namespace TechEquipments
         private DbQueryKey? _lastOpActsQuery;
         private DbQueryKey? _lastAlarmQuery;
 
-        public DbController(IDbService dbService, IDbHost host)
+        public DbController(IDbService dbService, MainViewModel vm, Dispatcher dispatcher)
         {
             _dbService = dbService ?? throw new ArgumentNullException(nameof(dbService));
-            _host = host ?? throw new ArgumentNullException(nameof(host));
+            _vm = vm ?? throw new ArgumentNullException(nameof(vm));
+            _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
 
             // debounce-таймер на UI Dispatcher
             _reloadTimer = new DispatcherTimer(
                 DispatcherPriority.Background,
-                _host.Dispatcher
-            )
+                _dispatcher)
             {
                 Interval = TimeSpan.FromMilliseconds(250)
             };
@@ -46,7 +50,7 @@ namespace TechEquipments
                 _reloadTimer.Stop();
 
                 // тільки якщо DB вкладки і є коннект
-                if (!_host.IsDbTabSelected || !_host.IsDbConnected)
+                if (!IsDbTabSelected || !_vm.Database.IsDbConnected)
                     return;
 
                 try
@@ -55,10 +59,18 @@ namespace TechEquipments
                 }
                 catch (Exception ex)
                 {
-                    _host.BottomText = $"DB reload error: {ex.Message}";
+                    _vm.Shell.BottomText = $"DB reload error: {ex.Message}";
                 }
             };
         }
+
+        private MainTabKind SelectedMainTab => _vm.SelectedMainTab;
+
+        private bool IsDbTabSelected => SelectedMainTab is MainTabKind.OperationActions or MainTabKind.AlarmHistory;
+
+        private DateTime DbDate => _vm.Database.DbDate.Date;
+
+        private string DbFilter => (_vm.EquipmentList.EquipName ?? "").Trim();
 
         /// <summary>
         /// Перевірка підключення до БД і оновлення IsDbConnected.
@@ -75,7 +87,7 @@ namespace TechEquipments
                 ok = false;
             }
 
-            _host.SetDbConnected(ok);
+            _vm.Database.IsDbConnected = ok;
         }
 
         /// <summary>
@@ -94,10 +106,10 @@ namespace TechEquipments
         {
             _reloadTimer.Stop();
 
-            if (!_host.IsDbTabSelected)
+            if (!IsDbTabSelected)
                 return;
 
-            if (!_host.IsDbConnected)
+            if (!_vm.Database.IsDbConnected)
                 return;
 
             _reloadTimer.Start();
@@ -109,15 +121,15 @@ namespace TechEquipments
         /// </summary>
         public async Task LoadCurrentTabAsync(bool force)
         {
-            if (!_host.IsDbConnected)
+            if (!_vm.Database.IsDbConnected)
                 return;
 
-            if (!_host.IsDbTabSelected)
+            if (!IsDbTabSelected)
                 return;
 
-            var current = new DbQueryKey(_host.DbDate.Date, (_host.DbFilter ?? "").Trim());
+            var current = new DbQueryKey(DbDate, DbFilter);
 
-            switch (_host.SelectedMainTab)
+            switch (SelectedMainTab)
             {
                 case MainTabKind.OperationActions:
                     if (!force && _lastOpActsQuery.HasValue && _lastOpActsQuery.Value.Equals(current))
@@ -158,31 +170,31 @@ namespace TechEquipments
 
                 var ct = myCts.Token;
 
-                _host.SetDbLoading(true);
-                _host.BottomText = "Loading DB (Operator actions)...";
+                _vm.Database.IsDbLoading = true;
+                _vm.Shell.BottomText = "Loading DB (Operator actions)...";
 
                 var rows = await _dbService.GetOperatorActsAsync(key.Date, key.Filter, ct);
 
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.OperatorActRows.Clear();
+                    _vm.Database.OperatorActRows.Clear();
                     foreach (var r in rows)
-                        _host.OperatorActRows.Add(r);
+                        _vm.Database.OperatorActRows.Add(r);
                 });
 
-                _host.BottomText = $"DB Operator actions: {rows.Count}";
+                _vm.Shell.BottomText = $"DB Operator actions: {rows.Count}";
             }
             catch (OperationCanceledException)
             {
-                _host.BottomText = "DB cancelled";
+                _vm.Shell.BottomText = "DB cancelled";
             }
             catch (Exception ex)
             {
-                _host.BottomText = $"DB Error: {ex.Message}";
+                _vm.Shell.BottomText = $"DB Error: {ex.Message}";
             }
             finally
             {
-                _host.SetDbLoading(false);
+                _vm.Database.IsDbLoading = false;
 
                 if (ReferenceEquals(_cts, myCts))
                 {
@@ -212,31 +224,31 @@ namespace TechEquipments
 
                 var ct = myCts.Token;
 
-                _host.SetDbLoading(true);
-                _host.BottomText = "Loading DB (Alarm history)...";
+                _vm.Database.IsDbLoading = true;
+                _vm.Shell.BottomText = "Loading DB (Alarm history)...";
 
                 var rows = await _dbService.GetAlarmHistoryAsync(key.Date, key.Filter, ct);
 
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.AlarmHistoryRows.Clear();
+                    _vm.Database.AlarmHistoryRows.Clear();
                     foreach (var r in rows)
-                        _host.AlarmHistoryRows.Add(r);
+                        _vm.Database.AlarmHistoryRows.Add(r);
                 });
 
-                _host.BottomText = $"DB Alarm history: {rows.Count}";
+                _vm.Shell.BottomText = $"DB Alarm history: {rows.Count}";
             }
             catch (OperationCanceledException)
             {
-                _host.BottomText = "DB cancelled";
+                _vm.Shell.BottomText = "DB cancelled";
             }
             catch (Exception ex)
             {
-                _host.BottomText = $"DB Error: {ex.Message}";
+                _vm.Shell.BottomText = $"DB Error: {ex.Message}";
             }
             finally
             {
-                _host.SetDbLoading(false);
+                _vm.Database.IsDbLoading = false;
 
                 if (ReferenceEquals(_cts, myCts))
                 {

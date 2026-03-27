@@ -1,8 +1,11 @@
 ﻿using DevExpress.Xpf.Core;
 using System;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Threading;
+using TechEquipments.ViewModels;
 using static TechEquipments.IEquipmentService;
 
 namespace TechEquipments
@@ -12,20 +15,31 @@ namespace TechEquipments
     /// - отмена предыдущей загрузки
     /// - gate от параллельных загрузок
     /// - overlay/progress обновление
-    /// - запись результата в EquipmentSoeRows
+    /// - запись результата в rows target
     /// </summary>
     public sealed class SoeController
     {
         private readonly IEquipmentService _equipmentService;
-        private readonly ISoeHost _host;
+        private readonly ShellViewModel _shell;
+        private readonly ObservableCollection<EquipmentSOEDto> _rows;
+        private readonly Dispatcher _dispatcher;
+        private readonly Func<Window> _getOwnerWindow;
 
         private readonly SemaphoreSlim _loadGate = new(1, 1);
         private CancellationTokenSource? _loadCts;
 
-        public SoeController(IEquipmentService equipmentService, ISoeHost host)
+        public SoeController(
+            IEquipmentService equipmentService,
+            ShellViewModel shell,
+            ObservableCollection<EquipmentSOEDto> rows,
+            Dispatcher dispatcher,
+            Func<Window> getOwnerWindow)
         {
             _equipmentService = equipmentService ?? throw new ArgumentNullException(nameof(equipmentService));
-            _host = host ?? throw new ArgumentNullException(nameof(host));
+            _shell = shell ?? throw new ArgumentNullException(nameof(shell));
+            _rows = rows ?? throw new ArgumentNullException(nameof(rows));
+            _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+            _getOwnerWindow = getOwnerWindow ?? throw new ArgumentNullException(nameof(getOwnerWindow));
         }
 
         /// <summary>
@@ -37,7 +51,6 @@ namespace TechEquipments
             if (string.IsNullOrWhiteSpace(name))
                 return;
 
-            // отменяем предыдущую загрузку
             try { _loadCts?.Cancel(); } catch { }
 
             await _loadGate.WaitAsync();
@@ -51,28 +64,25 @@ namespace TechEquipments
                 _loadCts = myCts;
                 var ct = myCts.Token;
 
-                // включаем overlay и сбрасываем прогресс на UI
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.IsLoading = true;
-
-                    _host.LoadedCount = 0;
-                    _host.CurrentCount = 0;
-                    _host.CurrentTrendIndex = 0;
-                    _host.CurrentTrendName = "";
-                    _host.TotalTrends = 0;
+                    _shell.IsLoading = true;
+                    _shell.LoadedCount = 0;
+                    _shell.CurrentCount = 0;
+                    _shell.CurrentTrendIndex = 0;
+                    _shell.CurrentTrendName = "";
+                    _shell.TotalTrends = 0;
                 }, DispatcherPriority.Render);
 
-                // прогресс можно обновлять прямо через Dispatcher, чтобы не зависеть от контекста
                 var progress = new Progress<LoadingProgress>(p =>
                 {
-                    _host.Dispatcher.BeginInvoke(new Action(() =>
+                    _dispatcher.BeginInvoke(new Action(() =>
                     {
-                        _host.TotalTrends = p.TotalTrends;
-                        _host.CurrentTrendIndex = p.CurrentTrendIndex;
-                        _host.CurrentTrendName = p.CurrentTrendName;
-                        _host.CurrentCount = p.CurrentTrendCount;
-                        _host.LoadedCount = p.TotalLoaded;
+                        _shell.TotalTrends = p.TotalTrends;
+                        _shell.CurrentTrendIndex = p.CurrentTrendIndex;
+                        _shell.CurrentTrendName = p.CurrentTrendName;
+                        _shell.CurrentCount = p.CurrentTrendCount;
+                        _shell.LoadedCount = p.TotalLoaded;
                     }), DispatcherPriority.Background);
                 });
 
@@ -80,33 +90,32 @@ namespace TechEquipments
                     name,
                     progress,
                     ct,
-                    perTrendMax: _host.PerTrendMax,
-                    totalMax: _host.TotalMax);
+                    perTrendMax: 1000,
+                    totalMax: 100);
 
                 ct.ThrowIfCancellationRequested();
 
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.EquipmentSoeRows.Clear();
+                    _rows.Clear();
                     foreach (var r in rows)
-                        _host.EquipmentSoeRows.Add(r);
+                        _rows.Add(r);
                 }, DispatcherPriority.Background);
             }
             catch (OperationCanceledException)
             {
-                await _host.Dispatcher.InvokeAsync(() => _host.CurrentTrendName = "Cancelled");
+                await _dispatcher.InvokeAsync(() => _shell.CurrentTrendName = "Cancelled");
             }
             catch (Exception ex)
             {
-                DXMessageBox.Show(_host.OwnerWindow, ex.ToString(), "Error",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                DXMessageBox.Show(_getOwnerWindow(), ex.ToString(), "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
-                // выключаем overlay только если это "наша" актуальная загрузка
                 if (ReferenceEquals(_loadCts, myCts))
                 {
-                    await _host.Dispatcher.InvokeAsync(() => _host.IsLoading = false, DispatcherPriority.Render);
+                    await _dispatcher.InvokeAsync(() => _shell.IsLoading = false, DispatcherPriority.Render);
 
                     _loadCts?.Dispose();
                     _loadCts = null;

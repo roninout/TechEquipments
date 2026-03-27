@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
@@ -16,7 +18,16 @@ namespace TechEquipments
     {
         private readonly IUserStateService _stateService;
         private readonly IEquipmentService _equipmentService;
-        private readonly IUiStateHost _host;
+        private readonly MainViewModel _vm;
+        private readonly Dispatcher _dispatcher;
+
+        private readonly Action<string> _setEquipName;
+        private readonly Action<DateTime> _setDbDate;
+        private readonly Action<string> _setSelectedStation;
+        private readonly Action<EquipTypeGroup> _setSelectedTypeFilter;
+        private readonly Action<int> _setSelectedMainTabIndex;
+        private readonly Func<Dictionary<string, string>> _exportRememberedEquipmentsByFilter;
+        private readonly Action<Dictionary<string, string>?> _importRememberedEquipmentsByFilter;
 
         private readonly DispatcherTimer _saveTimer;
 
@@ -26,13 +37,32 @@ namespace TechEquipments
         private bool _startupUsedExternalTag;
         private string _startupExternalTag = "";
 
-        public UiStateController(IUserStateService stateService, IEquipmentService equipmentService, IUiStateHost host)
+        public UiStateController(
+            IUserStateService stateService,
+            IEquipmentService equipmentService,
+            MainViewModel vm,
+            Dispatcher dispatcher,
+            Action<string> setEquipName,
+            Action<DateTime> setDbDate,
+            Action<string> setSelectedStation,
+            Action<EquipTypeGroup> setSelectedTypeFilter,
+            Action<int> setSelectedMainTabIndex,
+            Func<Dictionary<string, string>> exportRememberedEquipmentsByFilter,
+            Action<Dictionary<string, string>?> importRememberedEquipmentsByFilter)
         {
             _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
             _equipmentService = equipmentService ?? throw new ArgumentNullException(nameof(equipmentService));
-            _host = host ?? throw new ArgumentNullException(nameof(host));
+            _vm = vm ?? throw new ArgumentNullException(nameof(vm));
+            _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+            _setEquipName = setEquipName ?? throw new ArgumentNullException(nameof(setEquipName));
+            _setDbDate = setDbDate ?? throw new ArgumentNullException(nameof(setDbDate));
+            _setSelectedStation = setSelectedStation ?? throw new ArgumentNullException(nameof(setSelectedStation));
+            _setSelectedTypeFilter = setSelectedTypeFilter ?? throw new ArgumentNullException(nameof(setSelectedTypeFilter));
+            _setSelectedMainTabIndex = setSelectedMainTabIndex ?? throw new ArgumentNullException(nameof(setSelectedMainTabIndex));
+            _exportRememberedEquipmentsByFilter = exportRememberedEquipmentsByFilter ?? throw new ArgumentNullException(nameof(exportRememberedEquipmentsByFilter));
+            _importRememberedEquipmentsByFilter = importRememberedEquipmentsByFilter ?? throw new ArgumentNullException(nameof(importRememberedEquipmentsByFilter));
 
-            _saveTimer = new DispatcherTimer(DispatcherPriority.Background, _host.Dispatcher)
+            _saveTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
             {
                 Interval = TimeSpan.FromMilliseconds(400)
             };
@@ -47,8 +77,7 @@ namespace TechEquipments
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine(ex);
-                    // опционально: _host.BottomText = $"State save error: {ex.Message}";
-                }                
+                }
             };
         }
 
@@ -90,7 +119,6 @@ namespace TechEquipments
                 _startupUsedExternalTag = true;
                 _startupExternalTag = ext.Trim();
 
-                // Очищаем ExternalTag (best-effort)
                 try
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -104,15 +132,13 @@ namespace TechEquipments
                 _isRestoringState = true;
                 try
                 {
-                    // применяем стартовое состояние на UI потоке
-                    await _host.Dispatcher.InvokeAsync(() =>
+                    await _dispatcher.InvokeAsync(() =>
                     {
-                        _host.EquipName = _startupExternalTag;
-                        _host.SelectedMainTabIndex = (int)MainTabKind.Param;
-                        _host.DbDate = DateTime.Today;
-
-                        _host.SelectedStation = "All";
-                        _host.SelectedTypeFilter = EquipTypeGroup.All;
+                        _setEquipName(_startupExternalTag);
+                        _setSelectedMainTabIndex((int)MainTabKind.Param);
+                        _setDbDate(DateTime.Today);
+                        _setSelectedStation("All");
+                        _setSelectedTypeFilter(EquipTypeGroup.All);
                     }, DispatcherPriority.Background);
                 }
                 finally
@@ -142,20 +168,17 @@ namespace TechEquipments
                 if (state == null)
                     return;
 
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    // Сначала восстанавливаем карту "Station+Type -> EquipName".
-                    // Проверка на реальное наличие оборудования произойдёт позже,
-                    // когда список Equipments уже будет загружен.
-                    _host.ImportRememberedEquipmentsByFilter(state.LastEquipmentsByFilter);
+                    _importRememberedEquipmentsByFilter(state.LastEquipmentsByFilter);
 
-                    _host.EquipName = state.LastEquipName ?? "";
-                    //_host.DbDate = state.DbDate.Date; // не восстанавливаем дату для истории
+                    _setEquipName(state.LastEquipName ?? "");
+                    //_setDbDate(state.DbDate.Date); // не восстанавливаем дату для истории
 
-                    _host.SelectedStation = state.SelectedStation ?? "All";
-                    _host.SelectedTypeFilter = state.SelectedTypeFilter;
+                    _setSelectedStation(state.SelectedStation ?? "All");
+                    _setSelectedTypeFilter(state.SelectedTypeFilter);
 
-                    _host.SelectedMainTabIndex = (int)state.SelectedTab;
+                    _setSelectedMainTabIndex((int)state.SelectedTab);
                 }, DispatcherPriority.Background);
             }
             finally
@@ -174,19 +197,15 @@ namespace TechEquipments
 
             var state = new UserState
             {
-                LastEquipName = (_host.EquipName ?? "").Trim(),
-                DbDate = _host.DbDate.Date,
-                SelectedTab = (MainTabKind)_host.SelectedMainTabIndex,
-                SelectedStation = (_host.SelectedStation ?? "All").Trim(),
-                SelectedTypeFilter = _host.SelectedTypeFilter,
-
-                // Хост вернёт уже очищенную карту:
-                // без пустых ключей и без оборудования, которого больше нет в проекте.
-                LastEquipmentsByFilter = _host.ExportRememberedEquipmentsByFilter()
+                LastEquipName = (_vm.EquipmentList.EquipName ?? "").Trim(),
+                DbDate = _vm.Database.DbDate.Date,
+                SelectedTab = _vm.SelectedMainTab,
+                SelectedStation = (_vm.EquipmentList.SelectedStation ?? "All").Trim(),
+                SelectedTypeFilter = _vm.EquipmentList.SelectedTypeFilter,
+                LastEquipmentsByFilter = _exportRememberedEquipmentsByFilter()
             };
 
             await _stateService.SaveAsync(state);
         }
-
     }
 }

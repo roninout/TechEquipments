@@ -28,7 +28,7 @@
 
             <Style.Triggers>
                 <!-- Если DryRunA == true -> показываем и мигаем -->
-                <DataTrigger Binding="{Binding DataContext.DryRunModel.DryRunA, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PlcDouble01ToBool}}"
+                <DataTrigger Binding="{Binding DataContext.DryRunModel.DryRunA, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource PlcDouble01ToBool}}"
                      Value="True">
 
                     <Setter Property="Visibility" Value="Visible"/>
@@ -291,7 +291,7 @@
 
                             <!-- ====== PLC settings ====== -->
                             <dxlc:LayoutGroup x:Name="PlcSettingsGroup" Header="PLC settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical"
-                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ParamPageToVis}, ConverterParameter=Plc}">
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource ParamPageToVis}, ConverterParameter=Plc}">
 
                                 <dxlc:LayoutItem>
                                     <common:ParamPlcRowsView/>
@@ -300,18 +300,12 @@
                             </dxlc:LayoutGroup>
 
                             <!-- ====== ATV settings ====== -->
-                            <dxlc:LayoutItem Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                      RelativeSource={RelativeSource AncestorType=Window},
-                                      Converter={StaticResource ParamPageToVis},
-                                      ConverterParameter=Atv}">
+                            <dxlc:LayoutItem Visibility="{Binding DataContext.CurrentParamSettingsPage,RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource ParamPageToVis}, ConverterParameter=Atv}">
                                 <Grid>
 
                                     <!-- Если linked ATV найден -->
-                                    <common:AtvSettingsSectionView DataContext="{Binding DataContext.LinkedAtvModel.Param,
-                                                             RelativeSource={RelativeSource AncestorType=Window}}"
-                                       Visibility="{Binding DataContext.LinkedAtvModel,
-                                                            RelativeSource={RelativeSource AncestorType=Window},
-                                                            Converter={StaticResource NullToVis}}"/>
+                                    <common:AtvSettingsSectionView DataContext="{Binding DataContext.LinkedAtvModel.Param, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}"
+                                                                   Visibility="{Binding DataContext.LinkedAtvModel, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource NullToVis}}"/>
 
                                     <!-- Если linked ATV не найден -->
                                     <TextBlock Text="No ATV is configured for this equipment."
@@ -323,7 +317,7 @@
                                             <Style TargetType="{x:Type TextBlock}">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding DataContext.LinkedAtvModel, RelativeSource={RelativeSource AncestorType=Window}}" Value="{x:Null}">
+                                                    <DataTrigger Binding="{Binding DataContext.LinkedAtvModel, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}" Value="{x:Null}">
                                                         <Setter Property="Visibility" Value="Visible"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
@@ -341,13 +335,13 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=DiDo}">
 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDiRows, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDiRows, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Grid Margin="2">
@@ -412,13 +406,13 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=DiDo}">
 
                                 <dxlc:LayoutItem>
                                     <ScrollViewer Height="215" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDoRows, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <ItemsControl ItemsSource="{Binding DataContext.ParamDoRows, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Grid Margin="2">
@@ -483,7 +477,7 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=Alarm}">
 
@@ -508,7 +502,7 @@
                                                 Orientation="Vertical"
                                                 Margin="0,0,0,8"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=TimeWork}">
 
@@ -572,7 +566,7 @@
                                                 HorizontalAlignment="Stretch"
                                                 Orientation="Vertical"
                                                 Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                                    RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                                     Converter={StaticResource ParamPageToVis},
                                                                     ConverterParameter=TimeWork}">
 
@@ -632,7 +626,7 @@
                             
                             <!-- ====== DryRun DI ====== -->
                             <dxlc:LayoutGroup Header="DryRun DI" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical"
-                                              DataContext="{Binding DataContext.DryRunModel.DryRunDiRow, RelativeSource={RelativeSource AncestorType=Window}}">
+                                              DataContext="{Binding DataContext.DryRunModel.DryRunDiRow, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
 
                                 <dxlc:LayoutGroup.Style>
                                     <Style TargetType="{x:Type dxlc:LayoutGroup}">
@@ -640,8 +634,8 @@
                                         <Style.Triggers>
                                             <MultiDataTrigger>
                                                 <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=Window}}" Value="{x:Static conv:ParamSettingsPage.DryRun}"/>
-                                                    <Condition Binding="{Binding DataContext.DryRunModel.DryRunDiRow, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToVis}}" Value="Visible"/>
+                                                    <Condition Binding="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}" Value="{x:Static conv:ParamSettingsPage.DryRun}"/>
+                                                    <Condition Binding="{Binding DataContext.DryRunModel.DryRunDiRow, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource NullToVis}}" Value="Visible"/>
                                                 </MultiDataTrigger.Conditions>
                                                 <Setter Property="Visibility" Value="Visible"/>
                                             </MultiDataTrigger>
@@ -696,7 +690,7 @@
 
                             <!-- ====== DryRun AI ====== -->
                             <dxlc:LayoutGroup Header="DryRun AI" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical" 
-                                              DataContext="{Binding DataContext.DryRunModel.DryRunAiModel.Param, RelativeSource={RelativeSource AncestorType=Window}}">
+                                              DataContext="{Binding DataContext.DryRunModel.DryRunAiModel.Param, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
 
                                 <dxlc:LayoutGroup.Style>
                                     <Style TargetType="{x:Type dxlc:LayoutGroup}">
@@ -704,8 +698,8 @@
                                         <Style.Triggers>
                                             <MultiDataTrigger>
                                                 <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=Window}}" Value="{x:Static conv:ParamSettingsPage.DryRun}"/>
-                                                    <Condition Binding="{Binding DataContext.DryRunModel.DryRunAiModel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToVis}}" Value="Visible"/>
+                                                    <Condition Binding="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}" Value="{x:Static conv:ParamSettingsPage.DryRun}"/>
+                                                    <Condition Binding="{Binding DataContext.DryRunModel.DryRunAiModel, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource NullToVis}}" Value="Visible"/>
                                                 </MultiDataTrigger.Conditions>
                                                 <Setter Property="Visibility" Value="Visible"/>
                                             </MultiDataTrigger>
@@ -722,7 +716,7 @@
                                         </Grid.ColumnDefinitions>
 
                                         <!-- Title -->
-                                        <TextBlock Grid.Column="0" Text="{Binding DataContext.DryRunModel.DryRunAiTitle, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"
+                                        <TextBlock Grid.Column="0" Text="{Binding DataContext.DryRunModel.DryRunAiTitle, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Mode=OneWay}"
                                                    VerticalAlignment="Center" Margin="0,0,6,0" TextWrapping="Wrap" Style="{StaticResource AppTextBlockStyle}" FontWeight="SemiBold"/>
 
                                         <!-- Value -->
@@ -741,7 +735,7 @@
                                     </Grid>
                                 </dxlc:LayoutItem>
 
-                                <dxlc:LayoutItem Label="Limit value for stop" Margin="0,0,0,20" DataContext="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <dxlc:LayoutItem Label="Limit value for stop" Margin="0,0,0,20" DataContext="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <dxe:TextEdit Tag="DryRunLimToOff"
                                                           Width="80"
@@ -780,7 +774,7 @@
 
                                         <!-- Progress limit -->
                                         <Border Grid.Column="1" Grid.Row="0" BorderBrush="Black" BorderThickness="0">
-                                            <dxe:ProgressBarEdit Value="{Binding DataContext.DryRunModel.DryRunLimToOff, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"
+                                            <dxe:ProgressBarEdit Value="{Binding DataContext.DryRunModel.DryRunLimToOff, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Mode=OneWay}"
                                                                  Minimum="{Binding MinR}"
                                                                  Maximum="{Binding MaxR}"
                                                                  ContentDisplayMode="Value" 
@@ -830,10 +824,10 @@
                                             <MultiDataTrigger>
                                                 <MultiDataTrigger.Conditions>
                                                     <Condition Binding="{Binding DataContext.CurrentParamSettingsPage,
-                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                                     RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}"
                                    Value="{x:Static conv:ParamSettingsPage.DryRun}" />
                                                     <Condition Binding="{Binding DataContext.DryRunModel,
-                                                     RelativeSource={RelativeSource AncestorType=Window},
+                                                     RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                                      Converter={StaticResource NullToVis}}"
                                    Value="Collapsed" />
                                                 </MultiDataTrigger.Conditions>
@@ -860,8 +854,8 @@
                                         <Style.Triggers>
                                             <MultiDataTrigger>
                                                 <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=Window}}" Value="{x:Static conv:ParamSettingsPage.DryRun}" />
-                                                    <Condition Binding="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToVis}}" Value="Visible" />
+                                                    <Condition Binding="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}" Value="{x:Static conv:ParamSettingsPage.DryRun}" />
+                                                    <Condition Binding="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource NullToVis}}" Value="Visible" />
                                                 </MultiDataTrigger.Conditions>
 
                                                 <Setter Property="Visibility" Value="Visible"/>
@@ -871,7 +865,7 @@
                                 </dxlc:LayoutGroup.Style>
 
                                 <!-- данные берём не из MotorParam, а из MainWindow (DryRunModel) -->
-                                <StackPanel DataContext="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <StackPanel DataContext="{Binding DataContext.DryRunModel, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}">
 
                                     <dxlc:LayoutItem Label="Pause before initialize protection" Margin="0,0,0,6">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

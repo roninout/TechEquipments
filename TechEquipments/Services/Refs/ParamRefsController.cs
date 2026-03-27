@@ -8,6 +8,8 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
@@ -23,26 +25,90 @@ namespace TechEquipments
         private readonly IEquipmentService _equipmentService;
         private readonly ICtApiService _ctApiService;
         private readonly IConfiguration _config;
-        private readonly IParamRefsHost _host;
+        private readonly MainViewModel _vm;
+        private readonly Dispatcher _dispatcher;
+        private readonly SemaphoreSlim _paramRwGate;
+        private readonly Func<(string equipName, string equipType, string equipDescription)> _resolveSelectedEquipForParam;
+        private readonly Func<EquipListBoxItem, bool> _isEquipmentVisible;
+        private readonly Action _applyFilters;
+        private readonly Action<string> _doIncrementalSearch;
+        private readonly Action<bool> _showParamChart;
+        private readonly Action _startParamPolling;
+        private readonly Action<int> _setSelectedMainTabIndex;
+        private readonly Action<string> _setEquipName;
+        private readonly Action<string> _setSelectedStation;
+        private readonly Action<EquipTypeGroup> _setSelectedTypeFilter;
+        private readonly Action<string, ParamSettingsPage, ParamLoadState> _notifySectionLoaded;
+        private readonly Action _beginSuppressParamWritesFromRefresh;
+        private readonly Action _endSuppressParamWritesFromRefresh;
 
         // Последняя группа параметров, которую показывали на вкладке Param
         private EquipTypeGroup _lastParamTypeGroup = EquipTypeGroup.All;
         private bool _hasLastParamTypeGroup;
 
-        public ParamRefsController(IEquipmentService equipmentService,ICtApiService ctApiService,IConfiguration config,IParamRefsHost host)
+        public ParamRefsController(
+            IEquipmentService equipmentService,
+            ICtApiService ctApiService,
+            IConfiguration config,
+            MainViewModel vm,
+            Dispatcher dispatcher,
+            SemaphoreSlim paramRwGate,
+            Func<(string equipName, string equipType, string equipDescription)> resolveSelectedEquipForParam,
+            Func<EquipListBoxItem, bool> isEquipmentVisible,
+            Action applyFilters,
+            Action<string> doIncrementalSearch,
+            Action<bool> showParamChart,
+            Action startParamPolling,
+            Action<int> setSelectedMainTabIndex,
+            Action<string> setEquipName,
+            Action<string> setSelectedStation,
+            Action<EquipTypeGroup> setSelectedTypeFilter,
+            Action<string, ParamSettingsPage, ParamLoadState> notifySectionLoaded,
+            Action beginSuppressParamWritesFromRefresh,
+            Action endSuppressParamWritesFromRefresh)
         {
             _equipmentService = equipmentService ?? throw new ArgumentNullException(nameof(equipmentService));
             _ctApiService = ctApiService ?? throw new ArgumentNullException(nameof(ctApiService));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _host = host ?? throw new ArgumentNullException(nameof(host));
+            _vm = vm ?? throw new ArgumentNullException(nameof(vm));
+            _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+            _paramRwGate = paramRwGate ?? throw new ArgumentNullException(nameof(paramRwGate));
+            _resolveSelectedEquipForParam = resolveSelectedEquipForParam ?? throw new ArgumentNullException(nameof(resolveSelectedEquipForParam));
+            _isEquipmentVisible = isEquipmentVisible ?? throw new ArgumentNullException(nameof(isEquipmentVisible));
+            _applyFilters = applyFilters ?? throw new ArgumentNullException(nameof(applyFilters));
+            _doIncrementalSearch = doIncrementalSearch ?? throw new ArgumentNullException(nameof(doIncrementalSearch));
+            _showParamChart = showParamChart ?? throw new ArgumentNullException(nameof(showParamChart));
+            _startParamPolling = startParamPolling ?? throw new ArgumentNullException(nameof(startParamPolling));
+            _setSelectedMainTabIndex = setSelectedMainTabIndex ?? throw new ArgumentNullException(nameof(setSelectedMainTabIndex));
+            _setEquipName = setEquipName ?? throw new ArgumentNullException(nameof(setEquipName));
+            _setSelectedStation = setSelectedStation ?? throw new ArgumentNullException(nameof(setSelectedStation));
+            _setSelectedTypeFilter = setSelectedTypeFilter ?? throw new ArgumentNullException(nameof(setSelectedTypeFilter));
+            _notifySectionLoaded = notifySectionLoaded ?? throw new ArgumentNullException(nameof(notifySectionLoaded));
+            _beginSuppressParamWritesFromRefresh = beginSuppressParamWritesFromRefresh ?? throw new ArgumentNullException(nameof(beginSuppressParamWritesFromRefresh));
+            _endSuppressParamWritesFromRefresh = endSuppressParamWritesFromRefresh ?? throw new ArgumentNullException(nameof(endSuppressParamWritesFromRefresh));
         }
+
+        private MainTabKind SelectedMainTab => _vm.SelectedMainTab;
+        private ObservableCollection<EquipListBoxItem> Equipments => _vm.EquipmentList.Equipments;
+        private ObservableCollection<DiDoRefRow> ParamDiRows => _vm.Param.ParamDiRows;
+        private ObservableCollection<DiDoRefRow> ParamDoRows => _vm.Param.ParamDoRows;
+        private ObservableCollection<PlcRefRow> ParamPlcRows => _vm.Param.ParamPlcRows;
+
+        private ParamSettingsPage CurrentParamSettingsPage
+        {
+            get => _vm.Param.CurrentParamSettingsPage;
+            set => _vm.Param.CurrentParamSettingsPage = value;
+        }
+
+        private string SelectedStation => _vm.EquipmentList.SelectedStation;
+        private EquipTypeGroup SelectedTypeFilter => _vm.EquipmentList.SelectedTypeFilter;
 
         /// <summary>
         /// Устанавливает активную страницу Param settings.
         /// </summary>
         public void SetParamSettingsPage(ParamSettingsPage page)
         {
-            _host.CurrentParamSettingsPage = page;
+            CurrentParamSettingsPage = page;
         }
 
         /// <summary>
@@ -52,36 +118,36 @@ namespace TechEquipments
         public async Task RefreshActiveParamSectionAsync(CancellationToken ct)
         {
             // Обновляем секции только на вкладке Param
-            if (_host.SelectedMainTab != MainTabKind.Param)
+            if (SelectedMainTab != MainTabKind.Param)
                 return;
 
-            var page = _host.CurrentParamSettingsPage;
+            var page = CurrentParamSettingsPage;
 
             // Если открыт Chart, а не settings-page — ничего не делаем
             if (page == ParamSettingsPage.None)
                 return;
 
-            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _resolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
 
             // Нет выбранного оборудования -> секция недоступна
             if (string.IsNullOrWhiteSpace(equipName))
             {
-                _host.NotifySectionLoaded("", page, ParamLoadState.Unavailable);
+                _notifySectionLoaded("", page, ParamLoadState.Unavailable);
                 return;
             }
 
             // Список оборудования ещё не загружен -> секция пока недоступна
-            if (_host.Equipments.Count == 0)
+            if (Equipments.Count == 0)
             {
-                _host.NotifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
+                _notifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
                 return;
             }
 
             // Если CtApi disconnected — не запускаем тяжёлые refresh-и секций.
             if (!_ctApiService.IsConnectionAvailable)
             {
-                _host.NotifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
+                _notifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
                 return;
             }
 
@@ -107,7 +173,7 @@ namespace TechEquipments
 
                     default:
                         // Для неподдерживаемых/пустых страниц сразу отдаём финальный статус
-                        _host.NotifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
+                        _notifySectionLoaded(equipName, page, ParamLoadState.Unavailable);
                         break;
                 }
             }
@@ -120,7 +186,7 @@ namespace TechEquipments
             {
                 // Любая ошибка должна дать финальный сигнал,
                 // иначе loading overlay может повиснуть
-                _host.NotifySectionLoaded(equipName, page, ParamLoadState.Error);
+                _notifySectionLoaded(equipName, page, ParamLoadState.Error);
                 throw;
             }
         }
@@ -153,20 +219,20 @@ namespace TechEquipments
             ResetAreaIfTypeGroupChanged(newGroup);
 
             // Выставляем имя оборудования
-            _host.EquipName = targetName;
+            _setEquipName(targetName);
 
             // Выделяем слева
-            _host.DoIncrementalSearch(targetName);
+            _doIncrementalSearch(targetName);
 
             // Открываем вкладку Param
-            if (_host.SelectedMainTab != MainTabKind.Param)
+            if (SelectedMainTab != MainTabKind.Param)
             {
-                _host.SelectedMainTabIndex = (int)MainTabKind.Param;
+                _setSelectedMainTabIndex((int)MainTabKind.Param);
                 return;
             }
 
             // Если уже на Param — обновляем polling
-            _host.StartParamPolling();
+            _startParamPolling();
         }
 
         /// <summary>
@@ -180,8 +246,8 @@ namespace TechEquipments
 
             // Пытаемся найти оборудование в полном списке, чтобы корректно подстроить фильтры
             var it =
-                _host.Equipments.FirstOrDefault(x => string.Equals(x.Equipment, key, StringComparison.OrdinalIgnoreCase)) ??
-                _host.Equipments.FirstOrDefault(x => string.Equals(x.Tag, key, StringComparison.OrdinalIgnoreCase));
+                Equipments.FirstOrDefault(x => string.Equals(x.Equipment, key, StringComparison.OrdinalIgnoreCase)) ??
+                Equipments.FirstOrDefault(x => string.Equals(x.Tag, key, StringComparison.OrdinalIgnoreCase));
 
             if (it != null)
             {
@@ -195,16 +261,16 @@ namespace TechEquipments
                 key = (it.Equipment ?? key).Trim();
             }
 
-            _host.EquipName = key;
-            _host.DoIncrementalSearch(key);
+            _setEquipName(key);
+            _doIncrementalSearch(key);
 
-            if (_host.SelectedMainTab != MainTabKind.Param)
+            if (SelectedMainTab != MainTabKind.Param)
             {
-                _host.SelectedMainTabIndex = (int)MainTabKind.Param;
+                _setSelectedMainTabIndex((int)MainTabKind.Param);
                 return;
             }
 
-            _host.StartParamPolling();
+            _startParamPolling();
         }
 
         /// <summary>
@@ -231,12 +297,12 @@ namespace TechEquipments
             SetParamSettingsPage(ParamSettingsPage.None);
 
             // Показываем Chart по умолчанию
-            _host.ShowParamChart(reset: false);
+            _showParamChart(false);
 
             // Чистим ref-списки
-            _host.ParamDiRows.Clear();
-            _host.ParamDoRows.Clear();
-            _host.ParamPlcRows.Clear();
+            ParamDiRows.Clear();
+            ParamDoRows.Clear();
+            ParamPlcRows.Clear();
         }
 
         /// <summary>
@@ -248,13 +314,13 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshDiDoSectionAsync(CancellationToken ct)
         {
-            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _resolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
 
             // сериализуем с Param чтением/записью
-            await _host.ParamRwGate.WaitAsync(ct);
+            await _paramRwGate.WaitAsync(ct);
             try
             {
                 // 1) refs
@@ -268,13 +334,13 @@ namespace TechEquipments
 
                 if (refNames.Count == 0)
                 {
-                    await _host.Dispatcher.InvokeAsync(() =>
+                    await _dispatcher.InvokeAsync(() =>
                     {
-                        _host.ParamDiRows.Clear();
-                        _host.ParamDoRows.Clear();
+                        ParamDiRows.Clear();
+                        ParamDoRows.Clear();
                     });
 
-                    _host.NotifySectionLoaded(equipName, ParamSettingsPage.DiDo, ParamLoadState.Unavailable);
+                    _notifySectionLoaded(equipName, ParamSettingsPage.DiDo, ParamLoadState.Unavailable);
                     return;
                 }
 
@@ -286,7 +352,7 @@ namespace TechEquipments
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    var equip = _host.Equipments.FirstOrDefault(x =>
+                    var equip = Equipments.FirstOrDefault(x =>
                         string.Equals((x.Equipment ?? "").Trim(), refName, StringComparison.OrdinalIgnoreCase));
 
                     if (equip == null)
@@ -328,23 +394,23 @@ namespace TechEquipments
                     .ToDictionary(x => x.EquipName, StringComparer.OrdinalIgnoreCase);
 
                 // 4) sync collections on UI thread
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    SyncRows(_host.ParamDiRows, diNew);
-                    SortRowsByChanel(_host.ParamDiRows);
+                    SyncRows(ParamDiRows, diNew);
+                    SortRowsByChanel(ParamDiRows);
 
-                    SyncRows(_host.ParamDoRows, doNew);
-                    SortRowsByChanel(_host.ParamDoRows);
+                    SyncRows(ParamDoRows, doNew);
+                    SortRowsByChanel(ParamDoRows);
                 });
 
                 // ВАЖНО:
                 // DI/DO секция успешно дочитана и синхронизирована.
                 // Без этого overlay будет висеть, хотя данные уже на экране.
-                _host.NotifySectionLoaded(equipName, ParamSettingsPage.DiDo, ParamLoadState.Ready);
+                _notifySectionLoaded(equipName, ParamSettingsPage.DiDo, ParamLoadState.Ready);
             }
             finally
             {
-                _host.ParamRwGate.Release();
+                _paramRwGate.Release();
             }
         }
 
@@ -357,7 +423,7 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshPlcSectionAsync(CancellationToken ct)
         {
-            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _resolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
                 return;
@@ -365,7 +431,7 @@ namespace TechEquipments
             const string category = "TabPLC";
             const string clusterEquipItem = "State";
 
-            await _host.ParamRwGate.WaitAsync(ct);
+            await _paramRwGate.WaitAsync(ct);
             try
             {
                 // 1) refs
@@ -373,16 +439,16 @@ namespace TechEquipments
 
                 if (fresh.Count == 0)
                 {
-                    await _host.Dispatcher.InvokeAsync(() => _host.ParamPlcRows.Clear());
-                    _host.NotifySectionLoaded(equipName, ParamSettingsPage.Plc, ParamLoadState.Unavailable);
+                    await _dispatcher.InvokeAsync(() => ParamPlcRows.Clear());
+                    _notifySectionLoaded(equipName, ParamSettingsPage.Plc, ParamLoadState.Unavailable);
                     return;
                 }
 
                 // 2) sync списка
-                await _host.Dispatcher.InvokeAsync(() => SyncPlcRows(_host.ParamPlcRows, fresh));
+                await _dispatcher.InvokeAsync(() => SyncPlcRows(ParamPlcRows, fresh));
 
                 // 3) snapshot
-                var snapshot = await _host.Dispatcher.InvokeAsync(() => _host.ParamPlcRows.ToList());
+                var snapshot = await _dispatcher.InvokeAsync(() => ParamPlcRows.ToList());
 
                 // 4) I/O: TagInfo -> TagRead пакетно
                 var meta = new List<(PlcRefRow row, string tagName, string unit, string forcedTag)>(snapshot.Count);
@@ -496,7 +562,7 @@ namespace TechEquipments
                 }
 
                 // 6) apply UI одним заходом
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
                     foreach (var u in updates)
                     {
@@ -518,11 +584,11 @@ namespace TechEquipments
                     }
                 });
 
-                _host.NotifySectionLoaded(equipName, ParamSettingsPage.Plc, ParamLoadState.Ready);
+                _notifySectionLoaded(equipName, ParamSettingsPage.Plc, ParamLoadState.Ready);
             }
             finally
             {
-                _host.ParamRwGate.Release();
+                _paramRwGate.Release();
             }
         }
 
@@ -537,11 +603,11 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshDryRunSectionAsync(CancellationToken ct)
         {
-            var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, _, _) = _resolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
             {
-                _host.NotifySectionLoaded("", ParamSettingsPage.DryRun, ParamLoadState.Unavailable);
+                _notifySectionLoaded("", ParamSettingsPage.DryRun, ParamLoadState.Unavailable);
                 return;
             }
 
@@ -554,20 +620,21 @@ namespace TechEquipments
 
             if (winRef == null || string.IsNullOrWhiteSpace(winRef.RefEquip))
             {
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.BeginSuppressParamWritesFromRefresh();
+                    _beginSuppressParamWritesFromRefresh();
                     try
                     {
-                        _host.SetDryRunState(null, null);
+                        _vm.Param.DryRunEquipName = null;
+                        _vm.Param.DryRunModel = null;
                     }
                     finally
                     {
-                        _host.EndSuppressParamWritesFromRefresh();
+                        _endSuppressParamWritesFromRefresh();
                     }
                 });
 
-                _host.NotifySectionLoaded(equipName, ParamSettingsPage.DryRun, ParamLoadState.Unavailable);
+                _notifySectionLoaded(equipName, ParamSettingsPage.DryRun, ParamLoadState.Unavailable);
                 return;
             }
 
@@ -590,20 +657,21 @@ namespace TechEquipments
             model.DryRunAiModel = aiModel;
             model.DryRunAiTitle = aiTitle;
 
-            await _host.Dispatcher.InvokeAsync(() =>
+            await _dispatcher.InvokeAsync(() =>
             {
-                _host.BeginSuppressParamWritesFromRefresh();
+                _beginSuppressParamWritesFromRefresh();
                 try
                 {
-                    _host.SetDryRunState(dryRunEquipName, model);
+                    _vm.Param.DryRunEquipName = dryRunEquipName;
+                    _vm.Param.DryRunModel = model;
                 }
                 finally
                 {
-                    _host.EndSuppressParamWritesFromRefresh();
+                    _endSuppressParamWritesFromRefresh();
                 }
             });
 
-            _host.NotifySectionLoaded(equipName, ParamSettingsPage.DryRun, ParamLoadState.Ready);
+            _notifySectionLoaded(equipName, ParamSettingsPage.DryRun, ParamLoadState.Ready);
         }
 
         /// <summary>
@@ -613,18 +681,18 @@ namespace TechEquipments
         {
             try
             {
-                if (_host.IsEquipmentVisible(it))
+                if (_isEquipmentVisible(it))
                     return;
 
                 if (!string.IsNullOrWhiteSpace(it.Station))
-                    _host.SelectedStation = it.Station.Trim();
+                    _setSelectedStation(it.Station.Trim());
                 else
-                    _host.SelectedStation = "All";
+                    _setSelectedStation("All");
 
                 var grp = EquipTypeRegistry.GetGroup(it.Type ?? "");
-                _host.SelectedTypeFilter = grp != EquipTypeGroup.All ? grp : EquipTypeGroup.All;
+                _setSelectedTypeFilter(grp != EquipTypeGroup.All ? grp : EquipTypeGroup.All);
 
-                _host.ApplyFilters();
+                _applyFilters();
             }
             catch
             {
@@ -635,7 +703,7 @@ namespace TechEquipments
         /// <summary>
         /// Параллельный helper с ограничением степени параллелизма.
         /// </summary>
-        private static async Task<List<TResult>> RunLimitedAsync<TItem, TResult>(List<TItem> items,int maxConcurrency,Func<TItem, Task<TResult>> work,CancellationToken token)
+        private static async Task<List<TResult>> RunLimitedAsync<TItem, TResult>(List<TItem> items, int maxConcurrency, Func<TItem, Task<TResult>> work, CancellationToken token)
         {
             var results = new ConcurrentBag<TResult>();
             using var sem = new SemaphoreSlim(Math.Max(1, maxConcurrency), Math.Max(1, maxConcurrency));
@@ -891,8 +959,8 @@ namespace TechEquipments
             if (string.IsNullOrWhiteSpace(name))
                 return null;
 
-            return _host.Equipments.FirstOrDefault(x => string.Equals((x.Equipment ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase))
-                ?? _host.Equipments.FirstOrDefault(x => string.Equals((x.Tag ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase));
+            return Equipments.FirstOrDefault(x => string.Equals((x.Equipment ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase))
+                ?? Equipments.FirstOrDefault(x => string.Equals((x.Tag ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -995,27 +1063,28 @@ namespace TechEquipments
         /// </summary>
         private async Task RefreshAtvSectionAsync(CancellationToken ct)
         {
-            var (equipName, equipType, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, equipType, _) = _resolveSelectedEquipForParam();
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
 
             // Если текущее оборудование не выбрано — очищаем linked ATV
             if (string.IsNullOrWhiteSpace(equipName))
             {
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.BeginSuppressParamWritesFromRefresh();
+                    _beginSuppressParamWritesFromRefresh();
                     try
                     {
-                        _host.SetLinkedAtvState(null, null);
+                        _vm.Param.LinkedAtvEquipName = null;
+                        _vm.Param.LinkedAtvModel = null;
                     }
                     finally
                     {
-                        _host.EndSuppressParamWritesFromRefresh();
+                        _endSuppressParamWritesFromRefresh();
                     }
                 });
 
-                _host.NotifySectionLoaded("", ParamSettingsPage.Atv, ParamLoadState.Unavailable);
+                _notifySectionLoaded("", ParamSettingsPage.Atv, ParamLoadState.Unavailable);
                 return;
             }
 
@@ -1024,20 +1093,21 @@ namespace TechEquipments
             // ATV-секция внутри мотора нужна только для Motor.
             if (group != EquipTypeGroup.Motor)
             {
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.BeginSuppressParamWritesFromRefresh();
+                    _beginSuppressParamWritesFromRefresh();
                     try
                     {
-                        _host.SetLinkedAtvState(null, null);
+                        _vm.Param.LinkedAtvEquipName = null;
+                        _vm.Param.LinkedAtvModel = null;
                     }
                     finally
                     {
-                        _host.EndSuppressParamWritesFromRefresh();
+                        _endSuppressParamWritesFromRefresh();
                     }
                 });
 
-                _host.NotifySectionLoaded(equipName, ParamSettingsPage.Atv, ParamLoadState.Unavailable);
+                _notifySectionLoaded(equipName, ParamSettingsPage.Atv, ParamLoadState.Unavailable);
                 return;
             }
 
@@ -1045,20 +1115,21 @@ namespace TechEquipments
 
             ct.ThrowIfCancellationRequested();
 
-            await _host.Dispatcher.InvokeAsync(() =>
+            await _dispatcher.InvokeAsync(() =>
             {
-                _host.BeginSuppressParamWritesFromRefresh();
+                _beginSuppressParamWritesFromRefresh();
                 try
                 {
-                    _host.SetLinkedAtvState(linkedEquipName, linkedModel);
+                    _vm.Param.LinkedAtvEquipName = linkedEquipName;
+                    _vm.Param.LinkedAtvModel = linkedModel;
                 }
                 finally
                 {
-                    _host.EndSuppressParamWritesFromRefresh();
+                    _endSuppressParamWritesFromRefresh();
                 }
             });
 
-            _host.NotifySectionLoaded(
+            _notifySectionLoaded(
                 equipName,
                 ParamSettingsPage.Atv,
                 linkedModel != null ? ParamLoadState.Ready : ParamLoadState.Unavailable);

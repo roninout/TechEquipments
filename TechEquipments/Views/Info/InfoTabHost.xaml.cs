@@ -14,9 +14,16 @@ namespace TechEquipments.Views.Info
             InitializeComponent();
         }
 
-        private MainWindow? Host =>
-            Window.GetWindow(this) as MainWindow
-            ?? Application.Current?.MainWindow as MainWindow;
+        private MainWindow? Host
+        {
+            get
+            {
+                if (Window.GetWindow(this) is MainWindow mw)
+                    return mw;
+
+                return Application.Current?.MainWindow as MainWindow;
+            }
+        }
 
         private void Edit_Click(object sender, RoutedEventArgs e)
         {

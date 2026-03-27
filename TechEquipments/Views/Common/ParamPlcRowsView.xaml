@@ -1,11 +1,12 @@
 ﻿<UserControl x:Class="TechEquipments.Views.Common.ParamPlcRowsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:param="clr-namespace:TechEquipments.Views.Param">
 
     <Grid>
         <ScrollViewer Height="482" VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="RowsList"
-                          ItemsSource="{Binding DataContext.ParamPlcRows, RelativeSource={RelativeSource AncestorType=Window}}">
+                          ItemsSource="{Binding DataContext.ParamPlcRows,RelativeSource={RelativeSource AncestorType={x:Type param:ParamTabHost}}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Grid Margin="2">

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using CtApi;
 using TechEquipments.Services.QR;
 using Microsoft.EntityFrameworkCore;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
@@ -44,6 +45,7 @@ namespace TechEquipments
                     services.AddSingleton<IQrCodeService, QrCodeService>();
                     services.AddSingleton<IQrScannerService, QrScannerService>();
 
+                    services.AddSingleton<MainViewModel>();
                     services.AddTransient<MainWindow>();
                 })
                 .Build();
@@ -68,21 +70,6 @@ namespace TechEquipments
 
             AppHost.Services.GetRequiredService<MainWindow>().Show();
         }
-
-        //protected override async void OnStartup(StartupEventArgs e)
-        //{
-        //    base.OnStartup(e);
-        //    await AppHost.StartAsync();
-        //    AppHost.Services.GetRequiredService<MainWindow>().Show();
-
-        //    // Быстрый тест подключения
-        //    using var scope = AppHost.Services.CreateScope();
-
-        //    var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<PgDbContext>>();
-        //    await using var db = await factory.CreateDbContextAsync();
-        //    var ok = await db.Database.CanConnectAsync();
-        //    if (!ok) throw new Exception("Postgres: cannot connect.");
-        //}
 
         protected override async void OnExit(ExitEventArgs e)
         {

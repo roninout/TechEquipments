@@ -9,7 +9,8 @@
     xmlns:infoviews="clr-namespace:TechEquipments.Views.Info"
     x:Class="TechEquipments.MainWindow"
     Icon="/TechEquipments;component/Resources/Icons/app.ico"
-    Title="{Binding WindowTitle}" Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
+    Title="{Binding Vm.Shell.WindowTitle}"
+    Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
 
     <dx:ThemedWindow.Resources>
         <!-- Конвертер bool -> Visibility -->
@@ -68,7 +69,7 @@
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Stations"
                                           IsTextEditable="False"
-                                          ItemsSource="{Binding Stations}"
+                                          ItemsSource="{Binding Vm.EquipmentList.Stations}"
                                           EditValue="{Binding SelectedStation, UpdateSourceTrigger=PropertyChanged}"/>
 
                         <!--<TextBlock Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center"
@@ -250,11 +251,11 @@
                         </dx:DXTabItem.Header>
 
                             <!-- Вынесенный UI вкладки Param -->
-                        <views:ParamTabHost />
+                        <views:ParamTabHost DataContext="{Binding Vm.Param}" />
                     </dx:DXTabItem>
 
                     <!-- ============ INFO TAB ============ -->
-                    <dx:DXTabItem IsEnabled="{Binding IsDbConnected}">
+                    <dx:DXTabItem IsEnabled="{Binding Vm.Database.IsDbConnected}">
 
                         <dx:DXTabItem.Header>
                             <StackPanel Orientation="Horizontal">
@@ -263,11 +264,11 @@
                             </StackPanel>
                         </dx:DXTabItem.Header>
 
-                        <infoviews:InfoTabHost/>
+                        <infoviews:InfoTabHost DataContext="{Binding Vm.Info}"/>
                     </dx:DXTabItem>
 
                     <!-- ============ OPERATION ACTIONS TAB ============ -->
-                    <dx:DXTabItem IsEnabled="{Binding IsDbConnected}">
+                    <dx:DXTabItem IsEnabled="{Binding Vm.Database.IsDbConnected}">
 
                         <dx:DXTabItem.Header>
                             <StackPanel Orientation="Horizontal">
@@ -279,7 +280,7 @@
                         <Grid>
 
                             <!-- Таблица -->
-                            <dxg:GridControl ItemsSource="{Binding OperatorActRows}" AutoGenerateColumns="None">
+                            <dxg:GridControl ItemsSource="{Binding Vm.Database.OperatorActRows}" AutoGenerateColumns="None">
                                 <dxg:GridControl.View>
                                     <dxg:TableView Style="{StaticResource AppTableViewStyle}"
                                                    AutoWidth="False"
@@ -305,7 +306,7 @@
                     </dx:DXTabItem>
 
                     <!-- ============ ALARM HISTORY TAB ============ -->
-                    <dx:DXTabItem IsEnabled="{Binding IsDbConnected}">
+                    <dx:DXTabItem IsEnabled="{Binding Vm.Database.IsDbConnected}">
 
                         <dx:DXTabItem.Header>
                             <StackPanel Orientation="Horizontal">
@@ -316,7 +317,7 @@
 
                         <Grid>
 
-                            <dxg:GridControl ItemsSource="{Binding AlarmHistoryRows}" AutoGenerateColumns="None">
+                            <dxg:GridControl ItemsSource="{Binding Vm.Database.AlarmHistoryRows}" AutoGenerateColumns="None">
                                 <dxg:GridControl.View>
                                     <dxg:TableView Style="{StaticResource AppTableViewStyle}"
                                                    AutoWidth="False"
@@ -427,7 +428,7 @@
               Panel.ZIndex="999"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch"
-              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
+              Visibility="{Binding Vm.Shell.IsLoading, Converter={StaticResource BoolToVis}}">
 
             <Border Background="#66000000"/>
 
@@ -454,7 +455,7 @@
                         <TextBlock Grid.Column="0"
                                    FontSize="14"
                                    FontWeight="SemiBold"
-                                   Text="{Binding LoadingText}"
+                                   Text="{Binding Vm.Shell.LoadingText}"
                                    TextWrapping="Wrap"
                                    Margin="0,0,12,0"/>
 
@@ -469,8 +470,8 @@
                     <Grid Grid.Row="1" Margin="0,10,0,0">
                         <dxe:ProgressBarEdit Height="18"
                                              Minimum="0"
-                                             Maximum="{Binding PerTrendMax}"
-                                             EditValue="{Binding CurrentCount, Mode=OneWay}"/>
+                                             Maximum="{Binding Vm.Shell.PerTrendMax}"
+                                             EditValue="{Binding Vm.Shell.CurrentCount, Mode=OneWay}"/>
 
                         <TextBlock HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -478,8 +479,8 @@
                                    IsHitTestVisible="False">
                             <TextBlock.Text>
                                 <MultiBinding StringFormat="current: {0}/{1}">
-                                    <Binding Path="CurrentCount"/>
-                                    <Binding Path="PerTrendMax"/>
+                                    <Binding Path="Vm.Shell.CurrentCount"/>
+                                    <Binding Path="Vm.Shell.PerTrendMax"/>
                                 </MultiBinding>
                             </TextBlock.Text>
                         </TextBlock>
@@ -489,8 +490,8 @@
                     <Grid Grid.Row="2" Margin="0,8,0,0">
                         <dxe:ProgressBarEdit Height="18"
                                              Minimum="0"
-                                             Maximum="{Binding TotalMax}"
-                                             EditValue="{Binding LoadedCount, Mode=OneWay}"/>
+                                             Maximum="{Binding Vm.Shell.TotalMax}"
+                                             EditValue="{Binding Vm.Shell.LoadedCount, Mode=OneWay}"/>
 
                         <TextBlock HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -498,8 +499,8 @@
                                    IsHitTestVisible="False">
                             <TextBlock.Text>
                                 <MultiBinding StringFormat="rows: {0}/{1}">
-                                    <Binding Path="LoadedCount"/>
-                                    <Binding Path="TotalMax"/>
+                                    <Binding Path="Vm.Shell.LoadedCount"/>
+                                    <Binding Path="Vm.Shell.TotalMax"/>
                                 </MultiBinding>
                             </TextBlock.Text>
                         </TextBlock>

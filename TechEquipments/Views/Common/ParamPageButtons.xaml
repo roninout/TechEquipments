@@ -4,18 +4,15 @@
              xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
              xmlns:conv="clr-namespace:TechEquipments"
              xmlns:local="clr-namespace:TechEquipments"
-             DataContext="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext}">
+             xmlns:param="clr-namespace:TechEquipments.Views.Param">
 
     <UserControl.Resources>
         <conv:ParamModelSupportsPageToVisibilityConverter x:Key="ParamModelPageToVis"/>
     </UserControl.Resources>
 
-    <!--
-        Общая вертикальная панель кнопок Param.
-        Теперь доступность кнопок берётся напрямую из CurrentParamModel,
-        а не через отдельные bool-свойства MainWindow.
-    -->
-    <StackPanel Orientation="Vertical" VerticalAlignment="Top">
+    <StackPanel Orientation="Vertical"
+                VerticalAlignment="Top"
+                DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType={x:Type param:ParamTabHost}}}">
 
         <!-- Chart -->
         <dx:SimpleButton Width="60"
@@ -47,19 +44,19 @@
 
         <!-- ATV -->
         <dx:SimpleButton Width="60"
-                 Height="60"
-                 Margin="0,8,0,0"
-                 Padding="0"
-                 GlyphWidth="40"
-                 GlyphHeight="40"
-                 Tag="{x:Static local:ParamSettingsPage.Atv}"
-                 Click="PageButton_Click"
-                 ToolTip="ATV settings"
-                 Glyph="{dx:DXImage 'SvgImages/Dashboards/Gauges.svg'}"
-                 Style="{StaticResource AppButtonStyle}"
-                 Visibility="{Binding CurrentParamModel,
-                                      Converter={StaticResource ParamModelPageToVis},
-                                      ConverterParameter=Atv}" />
+                         Height="60"
+                         Margin="0,8,0,0"
+                         Padding="0"
+                         GlyphWidth="40"
+                         GlyphHeight="40"
+                         Tag="{x:Static local:ParamSettingsPage.Atv}"
+                         Click="PageButton_Click"
+                         ToolTip="ATV settings"
+                         Glyph="{dx:DXImage 'SvgImages/Dashboards/Gauges.svg'}"
+                         Style="{StaticResource AppButtonStyle}"
+                         Visibility="{Binding CurrentParamModel,
+                                              Converter={StaticResource ParamModelPageToVis},
+                                              ConverterParameter=Atv}" />
 
         <!-- DI/DO -->
         <dx:SimpleButton Width="60"

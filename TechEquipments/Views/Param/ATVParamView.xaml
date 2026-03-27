@@ -233,7 +233,7 @@
 
                             <!-- ====== ATV settings ====== -->
                             <dxlc:LayoutItem Visibility="{Binding DataContext.CurrentParamSettingsPage,
-                                      RelativeSource={RelativeSource AncestorType=Window},
+                                      RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
                                       Converter={StaticResource ParamPageToVis},
                                       ConverterParameter=Atv}">
                                 <common:AtvSettingsSectionView/>
@@ -242,7 +242,7 @@
 
                             <!-- ====== Alarm settings ====== -->
                             <dxlc:LayoutGroup x:Name="AlarmSettingsGroup" Header="Alarm settings" View="GroupBox" HorizontalAlignment="Stretch" Orientation="Vertical"
-                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ParamPageToVis}, ConverterParameter=Alarm}">
+                                                Visibility="{Binding DataContext.CurrentParamSettingsPage, RelativeSource={RelativeSource AncestorType=local:ParamTabHost}, Converter={StaticResource ParamPageToVis}, ConverterParameter=Alarm}">
 
                                 <!--HA-->
                                 <dxlc:LayoutGroup Orientation="Horizontal">

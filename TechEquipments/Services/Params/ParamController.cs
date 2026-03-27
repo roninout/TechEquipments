@@ -6,27 +6,40 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
     /// <summary>
-    /// Вся логіка Param-polling винесена з MainWindow:
+    /// Вся логіка Param-polling:
     /// - цикл раз в 5 секунд
     /// - PollParamOnceSafeAsync (gate, pause-after-write, editing protection)
     /// - PollParamOnceAsync (определение типа и чтение модели)
     /// - ApplyParamModelToUi (кеш props + обновление значений без лагов)
+    ///
+    /// Працює напряму з MainViewModel, без IParamHost.
     /// </summary>
     public sealed class ParamController
     {
         private readonly IEquipmentService _equipmentService;
-        private readonly IParamHost _host;
+        private readonly MainViewModel _vm;
+        private readonly Dispatcher _dispatcher;
         private readonly ICtApiService _ctApiService;
+        private readonly SemaphoreSlim _paramRwGate;
+
+        private readonly Func<bool> _getTrendIsChartVisible;
+        private readonly Func<bool> _getIsEditingField;
+        private readonly Func<(string equipName, string equipType, string equipDescription)> _resolveSelectedEquipForParam;
+        private readonly Action<EquipTypeGroup> _resetAreaIfTypeGroupChanged;
+        private readonly Func<CancellationToken, Task> _refreshActiveParamSectionAsync;
+        private readonly Func<CancellationToken, Task> _pollTrendOnceSafeAsync;
+        private readonly Action<string, ParamLoadState> _notifyMainParamLoaded;
 
         // защита от гонок Start/Stop (SelectionChanged + TabChanged могут дернуть одновременно)
         private readonly object _sync = new();
 
         // ключ "что именно сейчас поллим" (equip + type)
-        // если ключ поменялся -> перезапускаем polling (как раньше)
+        // если ключ поменялся -> перезапускаем polling
         private string _pollKey = "";
 
         private CancellationTokenSource? _cts;
@@ -38,17 +51,38 @@ namespace TechEquipments
 
         private DateTime _nextSecurityTitleReadUtc = DateTime.MinValue;
 
-        public ParamController(IEquipmentService equipmentService, IParamHost host, ICtApiService ctApiService)
+        public ParamController(
+            IEquipmentService equipmentService,
+            MainViewModel vm,
+            Dispatcher dispatcher,
+            ICtApiService ctApiService,
+            SemaphoreSlim paramRwGate,
+            Func<bool> getTrendIsChartVisible,
+            Func<bool> getIsEditingField,
+            Func<(string equipName, string equipType, string equipDescription)> resolveSelectedEquipForParam,
+            Action<EquipTypeGroup> resetAreaIfTypeGroupChanged,
+            Func<CancellationToken, Task> refreshActiveParamSectionAsync,
+            Func<CancellationToken, Task> pollTrendOnceSafeAsync,
+            Action<string, ParamLoadState> notifyMainParamLoaded)
         {
             _equipmentService = equipmentService;
-            _host = host;
+            _vm = vm;
+            _dispatcher = dispatcher;
             _ctApiService = ctApiService;
+            _paramRwGate = paramRwGate;
+            _getTrendIsChartVisible = getTrendIsChartVisible;
+            _getIsEditingField = getIsEditingField;
+            _resolveSelectedEquipForParam = resolveSelectedEquipForParam;
+            _resetAreaIfTypeGroupChanged = resetAreaIfTypeGroupChanged;
+            _refreshActiveParamSectionAsync = refreshActiveParamSectionAsync;
+            _pollTrendOnceSafeAsync = pollTrendOnceSafeAsync;
+            _notifyMainParamLoaded = notifyMainParamLoaded;
         }
 
         public void Start()
         {
             // Polling имеет смысл только на вкладке Param
-            if (_host.SelectedMainTab != MainTabKind.Param)
+            if (_vm.SelectedMainTab != MainTabKind.Param)
                 return;
 
             var newKey = BuildPollKey();
@@ -68,7 +102,6 @@ namespace TechEquipments
 
                 // 3) ключ поменялся => выбрали другое оборудование: restart + сброс статуса/счетчика
                 StopInternal_NoLock();
-
                 StartInternal_NoLock(newKey);
             }
         }
@@ -80,12 +113,9 @@ namespace TechEquipments
         {
             _pollKey = pollKey;
 
-            // ✅ Сброс как раньше
-            _host.ParamReadCycles = 0;
-            _host.ParamStatusText = "Param: starting...";
+            _vm.Param.ParamReadCycles = 0;
+            _vm.Shell.ParamStatusText = "Param: starting...";
 
-            // опционально: можно сбросить только UI-кеш типа модели,
-            // чтобы при смене оборудования того же типа все равно не было "старого состояния"
             _currentParamModelType = null;
             _rowIndexByName.Clear();
 
@@ -100,21 +130,17 @@ namespace TechEquipments
                     {
                         await RefreshWindowTitleFromSecurityAsync(ct);
 
-                        // polling только на Param вкладке
-                        if (_host.SelectedMainTab != MainTabKind.Param)
+                        if (_vm.SelectedMainTab != MainTabKind.Param)
                         {
                             await Task.Delay(TimeSpan.FromSeconds(1), ct);
                             continue;
                         }
 
                         await PollParamOnceSafeAsync(ct);
+                        await _refreshActiveParamSectionAsync(ct);
 
-                        // секции
-                        await _host.RefreshActiveParamSectionAsync(ct);
-
-                        // тренды
-                        if (_host.TrendIsChartVisible)
-                            await _host.PollTrendOnceSafeAsync(ct);
+                        if (_getTrendIsChartVisible())
+                            await _pollTrendOnceSafeAsync(ct);
 
                         await Task.Delay(TimeSpan.FromSeconds(5), ct);
                     }
@@ -150,66 +176,61 @@ namespace TechEquipments
         {
             try
             {
-                // Если CtApi сейчас disconnected — не долбим чтениями native API.
-                // Просто ждём восстановления связи.
                 if (!_ctApiService.IsConnectionAvailable)
                 {
-                    _host.ParamStatusText = "CtApi disconnected";
+                    _vm.Shell.ParamStatusText = "CtApi disconnected";
                     return;
                 }
 
-                // Если недавно писали — подождем чуть-чуть
-                if (DateTime.UtcNow < _host.ParamReadResumeAtUtc)
+                if (DateTime.UtcNow < _vm.Param.ParamReadResumeAtUtc)
                     return;
 
-                // если пользователь сейчас вводит значение — НЕ читаем, чтобы не затирать ввод
-                if (_host.IsEditingField)
+                if (_getIsEditingField())
                     return;
 
-                await _host.ParamRwGate.WaitAsync(ct);
+                await _paramRwGate.WaitAsync(ct);
                 try
                 {
                     await PollParamOnceAsync(ct);
                 }
                 finally
                 {
-                    _host.ParamRwGate.Release();
+                    _paramRwGate.Release();
                 }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                _host.BottomText = $"Param read error: {ex.Message}";
+                _vm.Shell.BottomText = $"Param read error: {ex.Message}";
 
-                var (equipName, _, _) = _host.ResolveSelectedEquipForParam();
-                _host.NotifyMainParamLoaded((equipName ?? "").Trim(), ParamLoadState.Error);
+                var (equipName, _, _) = _resolveSelectedEquipForParam();
+                _notifyMainParamLoaded((equipName ?? "").Trim(), ParamLoadState.Error);
             }
         }
 
         private async Task PollParamOnceAsync(CancellationToken ct)
         {
-            var (equipName, equipType, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, equipType, _) = _resolveSelectedEquipForParam();
 
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(equipName))
             {
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.ParamStatusText = "Param: select equipment";
-                    _host.ParamItems.Clear();
+                    _vm.Shell.ParamStatusText = "Param: select equipment";
+                    _vm.Param.ParamItems.Clear();
                     _currentParamModelType = null;
-                    _host.CurrentParamModel = null!;
+                    _vm.Param.CurrentParamModel = null;
 
-                    _host.NotifyMainParamLoaded("", ParamLoadState.Unavailable);
+                    _notifyMainParamLoaded("", ParamLoadState.Unavailable);
                 });
                 return;
             }
 
             var typeGroup = EquipTypeRegistry.GetGroup(equipType);
 
-            // 1) Читаем "сырую" модель как и раньше
             object? rawParam = typeGroup switch
             {
                 EquipTypeGroup.AI => await _equipmentService.ReadEquipParamsAsync<AIParam>(equipName, ct),
@@ -223,44 +244,40 @@ namespace TechEquipments
                 _ => null
             };
 
-            // 2) Заворачиваем "сырую" модель в новую UI-модель
             object? model = ParamModelFactory.Create(typeGroup, rawParam);
 
             ct.ThrowIfCancellationRequested();
 
-            await _host.Dispatcher.InvokeAsync(() =>
+            await _dispatcher.InvokeAsync(() =>
             {
-                // Сброс области при смене группы типа
-                _host.Param_ResetAreaIfTypeGroupChanged(typeGroup);
-
-                _host.SuppressParamWritesFromPolling = true;
+                _resetAreaIfTypeGroupChanged(typeGroup);
+                _vm.Param.SuppressParamWritesFromPolling = true;
 
                 try
                 {
                     if (model == null)
                     {
-                        _host.ParamStatusText = "Updating ...";
-                        _host.ParamItems.Clear();
+                        _vm.Shell.ParamStatusText = "Updating ...";
+                        _vm.Param.ParamItems.Clear();
                         _currentParamModelType = null;
-                        _host.CurrentParamModel = null!;
+                        _vm.Param.CurrentParamModel = null;
 
-                        _host.NotifyMainParamLoaded(equipName, ParamLoadState.Unavailable);
+                        _notifyMainParamLoaded(equipName, ParamLoadState.Unavailable);
                         return;
                     }
 
                     ApplyParamModelToUi(model);
 
-                    _host.ParamReadCycles++;
-                    _host.ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_host.ParamReadCycles} cycles";
+                    _vm.Param.ParamReadCycles++;
+                    _vm.Shell.ParamStatusText = $"Last update: {DateTime.Now:HH:mm:ss} | {_vm.Param.ParamReadCycles} cycles";
 
-                    _host.NotifyMainParamLoaded(equipName, ParamLoadState.Ready);
+                    _notifyMainParamLoaded(equipName, ParamLoadState.Ready);
                 }
                 finally
                 {
-                    // Снимаем suppress после того, как UI закончит rebinding
-                    _host.Dispatcher.BeginInvoke(new Action(() =>
+                    _dispatcher.BeginInvoke(new Action(() =>
                     {
-                        _host.SuppressParamWritesFromPolling = false;
+                        _vm.Param.SuppressParamWritesFromPolling = false;
                     }), DispatcherPriority.ContextIdle);
                 }
             });
@@ -268,27 +285,23 @@ namespace TechEquipments
 
         private void ApplyParamModelToUi(object model)
         {
-            // В CurrentParamModel теперь лежит ОБЕРТКА: AiModel / DiModel / ...
-            _host.CurrentParamModel = model;
+            _vm.Param.CurrentParamModel = model;
 
-            // А список ParamItems строим по внутреннему "сырому" Param
             var rawParam = ParamModelHelper.Unwrap(model);
             if (rawParam == null)
             {
-                _host.ParamItems.Clear();
+                _vm.Param.ParamItems.Clear();
                 _currentParamModelType = null;
                 return;
             }
 
             var rawParamType = rawParam.GetType();
 
-            // --- cache свойств по ТИПУ внутреннего Param ---
             if (!_uiPropsCache.TryGetValue(rawParamType, out var props))
             {
                 props = rawParamType
                     .GetProperties(BindingFlags.Instance | BindingFlags.Public)
                     .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
-                    // служебные поля не показываем строками Param
                     .Where(p =>
                         !p.Name.Equals("Unit", StringComparison.OrdinalIgnoreCase) &&
                         !p.Name.Equals("Chanel", StringComparison.OrdinalIgnoreCase))
@@ -298,17 +311,16 @@ namespace TechEquipments
                 _uiPropsCache[rawParamType] = props;
             }
 
-            // Если тип внутреннего Param поменялся (AI -> DI -> Motor ...)
             if (_currentParamModelType != rawParamType)
             {
-                _host.ParamItems.Clear();
+                _vm.Param.ParamItems.Clear();
                 _rowIndexByName.Clear();
 
                 for (int i = 0; i < props.Length; i++)
                 {
                     var p = props[i];
 
-                    _host.ParamItems.Add(new ParamItem
+                    _vm.Param.ParamItems.Add(new ParamItem
                     {
                         Name = p.Name,
                         Value = p.GetValue(rawParam)
@@ -321,15 +333,14 @@ namespace TechEquipments
                 return;
             }
 
-            // Тип тот же - просто обновляем значения
             for (int i = 0; i < props.Length; i++)
             {
                 var p = props[i];
 
                 if (_rowIndexByName.TryGetValue(p.Name, out var rowIndex) &&
-                    rowIndex >= 0 && rowIndex < _host.ParamItems.Count)
+                    rowIndex >= 0 && rowIndex < _vm.Param.ParamItems.Count)
                 {
-                    _host.ParamItems[rowIndex].Value = p.GetValue(rawParam);
+                    _vm.Param.ParamItems[rowIndex].Value = p.GetValue(rawParam);
                 }
             }
         }
@@ -340,7 +351,7 @@ namespace TechEquipments
         /// </summary>
         private string BuildPollKey()
         {
-            var (equipName, equipType, _) = _host.ResolveSelectedEquipForParam();
+            var (equipName, equipType, _) = _resolveSelectedEquipForParam();
 
             equipName = (equipName ?? "").Trim();
             equipType = (equipType ?? "").Trim();
@@ -360,9 +371,9 @@ namespace TechEquipments
             {
                 var fullName = (await _ctApiService.UserInfoAsync(2)).Trim();
 
-                await _host.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    _host.CurrentCtUserName = fullName;
+                    _vm.Shell.CurrentCtUserName = fullName;
                 });
             }
             catch (OperationCanceledException)

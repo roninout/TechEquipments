@@ -91,9 +91,11 @@
             <!-- Name -->
             <TextBlock Grid.Row="0" Grid.Column="0" Padding="0, 4" Text="Name: " FontWeight="SemiBold"/>
 
+            <!-- QR generate button -->
             <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left">
                 
-                <TextBlock Grid.Row="0" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Equipment, TargetNullValue='-'}" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Padding="0, 4"
+                           Text="{Binding Vm.EquipmentList.SelectedListBoxEquipment.Equipment, RelativeSource={RelativeSource AncestorType=Window}, TargetNullValue='-'}" />
 
                 <dx:SimpleButton Grid.Row="0" Grid.Column="1" Margin="10,0,0,0" Width="20" Height="20"
                                  Padding="0" GlyphWidth="15" GlyphHeight="15"
@@ -101,25 +103,27 @@
                                  ToolTip="Generate QR"
                                  Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"
                                  Style="{StaticResource AppButtonStyle}"
-                                 Visibility="{Binding Param_ShowGenerateQrButton, Converter={StaticResource BoolToVis}}"/>
+                                 Visibility="{Binding DataContext.Param_ShowGenerateQrButton, RelativeSource={RelativeSource AncestorType=Window},Converter={StaticResource BoolToVis}}"/>
             </StackPanel>
 
             <!-- Type -->
             <TextBlock Grid.Row="1" Grid.Column="0" Padding="0, 4" Text="Type: " FontWeight="SemiBold" />
 
             <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left">
-                <Image Tag="{Binding SelectedListBoxEquipment.TypeGroup}" Style="{StaticResource EquipTypeIconImageStyle}"/>
-                <TextBlock Padding="0,4" Text="{Binding SelectedListBoxEquipment.Type, TargetNullValue='-'}" />
+                <Image Tag="{Binding Vm.EquipmentList.SelectedListBoxEquipment.TypeGroup, RelativeSource={RelativeSource AncestorType=Window}}"
+                       Style="{StaticResource EquipTypeIconImageStyle}"/>
+                <TextBlock Padding="0,4" Text="{Binding Vm.EquipmentList.SelectedListBoxEquipment.Type, RelativeSource={RelativeSource AncestorType=Window}, TargetNullValue='-'}" />
             </StackPanel>
-            <!--<TextBlock Grid.Row="1" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Type, TargetNullValue='-'}" />-->
 
             <!-- Location -->
-            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Location: " FontWeight="SemiBold" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
-            <TextBlock Grid.Row="2" Grid.Column="1" Padding="0,4" Text="{Binding CurrentParamChanel}" Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Padding="0,4" Text="Location: " FontWeight="SemiBold"
+                       Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Padding="0,4" Text="{Binding CurrentParamChanel}"
+                       Visibility="{Binding IsCurrentParamChanelVisible, Converter={StaticResource BoolToVis}}"/>
 
             <!-- Desc -->
             <TextBlock Grid.Row="3" Grid.Column="0" Padding="0, 4" Text="Desc: " FontWeight="SemiBold" />
-            <TextBlock Grid.Row="3" Grid.Column="1" Padding="0, 4" Text="{Binding SelectedListBoxEquipment.Description, TargetNullValue='-'}" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Padding="0, 4" Text="{Binding Vm.EquipmentList.SelectedListBoxEquipment.Description, RelativeSource={RelativeSource AncestorType=Window}, TargetNullValue='-'}" />
 
         </Grid>
 
@@ -131,7 +135,7 @@
             <!-- Loading overlay для центральной области Param -->
             <Border Panel.ZIndex="100"
                     Background="#55FFFFFF"                    
-                    Visibility="{Binding ShouldShowParamOverlay, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding Vm.Shell.ShouldShowParamOverlay, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
 
                 <Border Width="240"
                         Padding="16"
@@ -152,7 +156,7 @@
                                      Margin="0,12,0,8"
                                      IsIndeterminate="True"/>
 
-                        <TextBlock Text="{Binding ParamStatusText}"
+                        <TextBlock Text="{Binding Vm.Shell.ParamStatusText, RelativeSource={RelativeSource AncestorType=Window}}"
                                    HorizontalAlignment="Center"
                                    TextAlignment="Center"
                                    Style="{StaticResource AppTextStyle}"/>
@@ -172,7 +176,7 @@
             <!-- Строка состояния именно для Param -->
             <TextBlock Grid.Row="0"
                Margin="0,0,13,0"
-               Text="{Binding ParamStatusText}"
+               Text="{Binding Vm.Shell.ParamStatusText, RelativeSource={RelativeSource AncestorType=Window}}"
                Style="{StaticResource AppTextStyle}"
                VerticalAlignment="Top"
                HorizontalAlignment="Right" />

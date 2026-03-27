@@ -18,9 +18,8 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using TechEquipments.Services.QR;
 using TechEquipments.Views.Settings;
-using Microsoft.Win32;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
@@ -31,7 +30,7 @@ namespace TechEquipments
     /// - Нижняя панель прогресса: используется для загрузки списка оборудования и DB (индетерминантно).
     /// - Overlay: используется для загрузки SOE (тренды).
     /// </summary>
-    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged, IParamHost, IParamRefsHost, IDbHost, IQrHost, ISoeHost, IUiStateHost, IInfoHost
+    public partial class MainWindow : ThemedWindow, INotifyPropertyChanged
     {
         private ParamController _paramController;
         private ParamWriteController _paramWriteController;
@@ -42,15 +41,14 @@ namespace TechEquipments
         private readonly UiStateController _uiState;
         private readonly InfoController _infoController;
 
+        public MainViewModel Vm { get; }
+
         #region Fields
 
         #region Services
         private readonly IEquipmentService _equipmentService;
         private readonly ICtApiService _ctApiService;
         private readonly IConfiguration _config;
-        private readonly IUserStateService _stateService;
-        private readonly IQrScannerService _qrScannerService;
-        private readonly IEquipInfoService _equipInfoService;
 
         #endregion
 
@@ -60,124 +58,10 @@ namespace TechEquipments
         public ObservableCollection<EquipmentSOEDto> equipmentSOEDtos { get; } = new();
 
         /// <summary>Список оборудования (левая панель).</summary>
-        public ObservableCollection<EquipListBoxItem> Equipments { get; } = new();
+        public ObservableCollection<EquipListBoxItem> Equipments => Vm.EquipmentList.Equipments;
 
         /// <summary>Список станций для фильтра (Station).</summary>
-        public ObservableCollection<string> Stations { get; } = new();
-
-        /// <summary>Данные вкладки "Operation actions".</summary>
-        public ObservableCollection<OperatorActDTO> OperatorActRows { get; } = new();
-
-        /// <summary>Данные вкладки "Alarm history".</summary>
-        public ObservableCollection<AlarmHistoryDTO> AlarmHistoryRows { get; } = new();
-
-        /// <summary>Параметры AIParam для вкладки Param (TextBox -> Name)</summary>
-        public ObservableCollection<ParamItem> ParamItems { get; } = new();
-
-        #endregion
-
-        #region SOE Loading (overlay) state
-        /// <summary>
-        /// Флаг: показывать overlay загрузки SOE.
-        /// </summary>
-        private bool _isLoading;
-        public bool IsLoading
-        {
-            get => _isLoading;
-            private set
-            {
-                if (_isLoading == value) return;
-                _isLoading = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsNotLoading));  // важно для кнопки Load
-                OnPropertyChanged(nameof(LoadingText));
-            }
-        }
-
-        /// <summary>
-        /// Используется для включения/отключения кнопки Load.
-        /// </summary>
-        public bool IsNotLoading => !IsLoading;
-
-        private int _loadedCount;
-        public int LoadedCount
-        {
-            get => _loadedCount;
-            private set
-            {
-                if (_loadedCount == value) return;
-                _loadedCount = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LoadingText));
-            }
-        }
-
-        private int _currentCount;
-        public int CurrentCount
-        {
-            get => _currentCount;
-            set
-            {
-                if (_currentCount == value) return;
-                _currentCount = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LoadingText));
-            }
-        }
-
-        private int _totalTrends;
-        public int TotalTrends
-        {
-            get => _totalTrends;
-            set
-            {
-                if (_totalTrends == value) return;
-                _totalTrends = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LoadingText));
-            }
-        }
-
-        private int _currentTrendIndex;
-        public int CurrentTrendIndex
-        {
-            get => _currentTrendIndex;
-            set
-            {
-                if (_currentTrendIndex == value) return;
-                _currentTrendIndex = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LoadingText));
-            }
-        }
-
-        private string _currentTrendName = "";
-        public string CurrentTrendName
-        {
-            get => _currentTrendName;
-            set
-            {
-                if (_currentTrendName == value) return;
-                _currentTrendName = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LoadingText));
-            }
-        }
-
-        /// <summary>
-        /// Лимит точек из одного тренда (ускорение).
-        /// </summary>
-        public int PerTrendMax => 1000;
-
-        /// <summary>
-        /// Общий лимит строк (ускорение).
-        /// </summary>
-        public int TotalMax => 100;
-
-        /// <summary>
-        /// Текст в overlay (Trend оставляем как было).
-        /// </summary>
-        public string LoadingText => IsLoading ? $"{CurrentTrendIndex}/{TotalTrends}: {CurrentTrendName}" : "";
+        public ObservableCollection<string> Stations => Vm.EquipmentList.Stations;
 
         #endregion
 
@@ -187,17 +71,16 @@ namespace TechEquipments
         /// Текст в поле поиска (правый верх).
         /// При изменении запускается “посимвольный” поиск в ListBox.
         /// </summary>
-        private string _equipName = "";
         public string EquipName
         {
-            get => _equipName;
+            get => Vm.EquipmentList.EquipName;
             set
             {
-                if (_equipName == value) return;
-                _equipName = value;
+                if (Vm.EquipmentList.EquipName == value) return;
+                Vm.EquipmentList.EquipName = value;
                 OnPropertyChanged();
 
-                ScheduleSearch(_equipName);     // твой debounce поиска
+                ScheduleSearch(Vm.EquipmentList.EquipName);     // твой debounce поиска
                 _uiState.ScheduleSave();            // debounce сохранения состояния
                 NotifyParamQrUiChanged();       // пересчитать Visibility кнопки Generate QR
             }
@@ -206,16 +89,15 @@ namespace TechEquipments
         /// <summary>
         /// Выбранный элемент в ListBox.
         /// </summary>
-        private EquipListBoxItem? _selectedListBoxEquipment;
         public EquipListBoxItem? SelectedListBoxEquipment
         {
-            get => _selectedListBoxEquipment;
+            get => Vm.EquipmentList.SelectedListBoxEquipment;
             set
             {
-                if (ReferenceEquals(_selectedListBoxEquipment, value))
+                if (ReferenceEquals(Vm.EquipmentList.SelectedListBoxEquipment, value))
                     return;
 
-                _selectedListBoxEquipment = value;
+                Vm.EquipmentList.SelectedListBoxEquipment = value;
                 OnPropertyChanged();
                 NotifyParamQrUiChanged();   // пересчитать Visibility кнопки Generate QR
             }
@@ -231,15 +113,14 @@ namespace TechEquipments
         /// </summary>
         public Array TypeFilters { get; } = Enum.GetValues(typeof(EquipTypeGroup));
 
-        private EquipTypeGroup _selectedTypeFilter = EquipTypeGroup.All;
         public EquipTypeGroup SelectedTypeFilter
         {
-            get => _selectedTypeFilter;
+            get => Vm.EquipmentList.SelectedTypeFilter;
             set
             {
-                if (_selectedTypeFilter == value) return;
+                if (Vm.EquipmentList.SelectedTypeFilter == value) return;
 
-                _selectedTypeFilter = value;
+                Vm.EquipmentList.SelectedTypeFilter = value;
                 OnPropertyChanged();
 
                 ApplyFilters();
@@ -250,16 +131,15 @@ namespace TechEquipments
             }
         }
 
-        private string _selectedStation = "All";
         public string SelectedStation
         {
-            get => _selectedStation;
+            get => Vm.EquipmentList.SelectedStation;
             set
             {
                 value = string.IsNullOrWhiteSpace(value) ? "All" : value.Trim();
-                if (string.Equals(_selectedStation, value, StringComparison.OrdinalIgnoreCase)) return;
+                if (string.Equals(Vm.EquipmentList.SelectedStation, value, StringComparison.OrdinalIgnoreCase)) return;
 
-                _selectedStation = value;
+                Vm.EquipmentList.SelectedStation = value;
                 OnPropertyChanged();
 
                 ApplyFilters();
@@ -283,12 +163,6 @@ namespace TechEquipments
 
         private bool _suppressEquipNameFromSelection;
 
-        /// <summary>
-        /// true  -> используем overlay прямо в центре Param области
-        /// false -> вместо overlay показываем загрузку в нижнем progress bar
-        /// </summary>
-        public bool UseParamAreaOverlay { get; }
-
         #endregion
 
         #region Equipments list loading (bottom bar determinate)
@@ -298,128 +172,31 @@ namespace TechEquipments
         /// </summary>
         private CancellationTokenSource? _equipListCts;
 
-        private int _equipListTotal;
-        public int EquipListTotal
-        {
-            get => _equipListTotal;
-            private set
-            {
-                if (_equipListTotal == value) return;
-                _equipListTotal = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(EquipListMax));
-                OnPropertyChanged(nameof(EquipListText));
-
-                // прогресс/текст
-                OnPropertyChanged(nameof(BottomProgressMaximum));
-                OnPropertyChanged(nameof(BottomText));
-                OnPropertyChanged(nameof(BottomStatusText));
-            }
-        }
-
-        private int _equipListDone;
-        public int EquipListDone
-        {
-            get => _equipListDone;
-            private set
-            {
-                if (_equipListDone == value) return;
-                _equipListDone = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(EquipListText));
-
-                // прогресс/текст
-                OnPropertyChanged(nameof(BottomProgressValue));
-                OnPropertyChanged(nameof(BottomText));
-                OnPropertyChanged(nameof(BottomStatusText));
-            }
-        }
-
-        private bool _isEquipListLoading;
-        public bool IsEquipListLoading
-        {
-            get => _isEquipListLoading;
-            private set
-            {
-                if (_isEquipListLoading == value) return;
-                _isEquipListLoading = value;
-                OnPropertyChanged();
-
-                // нижний прогресс
-                OnPropertyChanged(nameof(IsBottomProgressVisible));
-                OnPropertyChanged(nameof(IsBottomLoading));
-                OnPropertyChanged(nameof(BottomProgressIsIndeterminate));
-                OnPropertyChanged(nameof(BottomProgressMaximum));
-                OnPropertyChanged(nameof(BottomProgressValue));
-
-                OnPropertyChanged(nameof(IsBottomStatusVisible));
-                OnPropertyChanged(nameof(BottomStatusText));
-
-                // текст
-                OnPropertyChanged(nameof(EquipListText));
-                OnPropertyChanged(nameof(BottomText));
-            }
-        }
-
         /// <summary>
         /// Максимум для прогрессбара списка оборудования.
         /// </summary>
-        public int EquipListMax => Math.Max(1, EquipListTotal);
+        public int EquipListMax => Math.Max(1, Vm.EquipmentList.EquipListTotal);
 
         /// <summary>
         /// Текст статуса списка оборудования (для нижней панели).
         /// </summary>
         public string EquipListText =>
-            IsEquipListLoading
-                ? $"Loading equipments: {EquipListDone}/{EquipListTotal}"
+            Vm.EquipmentList.IsEquipListLoading
+                ? $"Loading equipments: {Vm.EquipmentList.EquipListDone}/{Vm.EquipmentList.EquipListTotal}"
                 : $"Equipments: {Equipments.Count}";
 
         #endregion
 
         #region DB loading (bottom bar indeterminate)
 
-        private bool _isDbConnected;
-        public bool IsDbConnected
-        {
-            get => _isDbConnected;
-            private set { _isDbConnected = value; OnPropertyChanged(); }
-        }
-
-        private bool _isDbLoading;
-        public bool IsDbLoading
-        {
-            get => _isDbLoading;
-            private set
-            {
-                if (_isDbLoading == value) return;
-                _isDbLoading = value;
-                OnPropertyChanged();
-
-                // нижний прогресс
-                OnPropertyChanged(nameof(IsBottomProgressVisible));
-                OnPropertyChanged(nameof(IsBottomLoading));
-                OnPropertyChanged(nameof(BottomProgressIsIndeterminate));
-                OnPropertyChanged(nameof(BottomProgressMaximum));
-                OnPropertyChanged(nameof(BottomProgressValue));
-
-                OnPropertyChanged(nameof(IsBottomStatusVisible));
-                OnPropertyChanged(nameof(BottomStatusText));
-
-                // кнопка
-                OnPropertyChanged(nameof(CanMainAction));
-            }
-        }
-
         /// <summary>
         /// Param-загрузка влияет на нижний progress bar только на вкладке Param.
         /// Иначе при переходе на Info/DB/SOE можно получить "залипший" нижний индикатор.
         /// </summary>
         public bool IsBottomLoading =>
-            IsEquipListLoading ||
-            IsDbLoading ||
-            (!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading);
-
-        private string _bottomText = "";
+            Vm.EquipmentList.IsEquipListLoading ||
+            Vm.Database.IsDbLoading ||
+            (!Vm.Shell.UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && Vm.Shell.IsParamCenterLoading);
 
         /// <summary>
         /// Текст внизу:
@@ -430,67 +207,49 @@ namespace TechEquipments
         {
             get
             {
-                if (IsEquipListLoading)
+                if (Vm.EquipmentList.IsEquipListLoading)
                     return EquipListText;
 
-                if (!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading)
+                if (!Vm.Shell.UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && Vm.Shell.IsParamCenterLoading)
                     return ParamBottomLoadingText;
 
-                return _bottomText;
+                return Vm.Shell.BottomText;
             }
             set
             {
-                _bottomText = value;
+                Vm.Shell.BottomText = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(BottomStatusText));
             }
         }
-
-        private bool _isCtApiConnected = true;
-        public bool IsCtApiConnected
-        {
-            get => _isCtApiConnected;
-            private set
-            {
-                if (_isCtApiConnected == value) return;
-                _isCtApiConnected = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsBottomStatusVisible));
-                OnPropertyChanged(nameof(BottomStatusText));
-                OnPropertyChanged(nameof(BottomStatusBrush));
-            }
-        }
-
-        private string _ctApiStatusText = "";
 
         /// <summary>
         /// Нижняя панель видна либо когда что-то грузится,
         /// либо когда потеряна связь с CtApi.
         /// </summary>
-        public bool IsBottomStatusVisible => IsBottomLoading || !IsCtApiConnected;
+        public bool IsBottomStatusVisible => IsBottomLoading || !Vm.Shell.IsCtApiConnected;
 
         /// <summary>
         /// Если CtApi disconnected — показываем сообщение о связи.
         /// Иначе используем обычный BottomText.
         /// </summary>
         public string BottomStatusText =>
-            !IsCtApiConnected && !string.IsNullOrWhiteSpace(_ctApiStatusText)
-                ? _ctApiStatusText
+            !Vm.Shell.IsCtApiConnected && !string.IsNullOrWhiteSpace(Vm.Shell.CtApiStatusText)
+                ? Vm.Shell.CtApiStatusText
                 : BottomText;
 
         /// <summary>
         /// Красный цвет при потере связи, обычный — во всех остальных случаях.
         /// </summary>
-        public Brush BottomStatusBrush => !IsCtApiConnected ? Brushes.Red : Brushes.Black;
+        public Brush BottomStatusBrush => !Vm.Shell.IsCtApiConnected ? Brushes.Red : Brushes.Black;
 
-        private int _selectedMainTabIndex;
         public int SelectedMainTabIndex
         {
-            get => _selectedMainTabIndex;
+            get => Vm.SelectedMainTabIndex;
             set
             {
-                if (_selectedMainTabIndex == value) return;
-                _selectedMainTabIndex = value;
+                if (Vm.SelectedMainTabIndex == value) return;
+                Vm.SelectedMainTabIndex = value;
                 OnPropertyChanged();
 
                 // уведомляем всё, что зависит от выбранной вкладки
@@ -504,27 +263,23 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(ShowMainActionButton));
 
                 // ВАЖНО: во время восстановления состояния никаких автодействий
-                if (_uiState.IsRestoringState) return;                
+                if (_uiState.IsRestoringState) return;
 
                 _dbController.CancelCurrentLoad(); // отменяем предыдущую DB-загрузку при смене вкладки
 
                 _uiState.ScheduleSave(); // сохраняем состояние (debounce)
 
-                // при переходе на DB-вкладки — делаем "как будто нажали Search"
-                //if (IsDbTabSelected)
-                _ = OnTabActivatedLikeSearchAsync(force: true);              
-
+                _ = OnTabActivatedLikeSearchAsync(force: true);
             }
         }
 
-        private DateTime _dbDate = DateTime.Today;
         public DateTime DbDate
         {
-            get => _dbDate;
+            get => Vm.Database.DbDate;
             set
             {
-                if (_dbDate.Date == value.Date) return;
-                _dbDate = value.Date;
+                if (Vm.Database.DbDate.Date == value.Date) return;
+                Vm.Database.DbDate = value.Date;
                 OnPropertyChanged();
 
                 // Если мы на DB вкладке и есть коннект — планируем авто-загрузку (debounce)
@@ -535,7 +290,7 @@ namespace TechEquipments
         }
 
         /// <summary>Текущая вкладка как enum (задел на будущие вкладки)</summary>
-        public MainTabKind SelectedMainTab => (MainTabKind)SelectedMainTabIndex;
+        public MainTabKind SelectedMainTab => Vm.SelectedMainTab;
 
         /// <summary>Показывать DateEdit только на DB вкладках</summary>
         public bool IsDbTabSelected => SelectedMainTab is MainTabKind.OperationActions or MainTabKind.AlarmHistory;
@@ -553,10 +308,10 @@ namespace TechEquipments
         /// <summary>Можно ли нажимать основную кнопку</summary>
         public bool CanMainAction => SelectedMainTab switch
         {
-            MainTabKind.SOE => IsNotLoading,
+            MainTabKind.SOE => !Vm.Shell.IsLoading,
             MainTabKind.Info => false,
             MainTabKind.Param => false,
-            _ => IsDbConnected && !IsDbLoading,
+            _ => Vm.Database.IsDbConnected && !Vm.Database.IsDbLoading,
         };
 
         /// <summary>
@@ -571,9 +326,9 @@ namespace TechEquipments
 
         /// <summary>Показываем нижний прогресс только когда что-то грузим</summary>
         public bool IsBottomProgressVisible =>
-            IsEquipListLoading ||
-            IsDbLoading ||
-            (!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading);
+            Vm.EquipmentList.IsEquipListLoading ||
+            Vm.Database.IsDbLoading ||
+            (!Vm.Shell.UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && Vm.Shell.IsParamCenterLoading);
 
         /// <summary>
         /// Режим нижнего прогресса:
@@ -581,14 +336,14 @@ namespace TechEquipments
         /// - DB: индетерминированный
         /// </summary>
         public bool BottomProgressIsIndeterminate =>
-            ((!UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && IsParamCenterLoading && !IsEquipListLoading))
-            || (IsDbLoading && !IsEquipListLoading);
+            ((!Vm.Shell.UseParamAreaOverlay && SelectedMainTab == MainTabKind.Param && Vm.Shell.IsParamCenterLoading && !Vm.EquipmentList.IsEquipListLoading))
+            || (Vm.Database.IsDbLoading && !Vm.EquipmentList.IsEquipListLoading);
 
         /// <summary>Максимум для нижнего прогресса</summary>
-        public int BottomProgressMaximum => IsEquipListLoading ? EquipListMax : 100;        
+        public int BottomProgressMaximum => Vm.EquipmentList.IsEquipListLoading ? EquipListMax : 100;
 
         /// <summary>Текущее значение для нижнего прогресса</summary>
-        public int BottomProgressValue => IsEquipListLoading ? EquipListDone : 0;
+        public int BottomProgressValue => Vm.EquipmentList.IsEquipListLoading ? Vm.EquipmentList.EquipListDone : 0;
 
         #endregion
 
@@ -601,87 +356,11 @@ namespace TechEquipments
 
         #region Params
 
-        // Строка состояния на вкладке Param
-        private string _paramStatusText = "";
-
-        public string ParamStatusText
-        {
-            get => _paramStatusText;
-            set
-            {
-                if (_paramStatusText == value)
-                    return;
-
-                _paramStatusText = value;
-                OnPropertyChanged();
-
-                // Для нижней панели, если overlay отключён
-                OnPropertyChanged(nameof(ParamBottomLoadingText));
-                OnPropertyChanged(nameof(BottomText));
-                OnPropertyChanged(nameof(BottomStatusText));
-            }
-        }
-
-        // Текущая модель параметров (AIParam / DIParam / MotorParam / ...)
-        private object _currentParamModel;
-        public object CurrentParamModel
-        {
-            get => _currentParamModel;
-            set
-            {
-                _currentParamModel = value;
-                OnPropertyChanged();
-
-                // Шапка Param
-                OnPropertyChanged(nameof(CurrentParamChanel));
-                OnPropertyChanged(nameof(IsCurrentParamChanelVisible));
-            }
-        }
-
-        // polling
-        private int _paramReadCycles;
-
-        // overlay над центральной областью Param
-        private bool _isParamCenterLoading;
-        public bool IsParamCenterLoading
-        {
-            get => _isParamCenterLoading;
-            set
-            {
-                if (_isParamCenterLoading == value)
-                    return;
-
-                _isParamCenterLoading = value;
-                OnPropertyChanged();
-
-                // Центровой overlay
-                OnPropertyChanged(nameof(ShouldShowParamOverlay));
-
-                // Нижняя панель
-                OnPropertyChanged(nameof(IsBottomProgressVisible));
-                OnPropertyChanged(nameof(IsBottomLoading));
-                OnPropertyChanged(nameof(BottomProgressIsIndeterminate));
-                OnPropertyChanged(nameof(BottomProgressMaximum));
-                OnPropertyChanged(nameof(BottomProgressValue));
-                OnPropertyChanged(nameof(BottomText));
-
-                OnPropertyChanged(nameof(IsBottomStatusVisible));
-                OnPropertyChanged(nameof(BottomStatusText));
-            }
-        }
-
-        /// <summary>
-        /// Показывать ли overlay именно в центре Param-области.
-        /// Если UseParamAreaOverlay=false, то overlay в центре отключается,
-        /// а загрузка уходит в нижнюю панель MainWindow.
-        /// </summary>
-        public bool ShouldShowParamOverlay => UseParamAreaOverlay && IsParamCenterLoading;
-
         /// <summary>
         /// Текст загрузки Param для нижней панели,
         /// когда overlay в центре отключен.
         /// </summary>
-        public string ParamBottomLoadingText => string.IsNullOrWhiteSpace(ParamStatusText) ? "Updating data..." : ParamStatusText;
+        public string ParamBottomLoadingText => string.IsNullOrWhiteSpace(Vm.Shell.ParamStatusText) ? "Updating data..." : Vm.Shell.ParamStatusText;
 
         // Что именно сейчас ждём
         private string? _pendingParamOverlayEquipName;
@@ -700,46 +379,13 @@ namespace TechEquipments
         // 1) Общий “замок” на чтение/запись Param (чтение и запись не пересекаются)
         private readonly SemaphoreSlim _paramRwGate = new(1, 1);
 
-        // 2) Флаг: когда мы обновляем модель из polling-чтения — запрещаем триггерить запись из EditValueChanged
-        private bool _suppressParamWritesFromPolling;
-
-        // 3) Небольшая “пауза” чтения после записи (чтобы не словить мгновенный старый read)
-        private DateTime _paramReadResumeAtUtc = DateTime.MinValue;
-
-        // Чтобы при откате чекбокса назад не улетал повторный write
-        private bool _suppressParamWritesFromUiRollback;
-
-        /// <summary>
-        /// Chanel из модели, если модель поддерживает IHasChanel.
-        /// Если не поддерживает — пустая строка.
-        /// </summary>
-        public string CurrentParamChanel => FormatChanelForHeader((CurrentParamModel as IHasChanel)?.Chanel);
-
-        /// <summary>
-        /// Показывать строку Chanel только если:
-        /// - модель поддерживает IHasChanel
-        /// - значение не пустое
-        /// - значение не "Unknown"
-        /// </summary>
-        public bool IsCurrentParamChanelVisible
-        {
-            get
-            {
-                var ch = (CurrentParamModel as IHasChanel)?.Chanel;
-                if (string.IsNullOrWhiteSpace(ch))
-                    return false;
-
-                return !ch.Equals("Unknown", StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
         /// <summary>
         /// Определяет, поддерживает ли текущая модель конкретную страницу Param.
         /// Опираемся только на новую архитектуру IParamModel / SupportedPages.
         /// </summary>
         private bool CurrentParamSupportsPage(ParamSettingsPage page)
         {
-            if (CurrentParamModel is not IParamModel paramModel)
+            if (Vm.Param.CurrentParamModel is not IParamModel paramModel)
                 return false;
 
             return paramModel.SupportedPages.Contains(page);
@@ -804,7 +450,7 @@ namespace TechEquipments
             }
             catch (Exception ex)
             {
-                ParamStatusText = $"Param settings refresh error: {ex.Message}";
+                Vm.Shell.ParamStatusText = $"Param settings refresh error: {ex.Message}";
                 StopParamOverlayWait();
             }
         }
@@ -848,7 +494,7 @@ namespace TechEquipments
             // Chart: ждём только main model
             if (page == ParamSettingsPage.None)
             {
-                IsParamCenterLoading = !mainDone;
+                Vm.Shell.IsParamCenterLoading = !mainDone;
                 return;
             }
 
@@ -860,12 +506,12 @@ namespace TechEquipments
             // При простом переключении страницы ждём только секцию
             if (!needMainModel)
             {
-                IsParamCenterLoading = !sectionDone;
+                Vm.Shell.IsParamCenterLoading = !sectionDone;
                 return;
             }
 
             // При смене equipment ждём и модель, и секцию
-            IsParamCenterLoading = !(mainDone && sectionDone);
+            Vm.Shell.IsParamCenterLoading = !(mainDone && sectionDone);
         }
 
         /// <summary>
@@ -876,7 +522,7 @@ namespace TechEquipments
             _pendingParamOverlayEquipName = null;
             _pendingParamOverlayPage = ParamSettingsPage.None;
             _pendingParamOverlayNeedsMainModel = false;
-            IsParamCenterLoading = false;
+            Vm.Shell.IsParamCenterLoading = false;
         }
 
         /// <summary>
@@ -884,7 +530,7 @@ namespace TechEquipments
         /// </summary>
         private void TryFinishParamOverlayWait()
         {
-            if (!IsParamCenterLoading)
+            if (!Vm.Shell.IsParamCenterLoading)
                 return;
 
             var key = (_pendingParamOverlayEquipName ?? "").Trim();
@@ -981,401 +627,7 @@ namespace TechEquipments
 
         #endregion
 
-        #region Ref
-
-        // ====== refs (dynamic UI) ======
-
-        /// <summary>
-        /// Строки для VGD -> DI/DO связей (отображаются в VGDParamView/DiDoSettingsGroup).
-        /// </summary>
-        public ObservableCollection<DiDoRefRow> ParamDiRows { get; } = new();
-        public ObservableCollection<DiDoRefRow> ParamDoRows { get; } = new();
-        public ObservableCollection<PlcRefRow> ParamPlcRows { get; } = new();
-
-        private ParamSettingsPage _currentParamSettingsPage = ParamSettingsPage.None;
-        public ParamSettingsPage CurrentParamSettingsPage
-        {
-            get => _currentParamSettingsPage;
-            private set { _currentParamSettingsPage = value; OnPropertyChanged(); }
-        }
-
-        public string? DryRunEquipName { get; private set; }
-        public DryRunMotor? DryRunModel { get; private set; }
-
-        public string? LinkedAtvEquipName { get; private set; }
-        public AtvModel? LinkedAtvModel { get; private set; }
-
-        #endregion
-
-        #region Version
-        /// <summary>
-        /// Отображаемая версия приложения.
-        /// </summary>
-        public string AppVersionText
-        {
-            get
-            {
-                var asm = Assembly.GetExecutingAssembly();
-
-                string raw =
-                    asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                    ?? asm.GetName().Version?.ToString()
-                    ?? "unknown";
-
-                int plusIndex = raw.IndexOf('+');
-                if (plusIndex >= 0)
-                    raw = raw.Substring(0, plusIndex);
-
-                return raw;
-            }
-        }
-
-        /// <summary>
-        /// Заголовок окна с именем программы и версией.
-        /// </summary>
-        public string WindowTitle => string.IsNullOrWhiteSpace(CurrentCtUserName) ? "TechEquipments" : $"TechEquipments ({CurrentCtUserName})";
-        #endregion
-
-        #region Info
-
-        private EquipmentInfoDto? _currentEquipInfo;
-        public EquipmentInfoDto? CurrentEquipInfo
-        {
-            get => _currentEquipInfo;
-            set
-            {
-                if (ReferenceEquals(_currentEquipInfo, value))
-                    return;
-
-                _currentEquipInfo = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(CurrentInfoDocumentItems));
-                OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
-                OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
-                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
-                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
-            }
-        }
-
-        private EquipmentInfoFileDto? _selectedInfoPhotoFile;
-        public EquipmentInfoFileDto? SelectedInfoPhotoFile
-        {
-            get => _selectedInfoPhotoFile;
-            set
-            {
-                if (ReferenceEquals(_selectedInfoPhotoFile, value))
-                    return;
-
-                _selectedInfoPhotoFile = value;
-                OnPropertyChanged();
-            }
-        }
-
-        private EquipmentInfoFileDto? _selectedInfoInstructionFile;
-        public EquipmentInfoFileDto? SelectedInfoInstructionFile
-        {
-            get => _selectedInfoInstructionFile;
-            set
-            {
-                if (ReferenceEquals(_selectedInfoInstructionFile, value))
-                    return;
-
-                _selectedInfoInstructionFile = value;
-                OnPropertyChanged();
-
-                if (CurrentInfoPage == InfoPageKind.Instruction)
-                {
-                    OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
-                    OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
-                }
-            }
-        }
-
-        private EquipmentInfoFileDto? _selectedInfoSchemeFile;
-        public EquipmentInfoFileDto? SelectedInfoSchemeFile
-        {
-            get => _selectedInfoSchemeFile;
-            set
-            {
-                if (ReferenceEquals(_selectedInfoSchemeFile, value))
-                    return;
-
-                _selectedInfoSchemeFile = value;
-                OnPropertyChanged();
-
-                if (CurrentInfoPage == InfoPageKind.Scheme)
-                {
-                    OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
-                    OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
-                }
-            }
-        }
-
-        public ObservableCollection<EquipmentInfoFileDto> AvailableInfoPhotoLibrary { get; } = new();
-        public ObservableCollection<EquipmentInfoFileDto> AvailableInfoInstructionLibrary { get; } = new();
-        public ObservableCollection<EquipmentInfoFileDto> AvailableInfoSchemeLibrary { get; } = new();
-
-        private List<object>? _selectedInfoPhotoLibraryIds;
-        public List<object>? SelectedInfoPhotoLibraryIds
-        {
-            get => _selectedInfoPhotoLibraryIds;
-            set
-            {
-                _selectedInfoPhotoLibraryIds = value;
-                OnPropertyChanged();
-
-                if (CurrentInfoPage == InfoPageKind.General)
-                    OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
-            }
-        }
-
-        private List<object>? _selectedInfoInstructionLibraryIds;
-        public List<object>? SelectedInfoInstructionLibraryIds
-        {
-            get => _selectedInfoInstructionLibraryIds;
-            set
-            {
-                _selectedInfoInstructionLibraryIds = value;
-                OnPropertyChanged();
-
-                if (CurrentInfoPage == InfoPageKind.Instruction)
-                    OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
-            }
-        }
-
-        private List<object>? _selectedInfoSchemeLibraryIds;
-        public List<object>? SelectedInfoSchemeLibraryIds
-        {
-            get => _selectedInfoSchemeLibraryIds;
-            set
-            {
-                _selectedInfoSchemeLibraryIds = value;
-                OnPropertyChanged();
-
-                if (CurrentInfoPage == InfoPageKind.Scheme)
-                    OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
-            }
-        }
-
-        private bool _isInfoLoading;
-        public bool IsInfoLoading
-        {
-            get => _isInfoLoading;
-            private set
-            {
-                if (_isInfoLoading == value) return;
-                _isInfoLoading = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(CanEditInfoButtons));
-            }
-        }
-
-        private bool _isInfoEditMode;
-        public bool IsInfoEditMode
-        {
-            get => _isInfoEditMode;
-            private set
-            {
-                if (_isInfoEditMode == value) return;
-                _isInfoEditMode = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsInfoReadOnly));
-            }
-        }
-
-        public bool IsInfoReadOnly => !IsInfoEditMode;
-
-        private string _infoStatusText = "";
-        public string InfoStatusText
-        {
-            get => _infoStatusText;
-            private set
-            {
-                if (_infoStatusText == value) return;
-                _infoStatusText = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool CanEditInfoButtons => !IsInfoLoading;
-
-        private InfoPageKind _currentInfoPage = InfoPageKind.General;
-
-        /// <summary>
-        /// Активная страница вкладки Info.
-        /// </summary>
-        public InfoPageKind CurrentInfoPage
-        {
-            get => _currentInfoPage;
-            set
-            {
-                if (_currentInfoPage == value)
-                    return;
-
-                _currentInfoPage = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsInfoGeneralPage));
-                OnPropertyChanged(nameof(IsInfoDocumentPage));
-                OnPropertyChanged(nameof(CurrentInfoDocumentHeader));
-                OnPropertyChanged(nameof(CurrentInfoDocumentItems));
-                OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
-                OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
-                OnPropertyChanged(nameof(CurrentInfoAvailableLibraryItems));
-                OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
-                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
-                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
-            }
-        }
-
-        public bool IsInfoGeneralPage => CurrentInfoPage == InfoPageKind.General;
-
-        public bool IsInfoDocumentPage =>
-            CurrentInfoPage == InfoPageKind.Instruction ||
-            CurrentInfoPage == InfoPageKind.Scheme;
-
-        public string CurrentInfoDocumentHeader =>
-            CurrentInfoPage == InfoPageKind.Scheme ? "Scheme" : "Instruction";
-
-        public IEnumerable<EquipmentInfoFileDto> CurrentInfoDocumentItems =>
-            CurrentInfoPage switch
-            {
-                InfoPageKind.Instruction => CurrentEquipInfo?.Instructions ?? Enumerable.Empty<EquipmentInfoFileDto>(),
-                InfoPageKind.Scheme => CurrentEquipInfo?.Schemes ?? Enumerable.Empty<EquipmentInfoFileDto>(),
-                _ => Enumerable.Empty<EquipmentInfoFileDto>()
-            };
-
-        public System.Collections.Generic.IEnumerable<EquipmentInfoFileDto> CurrentInfoAvailableLibraryItems => CurrentInfoPage switch
-        {
-            InfoPageKind.Instruction => AvailableInfoInstructionLibrary,
-            InfoPageKind.Scheme => AvailableInfoSchemeLibrary,
-            _ => Enumerable.Empty<EquipmentInfoFileDto>()
-        };
-
-        public List<object>? CurrentInfoCheckedLibraryIds
-        {
-            get => CurrentInfoPage switch
-            {
-                InfoPageKind.Instruction => SelectedInfoInstructionLibraryIds,
-                InfoPageKind.Scheme => SelectedInfoSchemeLibraryIds,
-                _ => null
-            };
-            set
-            {
-                switch (CurrentInfoPage)
-                {
-                    case InfoPageKind.Instruction:
-                        SelectedInfoInstructionLibraryIds = value;
-                        break;
-
-                    case InfoPageKind.Scheme:
-                        SelectedInfoSchemeLibraryIds = value;
-                        break;
-                }
-
-                OnPropertyChanged(nameof(CurrentInfoCheckedLibraryIds));
-            }
-        }
-
-        public EquipmentInfoFileDto? CurrentInfoSelectedDocumentFile
-        {
-            get => CurrentInfoPage switch
-            {
-                InfoPageKind.Instruction => SelectedInfoInstructionFile,
-                InfoPageKind.Scheme => SelectedInfoSchemeFile,
-                _ => null
-            };
-            set
-            {
-                switch (CurrentInfoPage)
-                {
-                    case InfoPageKind.Instruction:
-                        SelectedInfoInstructionFile = value;
-                        break;
-
-                    case InfoPageKind.Scheme:
-                        SelectedInfoSchemeFile = value;
-                        break;
-                }
-
-                OnPropertyChanged(nameof(CurrentInfoSelectedDocumentFile));
-                OnPropertyChanged(nameof(CurrentInfoDocumentFileName));
-            }
-        }
-
-        public string CurrentInfoDocumentFileName =>
-            CurrentInfoSelectedDocumentFile?.FileName ?? "";
-
-        private string? _currentInfoDocumentPreviewPath;
-        public string? CurrentInfoDocumentPreviewPath
-        {
-            get => _currentInfoDocumentPreviewPath;
-            set
-            {
-                if (_currentInfoDocumentPreviewPath == value)
-                    return;
-
-                _currentInfoDocumentPreviewPath = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
-                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
-            }
-        }
-
-        private string _infoDocumentMessage = "";
-        public string InfoDocumentMessage
-        {
-            get => _infoDocumentMessage;
-            set
-            {
-                if (_infoDocumentMessage == value)
-                    return;
-
-                _infoDocumentMessage = value;
-                OnPropertyChanged();
-            }
-        }
-
-        private bool _isInfoDocumentExportVisible;
-        public bool IsInfoDocumentExportVisible
-        {
-            get => _isInfoDocumentExportVisible;
-            set
-            {
-                if (_isInfoDocumentExportVisible == value)
-                    return;
-
-                _isInfoDocumentExportVisible = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(IsInfoDocumentViewerVisible));
-                OnPropertyChanged(nameof(IsInfoDocumentMessageVisible));
-            }
-        }
-
-        public bool IsInfoDocumentViewerVisible =>
-            IsInfoDocumentPage &&
-            !string.IsNullOrWhiteSpace(CurrentInfoDocumentPreviewPath);
-
-        public bool IsInfoDocumentMessageVisible =>
-            IsInfoDocumentPage && !IsInfoDocumentViewerVisible;
-
-        #endregion
-
         #region Security
-
-        private string _currentCtUserName = "";
-        public string CurrentCtUserName
-        {
-            get => _currentCtUserName;
-            set
-            {
-                if (_currentCtUserName == value)
-                    return;
-
-                _currentCtUserName = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(WindowTitle));
-            }
-        }
 
         private bool _isLogoLoginToggleInProgress;
 
@@ -1384,30 +636,67 @@ namespace TechEquipments
         #endregion
 
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService)
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService, MainViewModel vm)
         {
             InitializeComponent();
 
+            Vm = vm;
+            SubscribeVmNotifications();
+            Vm.EquipmentList.Equipments.CollectionChanged += (_, __) =>
+            {
+                OnPropertyChanged(nameof(EquipListText));
+                OnPropertyChanged(nameof(BottomText));
+                OnPropertyChanged(nameof(BottomStatusText));
+            };
+
             _equipmentService = equipmentService;
-            _stateService = stateService;
             _ctApiService = ctApiService;
-            _qrScannerService = qrScannerService;
-            _equipInfoService = equipInfoService;
 
             _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
             Closed += (_, __) => _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
 
-            IsCtApiConnected = _ctApiService.IsConnectionAvailable;
+            Vm.Shell.IsCtApiConnected = _ctApiService.IsConnectionAvailable;
 
             _config = config;
-            _dbController = new DbController(dbService, this);
-            _infoController = new InfoController(equipInfoService, this);
-            _qrController = new QrController(_equipmentService, qrCodeService, qrScannerService, this);
-            _soeController = new SoeController(_equipmentService, this);
-            _uiState = new UiStateController(_stateService, _equipmentService, this);
+            _dbController = new DbController(dbService, Vm, Dispatcher);
+            _infoController = new InfoController(equipInfoService, Vm.Info, Vm.EquipmentList, Vm.Database, this);
+            
+            _qrController = new QrController(
+                _equipmentService,
+                qrCodeService,
+                qrScannerService,
+                Vm,
+                this,
+                text => EquipName = text,
+                station => SelectedStation = station,
+                type => SelectedTypeFilter = type,
+                tabIndex => SelectedMainTabIndex = tabIndex,
+                DoIncrementalSearch,
+                StartParamPolling,
+                NotifyParamQrUiChanged);
+
+            _soeController = new SoeController(
+                _equipmentService,
+                Vm.Shell,
+                equipmentSOEDtos,
+                Dispatcher,
+                () => this);
+            
+            _uiState = new UiStateController(
+                stateService,
+                _equipmentService,
+                Vm,
+                Dispatcher,
+                equipName => EquipName = equipName,
+                dbDate => DbDate = dbDate,
+                station => SelectedStation = station,
+                type => SelectedTypeFilter = type,
+                tabIndex => SelectedMainTabIndex = tabIndex,
+                ExportRememberedEquipmentsByFilter,
+                ImportRememberedEquipmentsByFilter);
 
             // Если настройки нет — сохраняем текущее поведение (overlay включен)
-            UseParamAreaOverlay = _config.GetValue("Global:Overlay", true);
+            Vm.Shell.UseParamAreaOverlay = _config.GetValue("Global:Overlay", true);
 
             // Vm + Controller
             Trend = new ParamTrendVm();
@@ -1419,11 +708,23 @@ namespace TechEquipments
                 _equipmentService,
                 _ctApiService,
                 resolveEquip: ResolveSelectedEquipForParam,        // твой существующий метод
-                getParamModel: () => CurrentParamModel,            // твоя текущая модель параметров
-                getParamCycles: () => _paramReadCycles             // счетчик циклов
+                getParamModel: () => Vm.Param.CurrentParamModel,            // твоя текущая модель параметров
+                getParamCycles: () => Vm.Param.ParamReadCycles             // счетчик циклов
             );
 
-            _paramController = new ParamController(_equipmentService, this, _ctApiService);
+            _paramController = new ParamController(
+                _equipmentService,
+                Vm,
+                Dispatcher,
+                _ctApiService,
+                _paramRwGate,
+                getTrendIsChartVisible: () => Trend.IsChartVisible,
+                getIsEditingField: () => IsEditingField,
+                resolveSelectedEquipForParam: ResolveSelectedEquipForParam,
+                resetAreaIfTypeGroupChanged: newGroup => _paramRefs.ResetAreaIfTypeGroupChanged(newGroup),
+                refreshActiveParamSectionAsync: ct => _paramRefs.RefreshActiveParamSectionAsync(ct),
+                pollTrendOnceSafeAsync: ct => _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt),
+                notifyMainParamLoaded: (equipName, state) => NotifyMainParamLoadedCore(equipName, state));
 
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
@@ -1434,17 +735,39 @@ namespace TechEquipments
                 getSelectedTab: () => SelectedMainTab,
                 resolveSelectedEquip: ResolveSelectedEquipForParam,
                 resolveEquipNameForWrite: ResolveEquipNameForWrite,
-                getSuppressWritesFromPolling: () => _suppressParamWritesFromPolling,
-                getSuppressWritesFromUiRollback: () => _suppressParamWritesFromUiRollback,
-                setSuppressWritesFromUiRollback: v => _suppressParamWritesFromUiRollback = v,
+                getSuppressWritesFromPolling: () => Vm.Param.SuppressParamWritesFromPolling,
+                getSuppressWritesFromUiRollback: () => Vm.Param.SuppressParamWritesFromUiRollback,
+                setSuppressWritesFromUiRollback: v => Vm.Param.SuppressParamWritesFromUiRollback = v,
                 paramRwGate: _paramRwGate,
-                setParamReadResumeAtUtc: dt => _paramReadResumeAtUtc = dt,
-                setBottomText: txt => ParamStatusText = txt,
+                setParamReadResumeAtUtc: dt => Vm.Param.ParamReadResumeAtUtc = dt,
+                setBottomText: txt => Vm.Shell.ParamStatusText = txt,
                 getOwnerWindow: () => this,
                 endParamFieldEdit: EndParamFieldEdit
             );
 
-            _paramRefs = new ParamRefsController(_equipmentService, _ctApiService, _config, this);
+            _paramRefs = new ParamRefsController(
+                _equipmentService,
+                _ctApiService,
+                _config,
+                Vm,
+                Dispatcher,
+                _paramRwGate,
+                ResolveSelectedEquipForParam,
+                FilterEquipment,
+                ApplyFilters,
+                DoIncrementalSearch,
+                ShowParamChart,
+                StartParamPolling,
+                tabIndex => SelectedMainTabIndex = tabIndex,
+                equipName => EquipName = equipName,
+                station => SelectedStation = station,
+                type => SelectedTypeFilter = type,
+                NotifySectionLoadedCore,
+                () => Vm.Param.SuppressParamWritesFromPolling = true,
+                () => Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    Vm.Param.SuppressParamWritesFromPolling = false;
+                }), DispatcherPriority.ContextIdle));
 
             DataContext = this; // DataContext на себя: используется во всём XAML (binding)
 
@@ -1493,10 +816,10 @@ namespace TechEquipments
 
             try
             {
-                IsEquipListLoading = true;
+                Vm.EquipmentList.IsEquipListLoading = true;
 
-                EquipListDone = 0;
-                EquipListTotal = 0;
+                Vm.EquipmentList.EquipListDone = 0;
+                Vm.EquipmentList.EquipListTotal = 0;
 
                 BottomText = "Loading equipments...";
 
@@ -1504,8 +827,8 @@ namespace TechEquipments
 
                 var progress = new Progress<(int done, int total)>(p =>
                 {
-                    EquipListDone = p.done;
-                    EquipListTotal = p.total;
+                    Vm.EquipmentList.EquipListDone = p.done;
+                    Vm.EquipmentList.EquipListTotal = p.total;
                     BottomText = $"Loading equipments: {p.done}/{p.total}";
                 });
 
@@ -1559,7 +882,7 @@ namespace TechEquipments
             }
             finally
             {
-                IsEquipListLoading = false;
+                Vm.EquipmentList.IsEquipListLoading = false;
 
                 // Даём UI шанс перерисовать нижнюю панель (скрыть/показать)
                 await Dispatcher.Yield(DispatcherPriority.Render);
@@ -1578,11 +901,11 @@ namespace TechEquipments
         {
             void Apply()
             {
-                IsCtApiConnected = isConnected;
+                Vm.Shell.IsCtApiConnected = isConnected;
 
                 if (!isConnected)
                 {
-                    _ctApiStatusText = string.IsNullOrWhiteSpace(message)
+                    Vm.Shell.CtApiStatusText = string.IsNullOrWhiteSpace(message)
                         ? "CtApi connection lost."
                         : message;
 
@@ -1592,7 +915,7 @@ namespace TechEquipments
                     return;
                 }
 
-                _ctApiStatusText = "";
+                Vm.Shell.CtApiStatusText = "";
 
                 // Сообщение о восстановлении связи показываем в обычном BottomText.
                 BottomText = string.IsNullOrWhiteSpace(message)
@@ -2034,7 +1357,7 @@ namespace TechEquipments
 
                 // Param overlay нужен только если реально работаем с Param.
                 if (SelectedMainTab == MainTabKind.Param)
-                    BeginParamOverlayWait(eq, CurrentParamSettingsPage, needMainModel: true);
+                    BeginParamOverlayWait(eq, Vm.Param.CurrentParamSettingsPage, needMainModel: true);
                 else
                     StopParamOverlayWait();
             }
@@ -2157,7 +1480,7 @@ namespace TechEquipments
         /// <summary>SOE: читаем имя из UI (выделение/поиск) и загружаем таблицу</summary>
         private async Task LoadSoeFromUiAsync()
         {
-            if (IsLoading) return;
+            if (Vm.Shell.IsLoading) return;
 
             var text = (EquipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(text))
@@ -2213,7 +1536,7 @@ namespace TechEquipments
 
                 if (isTabLoggedIn)
                 {
-                    await _ctApiService.LogoutAsync();                    
+                    await _ctApiService.LogoutAsync();
 
                     DXMessageBox.Show(this, "Tab user has been logged out.", "CtApi security", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
@@ -2366,7 +1689,7 @@ namespace TechEquipments
         /// Re-applies [TrendSeriesStyle] attributes to recreated DevExpress series.
         /// </summary>
         public void ApplyTrendSeriesStyles(ChartControl chart)
-            => TrendSeriesStyler.Apply(chart, CurrentParamModel);
+            => TrendSeriesStyler.Apply(chart, Vm.Param.CurrentParamModel);
         #endregion
 
         #region QR-Code       
@@ -2411,384 +1734,6 @@ namespace TechEquipments
 
         #endregion
 
-        #region IDbHost
-
-        Dispatcher IDbHost.Dispatcher => Dispatcher;
-
-        bool IDbHost.IsDbConnected => IsDbConnected;
-        void IDbHost.SetDbConnected(bool value) => IsDbConnected = value;
-
-        bool IDbHost.IsDbLoading => IsDbLoading;
-        void IDbHost.SetDbLoading(bool value) => IsDbLoading = value;
-
-        string IDbHost.BottomText
-        {
-            get => BottomText;
-            set => BottomText = value;
-        }
-
-        MainTabKind IDbHost.SelectedMainTab => SelectedMainTab;
-
-        bool IDbHost.IsDbTabSelected => IsDbTabSelected;
-
-        DateTime IDbHost.DbDate => DbDate;
-
-        string IDbHost.DbFilter => (EquipName ?? "").Trim();
-
-        System.Collections.ObjectModel.ObservableCollection<OperatorActDTO> IDbHost.OperatorActRows => OperatorActRows;
-        System.Collections.ObjectModel.ObservableCollection<AlarmHistoryDTO> IDbHost.AlarmHistoryRows => AlarmHistoryRows;
-
-        #endregion
-
-        #region IInfoHost
-
-        Window IInfoHost.OwnerWindow => this;
-
-        EquipListBoxItem? IInfoHost.SelectedListBoxEquipment => SelectedListBoxEquipment;
-
-        string IInfoHost.EquipName
-        {
-            get => EquipName;
-            set => EquipName = value;
-        }
-
-        bool IInfoHost.IsDbConnected => IsDbConnected;
-
-        EquipmentInfoDto? IInfoHost.CurrentEquipInfo
-        {
-            get => CurrentEquipInfo;
-            set => CurrentEquipInfo = value;
-        }
-
-        EquipmentInfoFileDto? IInfoHost.SelectedInfoPhotoFile
-        {
-            get => SelectedInfoPhotoFile;
-            set => SelectedInfoPhotoFile = value;
-        }
-
-        EquipmentInfoFileDto? IInfoHost.SelectedInfoInstructionFile
-        {
-            get => SelectedInfoInstructionFile;
-            set => SelectedInfoInstructionFile = value;
-        }
-
-        EquipmentInfoFileDto? IInfoHost.SelectedInfoSchemeFile
-        {
-            get => SelectedInfoSchemeFile;
-            set => SelectedInfoSchemeFile = value;
-        }
-
-        bool IInfoHost.IsInfoLoading
-        {
-            get => IsInfoLoading;
-            set => IsInfoLoading = value;
-        }
-
-        bool IInfoHost.IsInfoEditMode
-        {
-            get => IsInfoEditMode;
-            set => IsInfoEditMode = value;
-        }
-
-        string IInfoHost.InfoStatusText
-        {
-            get => InfoStatusText;
-            set => InfoStatusText = value;
-        }
-
-        InfoPageKind IInfoHost.CurrentInfoPage
-        {
-            get => CurrentInfoPage;
-            set => CurrentInfoPage = value;
-        }
-
-        bool IInfoHost.IsInfoDocumentPage => IsInfoDocumentPage;
-
-        string? IInfoHost.CurrentInfoDocumentPreviewPath
-        {
-            get => CurrentInfoDocumentPreviewPath;
-            set => CurrentInfoDocumentPreviewPath = value;
-        }
-
-        string IInfoHost.InfoDocumentMessage
-        {
-            get => InfoDocumentMessage;
-            set => InfoDocumentMessage = value;
-        }
-
-        bool IInfoHost.IsInfoDocumentExportVisible
-        {
-            get => IsInfoDocumentExportVisible;
-            set => IsInfoDocumentExportVisible = value;
-        }
-
-        ObservableCollection<EquipmentInfoFileDto> IInfoHost.AvailableInfoPhotoLibrary => AvailableInfoPhotoLibrary;
-        ObservableCollection<EquipmentInfoFileDto> IInfoHost.AvailableInfoInstructionLibrary => AvailableInfoInstructionLibrary;
-        ObservableCollection<EquipmentInfoFileDto> IInfoHost.AvailableInfoSchemeLibrary => AvailableInfoSchemeLibrary;
-
-        List<object>? IInfoHost.SelectedInfoPhotoLibraryIds
-        {
-            get => SelectedInfoPhotoLibraryIds;
-            set => SelectedInfoPhotoLibraryIds = value;
-        }
-
-        List<object>? IInfoHost.SelectedInfoInstructionLibraryIds
-        {
-            get => SelectedInfoInstructionLibraryIds;
-            set => SelectedInfoInstructionLibraryIds = value;
-        }
-
-        List<object>? IInfoHost.SelectedInfoSchemeLibraryIds
-        {
-            get => SelectedInfoSchemeLibraryIds;
-            set => SelectedInfoSchemeLibraryIds = value;
-        }
-
-        #endregion
-
-        #region IQrHost
-
-        System.Windows.Window IQrHost.OwnerWindow => this;
-
-        System.Collections.ObjectModel.ObservableCollection<EquipListBoxItem> IQrHost.Equipments => Equipments;
-
-        EquipListBoxItem? IQrHost.SelectedListBoxEquipment => SelectedListBoxEquipment;
-
-        string IQrHost.EquipName
-        {
-            get => EquipName;
-            set => EquipName = value;
-        }
-
-        string IQrHost.SelectedStation
-        {
-            get => SelectedStation;
-            set => SelectedStation = value;
-        }
-
-        EquipTypeGroup IQrHost.SelectedTypeFilter
-        {
-            get => SelectedTypeFilter;
-            set => SelectedTypeFilter = value;
-        }
-
-        MainTabKind IQrHost.SelectedMainTab => SelectedMainTab;
-
-        int IQrHost.SelectedMainTabIndex
-        {
-            get => SelectedMainTabIndex;
-            set => SelectedMainTabIndex = value;
-        }
-
-        void IQrHost.DoIncrementalSearch(string text) => DoIncrementalSearch(text);
-
-        void IQrHost.StartParamPolling() => StartParamPolling();
-
-        void IQrHost.NotifyParamQrUiChanged() => NotifyParamQrUiChanged();
-
-        void IQrHost.SetParamStatusText(string text) => ParamStatusText = text;
-
-        #endregion
-
-        #region IParamHost
-
-        // ===== IParamHost implementation =====
-
-        Dispatcher IParamHost.Dispatcher => Dispatcher;
-
-        MainTabKind IParamHost.SelectedMainTab => SelectedMainTab;
-
-        bool IParamHost.TrendIsChartVisible => Trend.IsChartVisible;
-
-        bool IParamHost.IsEditingField => IsEditingField;
-
-        SemaphoreSlim IParamHost.ParamRwGate => _paramRwGate;
-
-        DateTime IParamHost.ParamReadResumeAtUtc
-        {
-            get => _paramReadResumeAtUtc;
-            set => _paramReadResumeAtUtc = value;
-        }
-
-        bool IParamHost.SuppressParamWritesFromPolling
-        {
-            get => _suppressParamWritesFromPolling;
-            set => _suppressParamWritesFromPolling = value;
-        }
-
-        int IParamHost.ParamReadCycles
-        {
-            get => _paramReadCycles;
-            set => _paramReadCycles = value;
-        }
-
-        string IParamHost.ParamStatusText
-        {
-            get => ParamStatusText;
-            set => ParamStatusText = value;
-        }
-
-        string IParamHost.BottomText
-        {
-            get => BottomText;
-            set => BottomText = value;
-        }
-
-        object IParamHost.CurrentParamModel
-        {
-            get => CurrentParamModel;
-            set => CurrentParamModel = value;
-        }
-
-        ObservableCollection<ParamItem> IParamHost.ParamItems => ParamItems;
-
-        (string equipName, string equipType, string equipDescription) IParamHost.ResolveSelectedEquipForParam()
-            => ResolveSelectedEquipForParam();
-
-        void IParamHost.Param_ResetAreaIfTypeGroupChanged(EquipTypeGroup newGroup)
-            => _paramRefs.ResetAreaIfTypeGroupChanged(newGroup);
-
-        Task IParamHost.RefreshActiveParamSectionAsync(CancellationToken ct)
-            => _paramRefs.RefreshActiveParamSectionAsync(ct);
-
-        Task IParamHost.PollTrendOnceSafeAsync(CancellationToken ct)
-            => _trendCtl.PollOnceSafeAsync(ct, txt => BottomText = txt);
-
-        void IParamHost.NotifyMainParamLoaded(string equipName, ParamLoadState state)
-            => NotifyMainParamLoadedCore(equipName, state);
-
-        #endregion
-
-        #region IParamRefsHost
-
-        Dispatcher IParamRefsHost.Dispatcher => Dispatcher;
-
-        MainTabKind IParamRefsHost.SelectedMainTab => SelectedMainTab;
-
-        int IParamRefsHost.SelectedMainTabIndex
-        {
-            get => SelectedMainTabIndex;
-            set => SelectedMainTabIndex = value;
-        }
-
-        SemaphoreSlim IParamRefsHost.ParamRwGate => _paramRwGate;
-
-        ObservableCollection<EquipListBoxItem> IParamRefsHost.Equipments => Equipments;
-        ObservableCollection<DiDoRefRow> IParamRefsHost.ParamDiRows => ParamDiRows;
-        ObservableCollection<DiDoRefRow> IParamRefsHost.ParamDoRows => ParamDoRows;
-        ObservableCollection<PlcRefRow> IParamRefsHost.ParamPlcRows => ParamPlcRows;
-
-        ParamSettingsPage IParamRefsHost.CurrentParamSettingsPage
-        {
-            get => CurrentParamSettingsPage;
-            set => CurrentParamSettingsPage = value;
-        }
-
-        string IParamRefsHost.EquipName
-        {
-            get => EquipName;
-            set => EquipName = value;
-        }
-
-        string IParamRefsHost.SelectedStation
-        {
-            get => SelectedStation;
-            set => SelectedStation = value;
-        }
-
-        EquipTypeGroup IParamRefsHost.SelectedTypeFilter
-        {
-            get => SelectedTypeFilter;
-            set => SelectedTypeFilter = value;
-        }
-
-        void IParamRefsHost.SetDryRunState(string? equipName, DryRunMotor? model)
-        {
-            DryRunEquipName = equipName;
-            DryRunModel = model;
-            OnPropertyChanged(nameof(DryRunEquipName));
-            OnPropertyChanged(nameof(DryRunModel));
-        }
-
-        (string equipName, string equipType, string equipDescription) IParamRefsHost.ResolveSelectedEquipForParam()
-            => ResolveSelectedEquipForParam();
-
-        bool IParamRefsHost.IsEquipmentVisible(EquipListBoxItem item)
-            => FilterEquipment(item);
-
-        void IParamRefsHost.ApplyFilters()
-            => ApplyFilters();
-
-        void IParamRefsHost.DoIncrementalSearch(string text)
-            => DoIncrementalSearch(text);
-
-        void IParamRefsHost.ShowParamChart(bool reset)
-            => ShowParamChart(reset);
-
-        void IParamRefsHost.StartParamPolling()
-            => StartParamPolling();
-
-        void IParamRefsHost.BeginSuppressParamWritesFromRefresh()
-        {
-            _suppressParamWritesFromPolling = true;
-        }
-
-        void IParamRefsHost.EndSuppressParamWritesFromRefresh()
-        {
-            // Снимаем suppress чуть позже, когда WPF/DevExpress успеют применить binding
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                _suppressParamWritesFromPolling = false;
-            }), System.Windows.Threading.DispatcherPriority.ContextIdle);
-        }
-
-        void IParamRefsHost.SetLinkedAtvState(string? equipName, AtvModel? model)
-        {
-            LinkedAtvEquipName = equipName;
-            LinkedAtvModel = model;
-
-            OnPropertyChanged(nameof(LinkedAtvEquipName));
-            OnPropertyChanged(nameof(LinkedAtvModel));
-        }
-
-        void IParamRefsHost.NotifySectionLoaded(string equipName, ParamSettingsPage page, ParamLoadState state)
-            => NotifySectionLoadedCore(equipName, page, state);
-
-        #endregion
-
-        #region ISoeHost
-        Window ISoeHost.OwnerWindow => this;
-        Dispatcher ISoeHost.Dispatcher => Dispatcher;
-
-        bool ISoeHost.IsLoading { get => IsLoading; set => IsLoading = value; }
-        int ISoeHost.LoadedCount { get => LoadedCount; set => LoadedCount = value; }
-        int ISoeHost.CurrentCount { get => CurrentCount; set => CurrentCount = value; }
-        int ISoeHost.TotalTrends { get => TotalTrends; set => TotalTrends = value; }
-        int ISoeHost.CurrentTrendIndex { get => CurrentTrendIndex; set => CurrentTrendIndex = value; }
-        string ISoeHost.CurrentTrendName { get => CurrentTrendName; set => CurrentTrendName = value; }
-
-        int ISoeHost.PerTrendMax => PerTrendMax;
-        int ISoeHost.TotalMax => TotalMax;
-
-        System.Collections.ObjectModel.ObservableCollection<EquipmentSOEDto> ISoeHost.EquipmentSoeRows => equipmentSOEDtos;
-        #endregion
-
-        #region IUiStateHost
-
-        Dispatcher IUiStateHost.Dispatcher => Dispatcher;
-
-        string IUiStateHost.EquipName { get => EquipName; set => EquipName = value; }
-        DateTime IUiStateHost.DbDate { get => DbDate; set => DbDate = value; }
-        string IUiStateHost.SelectedStation { get => SelectedStation; set => SelectedStation = value; }
-        EquipTypeGroup IUiStateHost.SelectedTypeFilter { get => SelectedTypeFilter; set => SelectedTypeFilter = value; }
-        int IUiStateHost.SelectedMainTabIndex { get => SelectedMainTabIndex; set => SelectedMainTabIndex = value; }
-
-        Dictionary<string, string> IUiStateHost.ExportRememberedEquipmentsByFilter() => ExportRememberedEquipmentsByFilter();
-
-        void IUiStateHost.ImportRememberedEquipmentsByFilter(Dictionary<string, string>? state) => ImportRememberedEquipmentsByFilter(state);
-
-        #endregion
-
         #region INotifyPropertyChanged
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -2799,35 +1744,6 @@ namespace TechEquipments
         #endregion
 
         #region Helpers
-
-        /// <summary>
-        /// Приводит строку канала к формату: "module: X, chanel: Y".
-        /// Ожидаемый исходный формат: "X.Y.Z" или "X.Y".
-        /// - Берём только первые два сегмента (X и Y).
-        /// - Остальные сегменты отбрасываем.
-        /// Если формат неожиданный — возвращаем исходную строку (trim).
-        /// </summary>
-        private static string FormatChanelForHeader(string? raw)
-        {
-            raw = (raw ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(raw))
-                return "";
-
-            if (raw.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-                return raw;
-
-            // Разделяем по точке
-            var parts = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (parts.Length >= 2)
-            {
-                var module = parts[0];
-                var chanel = parts[1];
-                return $"module: {module}, chanel: {chanel}";
-            }
-
-            // Если точек нет/меньше двух — оставляем как есть
-            return raw;
-        }
 
         /// <summary>
         /// Возвращает имя оборудования для записи.
@@ -2850,7 +1766,7 @@ namespace TechEquipments
                 // DryRun секция работает с другим target-equipment
                 if (fe.DataContext is DryRunMotor)
                 {
-                    var dryRunEquip = (DryRunEquipName ?? "").Trim();
+                    var dryRunEquip = (Vm.Param.DryRunEquipName ?? "").Trim();
 
                     if (!string.IsNullOrWhiteSpace(dryRunEquip))
                         return dryRunEquip;
@@ -2865,9 +1781,9 @@ namespace TechEquipments
                     var currentGroup = EquipTypeRegistry.GetGroup(equipType ?? "");
 
                     if (currentGroup == EquipTypeGroup.Motor &&
-                        CurrentParamSettingsPage == ParamSettingsPage.Atv)
+                        Vm.Param.CurrentParamSettingsPage == ParamSettingsPage.Atv)
                     {
-                        var linkedAtvEquip = (LinkedAtvEquipName ?? "").Trim();
+                        var linkedAtvEquip = (Vm.Param.LinkedAtvEquipName ?? "").Trim();
 
                         if (!string.IsNullOrWhiteSpace(linkedAtvEquip))
                             return linkedAtvEquip;
@@ -2915,7 +1831,7 @@ namespace TechEquipments
             }
             catch (Exception ex)
             {
-                DXMessageBox.Show($"Failed to open settings window.\n\n{ex.Message}","Settings",MessageBoxButton.OK,MessageBoxImage.Error);
+                DXMessageBox.Show($"Failed to open settings window.\n\n{ex.Message}", "Settings", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -3006,5 +1922,115 @@ namespace TechEquipments
             => _infoController.SyncCurrentDocumentSelectionFromLibraryAsync();
 
         #endregion
+
+        private void RaiseBottomBarBindings()
+        {
+            OnPropertyChanged(nameof(IsBottomProgressVisible));
+            OnPropertyChanged(nameof(IsBottomLoading));
+            OnPropertyChanged(nameof(BottomProgressIsIndeterminate));
+            OnPropertyChanged(nameof(BottomProgressMaximum));
+            OnPropertyChanged(nameof(BottomProgressValue));
+
+            OnPropertyChanged(nameof(IsBottomStatusVisible));
+            OnPropertyChanged(nameof(BottomStatusText));
+            OnPropertyChanged(nameof(BottomStatusBrush));
+
+            OnPropertyChanged(nameof(BottomText));
+        }
+
+        private void RaiseSelectedTabBindings()
+        {
+            OnPropertyChanged(nameof(SelectedMainTab));
+            OnPropertyChanged(nameof(IsDbTabSelected));
+            OnPropertyChanged(nameof(MainActionButtonText));
+            OnPropertyChanged(nameof(CanMainAction));
+            OnPropertyChanged(nameof(ShowToolbarScanQrButton));
+            OnPropertyChanged(nameof(ShowMainActionButton));
+
+            RaiseBottomBarBindings();
+        }
+
+        private void SubscribeVmNotifications()
+        {
+            Vm.Shell.PropertyChanged += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.PropertyName))
+                    OnPropertyChanged(e.PropertyName);
+
+                switch (e.PropertyName)
+                {
+                    case nameof(ShellViewModel.IsLoading):
+                        break;
+
+                    case nameof(ShellViewModel.UseParamAreaOverlay):
+                    case nameof(ShellViewModel.IsParamCenterLoading):
+                    case nameof(ShellViewModel.ParamStatusText):
+                    case nameof(ShellViewModel.BottomText):
+                    case nameof(ShellViewModel.IsCtApiConnected):
+                    case nameof(ShellViewModel.CtApiStatusText):
+                        RaiseBottomBarBindings();
+
+                        if (e.PropertyName == nameof(ShellViewModel.ParamStatusText))
+                            OnPropertyChanged(nameof(ParamBottomLoadingText));
+                        break;
+                }
+            };
+
+            Vm.EquipmentList.PropertyChanged += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.PropertyName))
+                    OnPropertyChanged(e.PropertyName);
+
+                switch (e.PropertyName)
+                {
+                    case nameof(EquipmentListViewModel.EquipListDone):
+                    case nameof(EquipmentListViewModel.EquipListTotal):
+                        OnPropertyChanged(nameof(EquipListMax));
+                        OnPropertyChanged(nameof(EquipListText));
+                        RaiseBottomBarBindings();
+                        break;
+
+                    case nameof(EquipmentListViewModel.IsEquipListLoading):
+                        OnPropertyChanged(nameof(EquipListText));
+                        RaiseBottomBarBindings();
+                        break;
+                }
+            };
+
+            Vm.Param.PropertyChanged += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.PropertyName))
+                    OnPropertyChanged(e.PropertyName);
+            };
+
+            Vm.Database.PropertyChanged += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.PropertyName))
+                    OnPropertyChanged(e.PropertyName);
+
+                switch (e.PropertyName)
+                {
+                    case nameof(DatabaseViewModel.IsDbLoading):
+                    case nameof(DatabaseViewModel.IsDbConnected):
+                        RaiseBottomBarBindings();
+                        OnPropertyChanged(nameof(CanMainAction));
+                        break;
+                }
+            };
+
+            Vm.PropertyChanged += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.PropertyName))
+                    OnPropertyChanged(e.PropertyName);
+
+                switch (e.PropertyName)
+                {
+                    case nameof(MainViewModel.SelectedMainTab):
+                    case nameof(MainViewModel.SelectedMainTabIndex):
+                        RaiseSelectedTabBindings();
+                        break;
+                }
+            };
+        }
     }
 }

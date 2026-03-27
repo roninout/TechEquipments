@@ -3,6 +3,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
+using TechEquipments.ViewModels;
 
 namespace TechEquipments
 {
@@ -16,130 +18,125 @@ namespace TechEquipments
         private readonly IEquipmentService _equipmentService;
         private readonly IQrCodeService _qrCodeService;
         private readonly IQrScannerService _qrScannerService;
-        private readonly IQrHost _host;
+        private readonly MainViewModel _vm;
+        private readonly Window _ownerWindow;
+        private readonly Action<string> _setEquipName;
+        private readonly Action<string> _setSelectedStation;
+        private readonly Action<EquipTypeGroup> _setSelectedTypeFilter;
+        private readonly Action<int> _setSelectedMainTabIndex;
+        private readonly Action<string> _doIncrementalSearch;
+        private readonly Action _startParamPolling;
+        private readonly Action _notifyParamQrUiChanged;
 
         public QrController(
             IEquipmentService equipmentService,
             IQrCodeService qrCodeService,
             IQrScannerService qrScannerService,
-            IQrHost host)
+            MainViewModel vm,
+            Window ownerWindow,
+            Action<string> setEquipName,
+            Action<string> setSelectedStation,
+            Action<EquipTypeGroup> setSelectedTypeFilter,
+            Action<int> setSelectedMainTabIndex,
+            Action<string> doIncrementalSearch,
+            Action startParamPolling,
+            Action notifyParamQrUiChanged)
         {
             _equipmentService = equipmentService ?? throw new ArgumentNullException(nameof(equipmentService));
             _qrCodeService = qrCodeService ?? throw new ArgumentNullException(nameof(qrCodeService));
             _qrScannerService = qrScannerService ?? throw new ArgumentNullException(nameof(qrScannerService));
-            _host = host ?? throw new ArgumentNullException(nameof(host));
+            _vm = vm ?? throw new ArgumentNullException(nameof(vm));
+            _ownerWindow = ownerWindow ?? throw new ArgumentNullException(nameof(ownerWindow));
+            _setEquipName = setEquipName ?? throw new ArgumentNullException(nameof(setEquipName));
+            _setSelectedStation = setSelectedStation ?? throw new ArgumentNullException(nameof(setSelectedStation));
+            _setSelectedTypeFilter = setSelectedTypeFilter ?? throw new ArgumentNullException(nameof(setSelectedTypeFilter));
+            _setSelectedMainTabIndex = setSelectedMainTabIndex ?? throw new ArgumentNullException(nameof(setSelectedMainTabIndex));
+            _doIncrementalSearch = doIncrementalSearch ?? throw new ArgumentNullException(nameof(doIncrementalSearch));
+            _startParamPolling = startParamPolling ?? throw new ArgumentNullException(nameof(startParamPolling));
+            _notifyParamQrUiChanged = notifyParamQrUiChanged ?? throw new ArgumentNullException(nameof(notifyParamQrUiChanged));
         }
 
-        /// <summary>Чи показувати кнопку Generate QR.</summary>
         public bool ShowGenerateQrButton => GetShowGenerateQrButton();
 
-        /// <summary>Чи вже існує QR для поточного тексту.</summary>
         public bool IsQrAlreadyGenerated() => File.Exists(GetExpectedQrPathOrEmpty());
 
-        /// <summary>Generate QR (Param tab).</summary>
         public async Task GenerateQrAsync()
         {
             try
             {
-                // 0) Якщо вже є — не генеруємо дублікат
                 if (IsQrAlreadyGenerated())
                 {
                     var path = GetExpectedQrPathOrEmpty();
-                    DXMessageBox.Show(_host.OwnerWindow, $"QR уже существует:\n{path}", "QR",
-                        System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                    DXMessageBox.Show(_ownerWindow, $"QR уже существует:{ path}", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
 
-                    _host.NotifyParamQrUiChanged();
+                    _notifyParamQrUiChanged();
                     return;
                 }
 
-                // 1) Текст: спочатку EquipName, якщо пусто — SelectedListBoxEquipment
                 var text = GetQrTextOrEmpty();
                 if (string.IsNullOrWhiteSpace(text))
                 {
-                    DXMessageBox.Show(_host.OwnerWindow,
-                        "Нет текста для QR.\nВведи имя в поиск или выбери оборудование в списке.",
-                        "QR",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information);
+                    DXMessageBox.Show(_ownerWindow, "Нет текста для QR. Введи имя в поиск или выбери оборудование в списке.", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
-                // 2) Папка: Station\TypeGroup
                 var outputDir = GetQrOutputDirectory(text);
-
-                // 3) Генерація
                 var pathSaved = await _qrCodeService.GenerateQrPngAsync(text, outputDirectory: outputDir);
 
-                _host.SetParamStatusText($"QR saved: {Path.GetFileName(pathSaved)}");
+                _vm.Shell.ParamStatusText = $"QR saved: {Path.GetFileName(pathSaved)}";
 
-                DXMessageBox.Show(_host.OwnerWindow, $"QR-код успешно сохранён:\n{pathSaved}", "QR",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                DXMessageBox.Show(_ownerWindow, $"QR-код успешно сохранён:{ pathSaved}", "QR", MessageBoxButton.OK, MessageBoxImage.Information);
 
-                // файл з'явився -> треба сховати кнопку
-                _host.NotifyParamQrUiChanged();
+                _notifyParamQrUiChanged();
             }
             catch (Exception ex)
             {
-                DXMessageBox.Show(_host.OwnerWindow, ex.ToString(), "QR generate error",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                DXMessageBox.Show(_ownerWindow, ex.ToString(), "QR generate error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        /// <summary>Scan QR (Param tab) + write ExternalTag + перейти на Param + polling.</summary>
         public async Task ScanQrToExternalTagAndSearchAsync()
         {
             try
             {
-                // 1) Скан
-                var text = await _qrScannerService.ScanFromCameraAsync(_host.OwnerWindow);
+                var text = await _qrScannerService.ScanFromCameraAsync(_ownerWindow);
                 if (string.IsNullOrWhiteSpace(text))
                     return;
 
                 text = text.Trim();
 
-                // 2) Фільтри Station/Type (якщо знайдемо обладнання)
                 TryApplyStationTypeFiltersFromQr(text);
 
-                // 3) Пишемо в ExternalTag (best-effort)
                 try
                 {
                     await _equipmentService.SetExternalTagAsync(text);
                 }
                 catch
                 {
-                    // не критично
                 }
 
-                // 4) В пошук
-                _host.EquipName = text;
+                _setEquipName(text);
+                _doIncrementalSearch(text);
 
-                // 5) Виділяємо
-                _host.DoIncrementalSearch(text);
+                if (_vm.SelectedMainTab != MainTabKind.Param)
+                    _setSelectedMainTabIndex((int)MainTabKind.Param);
 
-                // 6) На Param + polling
-                if (_host.SelectedMainTab != MainTabKind.Param)
-                    _host.SelectedMainTabIndex = (int)MainTabKind.Param;
+                _startParamPolling();
 
-                _host.StartParamPolling();
-
-                _host.SetParamStatusText($"QR scanned: {text}");
-
-                _host.NotifyParamQrUiChanged();
+                _vm.Shell.ParamStatusText = $"QR scanned: {text}";
+                _notifyParamQrUiChanged();
             }
             catch (Exception ex)
             {
-                DXMessageBox.Show(_host.OwnerWindow, ex.ToString(), "QR scan error",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                DXMessageBox.Show(_ownerWindow, ex.ToString(), "QR scan error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        // ===================== helpers =====================
-
         private string GetQrTextOrEmpty()
         {
-            var text = (_host.EquipName ?? "").Trim();
+            var text = (_vm.EquipmentList.EquipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(text))
-                text = (_host.SelectedListBoxEquipment?.Equipment ?? "").Trim();
+                text = (_vm.EquipmentList.SelectedListBoxEquipment?.Equipment ?? "").Trim();
 
             return text ?? "";
         }
@@ -169,26 +166,25 @@ namespace TechEquipments
             if (qrText.Length == 0)
                 return null;
 
-            // 1) exact Equipment, then exact Tag
+            var items = _vm.EquipmentList.Equipments;
+
             var it =
-                _host.Equipments.FirstOrDefault(x => string.Equals(x.Equipment, qrText, StringComparison.OrdinalIgnoreCase))
-                ?? _host.Equipments.FirstOrDefault(x => string.Equals(x.Tag, qrText, StringComparison.OrdinalIgnoreCase));
+                items.FirstOrDefault(x => string.Equals(x.Equipment, qrText, StringComparison.OrdinalIgnoreCase))
+                ?? items.FirstOrDefault(x => string.Equals(x.Tag, qrText, StringComparison.OrdinalIgnoreCase));
 
             if (it != null)
                 return it;
 
-            // 2) startswith Equipment, then Tag
             it =
-                _host.Equipments.FirstOrDefault(x => (x.Equipment ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase))
-                ?? _host.Equipments.FirstOrDefault(x => (x.Tag ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase));
+                items.FirstOrDefault(x => (x.Equipment ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase))
+                ?? items.FirstOrDefault(x => (x.Tag ?? "").StartsWith(qrText, StringComparison.OrdinalIgnoreCase));
 
             if (it != null)
                 return it;
 
-            // 3) contains Equipment, then Tag
             it =
-                _host.Equipments.FirstOrDefault(x => (x.Equipment ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase))
-                ?? _host.Equipments.FirstOrDefault(x => (x.Tag ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase));
+                items.FirstOrDefault(x => (x.Equipment ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase))
+                ?? items.FirstOrDefault(x => (x.Tag ?? "").Contains(qrText, StringComparison.OrdinalIgnoreCase));
 
             return it;
         }
@@ -199,12 +195,10 @@ namespace TechEquipments
             if (match == null)
                 return false;
 
-            // Station
             if (!string.IsNullOrWhiteSpace(match.Station))
-                _host.SelectedStation = match.Station.Trim();
+                _setSelectedStation(match.Station.Trim());
 
-            // TypeGroup
-            _host.SelectedTypeFilter = EquipTypeRegistry.GetGroup(match.Type ?? "");
+            _setSelectedTypeFilter(EquipTypeRegistry.GetGroup(match.Type ?? ""));
 
             return true;
         }
@@ -212,23 +206,19 @@ namespace TechEquipments
         private string GetQrOutputDirectory(string qrText)
         {
             var baseDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "QRCodes");
-
             var match = FindEquipmentForQrText(qrText);
 
-            // Station
             string stationPart =
                 !string.IsNullOrWhiteSpace(match?.Station) ? match!.Station :
-                !string.IsNullOrWhiteSpace(_host.SelectedStation) ? _host.SelectedStation :
+                !string.IsNullOrWhiteSpace(_vm.EquipmentList.SelectedStation) ? _vm.EquipmentList.SelectedStation :
                 "All";
 
-            // TypeGroup
             EquipTypeGroup group =
                 match != null
                     ? EquipTypeRegistry.GetGroup(match.Type ?? "")
-                    : _host.SelectedTypeFilter;
+                    : _vm.EquipmentList.SelectedTypeFilter;
 
-            string groupPart =
-                group != EquipTypeGroup.All ? group.ToString() : "All";
+            string groupPart = group != EquipTypeGroup.All ? group.ToString() : "All";
 
             stationPart = MakeSafePathPart(stationPart);
             groupPart = MakeSafePathPart(groupPart);
