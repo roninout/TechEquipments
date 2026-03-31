@@ -59,16 +59,32 @@ namespace TechEquipments.Views.Param
         }
 
         /// <summary>
-        /// Общий обработчик ToggleButton / CheckEdit.
-        /// Пишем значение по Tag через MainWindow.
+        /// Старый handler оставляем для совместимости, но теперь он просто форвардит в Click-логику.
+        /// Лучше в XAML использовать Click="ParamEditable_ToggleClick".
         /// </summary>
         public void ParamEditable_ToggleChanged(object sender, RoutedEventArgs e)
         {
+            ParamEditable_ToggleClick(sender, e);
+        }
+
+        /// <summary>
+        /// Пишем bool-tag только по реальному пользовательскому Click,
+        /// а не по Checked/Unchecked во время rebinding/refresh.
+        /// </summary>
+        public void ParamEditable_ToggleClick(object sender, RoutedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
             if (sender is not ToggleButton tb)
+                return;
+
+            if (!tb.IsLoaded || !tb.IsVisible || !tb.IsEnabled)
                 return;
 
             Host?.ParamEditable_WriteFromUi(tb.Tag as string, tb.IsChecked, !tb.IsChecked);
         }
+
 
         /// <summary>
         /// Показать график через единую точку MainWindow.

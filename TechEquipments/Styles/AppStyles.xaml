@@ -690,9 +690,7 @@ DataContext = EquipTypeGroup (enum)
                     <BeginStoryboard x:Name="ForcedBlinkStoryboard">
                         <Storyboard RepeatBehavior="Forever" AutoReverse="True">
                             <!-- мигание: 1.0 -> 0.25 -> 1.0 -->
-                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                         From="1.0" To="0.25"
-                                         Duration="0:0:0.45"/>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1.0" To="0.25" Duration="0:0:0.45"/>
                         </Storyboard>
                     </BeginStoryboard>
                 </DataTrigger.EnterActions>

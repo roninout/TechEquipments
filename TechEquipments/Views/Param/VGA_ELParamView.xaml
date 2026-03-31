@@ -167,8 +167,7 @@
                                           Width="120" Height="40" Margin="0,8,0,0" FontWeight="Bold"
                                           HorizontalAlignment="Center"
                                           IsChecked="{Binding Mode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          Checked="ParamEditable_ToggleChanged"
-                                          Unchecked="ParamEditable_ToggleChanged">
+                                          Click="ParamEditable_ToggleClick">
 
                                 <ToggleButton.Style>
                                     <Style TargetType="{x:Type ToggleButton}">

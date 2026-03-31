@@ -824,12 +824,10 @@
                                             <MultiDataTrigger>
                                                 <MultiDataTrigger.Conditions>
                                                     <Condition Binding="{Binding DataContext.CurrentParamSettingsPage,
-                                                     RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}"
-                                   Value="{x:Static conv:ParamSettingsPage.DryRun}" />
+                                                        RelativeSource={RelativeSource AncestorType=local:ParamTabHost}}" Value="{x:Static conv:ParamSettingsPage.DryRun}" />
                                                     <Condition Binding="{Binding DataContext.DryRunModel,
-                                                     RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
-                                                     Converter={StaticResource NullToVis}}"
-                                   Value="Collapsed" />
+                                                         RelativeSource={RelativeSource AncestorType=local:ParamTabHost},
+                                                         Converter={StaticResource NullToVis}}" Value="Collapsed" />
                                                 </MultiDataTrigger.Conditions>
 
                                                 <Setter Property="Visibility" Value="Visible"/>
@@ -896,7 +894,7 @@
                                                               Width="80"
                                                               Margin="0,0,28,0"
                                                               HorizontalAlignment="Right"
-                                                              IsChecked="{Binding DryRunAEn, Converter={StaticResource PlcDouble01ToBool}, Mode=OneWay}"
+                                                              IsChecked="{Binding DryRunAEn, Converter={StaticResource PlcDouble01ToBool}, Mode=TwoWay}"
                                                               EditValueChanged="ParamEditable_EditValueChanged"
                                                               Style="{StaticResource AppBaseEditStyle}" />
                                     </dxlc:LayoutItem>
