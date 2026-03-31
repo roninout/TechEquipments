@@ -22,8 +22,8 @@ namespace TechEquipments
 
         private bool _valueForced;
         /// <summary>
-        /// True если канал форсирован (DIParam.ValueForced / DOParam.ValueForced).
-        /// Используется для надписи "Forced" перед зелёным квадратом.
+        /// Legacy/diagnostic flag: фактическое значение форсированного канала.
+        /// Можно оставить для совместимости.
         /// </summary>
         public bool ValueForced
         {
@@ -36,6 +36,22 @@ namespace TechEquipments
             }
         }
 
+        private bool _forceCmd;
+        /// <summary>
+        /// Флаг команды форсирования, который теперь используем в стилях/мигании.
+        /// Источник: DIParam.ForceCmd / DOParam.ForceCmd.
+        /// </summary>
+        public bool ForceCmd
+        {
+            get => _forceCmd;
+            private set
+            {
+                if (_forceCmd == value) return;
+                _forceCmd = value;
+                OnPropertyChanged();
+            }
+        }
+
         public DiDoRefRow(EquipListBoxItem equipItem, object paramModel)
         {
             EquipItem = equipItem ?? throw new ArgumentNullException(nameof(equipItem));
@@ -43,6 +59,7 @@ namespace TechEquipments
 
             // первичная инициализация
             ValueForced = ExtractValueForced(paramModel);
+            ForceCmd = ExtractForceCmd(paramModel);
         }
 
         /// <summary>
@@ -88,8 +105,9 @@ namespace TechEquipments
             EquipItem = equipItem;
             ParamModel = paramModel;
 
-            // обновляем forced-флаг
+            // обновляем форс-флаги
             ValueForced = ExtractValueForced(paramModel);
+            ForceCmd = ExtractForceCmd(paramModel);
 
             OnPropertyChanged(nameof(EquipItem));
             OnPropertyChanged(nameof(ParamModel));
@@ -127,6 +145,20 @@ namespace TechEquipments
 
             if (model is DOParam dout)
                 return dout.ValueForced;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Достаём ForceCmd из DIParam/DOParam.
+        /// </summary>
+        private static bool ExtractForceCmd(object? model)
+        {
+            if (model is DIParam di)
+                return di.ForceCmd;
+
+            if (model is DOParam dout)
+                return dout.ForceCmd;
 
             return false;
         }

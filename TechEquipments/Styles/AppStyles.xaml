@@ -672,7 +672,7 @@ DataContext = EquipTypeGroup (enum)
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
-    <!-- Forced label: по умолчанию скрыт, при ValueForced=True показывает и мигает -->
+    <!-- Forced label: по умолчанию скрыт, при ForceCmd=True показывает и мигает -->
     <Style x:Key="DIDOForcedBlinkTextStyle"
        TargetType="{x:Type TextBlock}"
        BasedOn="{StaticResource AppTextBlockStyle}">
@@ -683,7 +683,7 @@ DataContext = EquipTypeGroup (enum)
         <Setter Property="Visibility" Value="Collapsed"/>
 
         <Style.Triggers>
-            <DataTrigger Binding="{Binding ValueForced}" Value="True">
+            <DataTrigger Binding="{Binding ForceCmd}" Value="True">
                 <Setter Property="Visibility" Value="Visible"/>
 
                 <DataTrigger.EnterActions>

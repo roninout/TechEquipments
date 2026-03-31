@@ -93,6 +93,22 @@ namespace TechEquipments
             }
         }
 
+        private bool _forceCmd;
+        /// <summary>
+        /// Флаг команды форсирования для PLC digital rows.
+        /// Теперь именно его используем в стиле мигания "Forced".
+        /// </summary>
+        public bool ForceCmd
+        {
+            get => _forceCmd;
+            set
+            {
+                if (_forceCmd == value) return;
+                _forceCmd = value;
+                OnPropertyChanged();
+            }
+        }
+
         private string _forcedTagName = "";
         public string ForcedTagName
         {

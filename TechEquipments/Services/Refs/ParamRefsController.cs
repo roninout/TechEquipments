@@ -486,7 +486,8 @@ namespace TechEquipments
                         }
                     }
 
-                    // resolve ForcedTagName (кэш в row.ForcedTagName)
+                    // resolve ForceCmd tag (кэш пока переиспользуем в row.ForcedTagName,
+                    // чтобы не плодить новое строковое поле)
                     var forcedTag = "";
                     if (row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
                     {
@@ -495,7 +496,7 @@ namespace TechEquipments
                         {
                             try
                             {
-                                forcedTag = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.ValueForced\", 0)") ?? "").Trim();
+                                forcedTag = (await _ctApiService.CicodeAsync($"TagInfo(\"{row.EquipName}.ForceCmd\", 0)") ?? "").Trim();
                             }
                             catch
                             {
@@ -503,6 +504,7 @@ namespace TechEquipments
                             }
                         }
                     }
+
 
                     meta.Add((row, tagName, unit, forcedTag));
 
@@ -575,9 +577,15 @@ namespace TechEquipments
                         u.row.UpdateValue(u.value);
 
                         if (u.forced.HasValue)
-                            u.row.ValueForced = u.forced.Value;
+                        {
+                            u.row.ForceCmd = u.forced.Value;
+                            u.row.ValueForced = u.forced.Value; // optional legacy sync
+                        }
                         else if (u.row.Type is PlcTypeCustom.EqDigital or PlcTypeCustom.EqDigitalInOut)
-                            u.row.ValueForced = false;
+                        {
+                            u.row.ForceCmd = false;
+                            u.row.ValueForced = false; // optional legacy sync
+                        }
                     }
                 });
 
