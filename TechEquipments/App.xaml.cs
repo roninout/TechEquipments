@@ -8,6 +8,7 @@ using CtApi;
 using TechEquipments.Services.QR;
 using Microsoft.EntityFrameworkCore;
 using TechEquipments.ViewModels;
+using DevExpress.Xpf.Core;
 
 namespace TechEquipments
 {
@@ -54,22 +55,38 @@ namespace TechEquipments
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
-            await AppHost.StartAsync();
 
-            using var scope = AppHost.Services.CreateScope();
-
-            var dbService = scope.ServiceProvider.GetRequiredService<IDbService>();
-            var equipInfoService = scope.ServiceProvider.GetRequiredService<IEquipInfoService>();
-
-            var ok = await dbService.CanConnectAsync();
-            if (!ok)
-                throw new Exception("Postgres: cannot connect.");
-
-            // При старте гарантируем наличие таблицы Info
-            await equipInfoService.EnsureTableAsync();
-
-            AppHost.Services.GetRequiredService<MainWindow>().Show();
+            try
+            {
+                await AppHost.StartAsync();
+                AppHost.Services.GetRequiredService<MainWindow>().Show();
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show($"Application startup failed.\n\n{ex.Message}","Startup error",MessageBoxButton.OK,MessageBoxImage.Error);
+                Shutdown();
+            }
         }
+
+        //protected override async void OnStartup(StartupEventArgs e)
+        //{
+        //    base.OnStartup(e);
+        //    await AppHost.StartAsync();
+
+        //    using var scope = AppHost.Services.CreateScope();
+
+        //    var dbService = scope.ServiceProvider.GetRequiredService<IDbService>();
+        //    var equipInfoService = scope.ServiceProvider.GetRequiredService<IEquipInfoService>();
+
+        //    var ok = await dbService.CanConnectAsync();
+        //    if (!ok)
+        //        throw new Exception("Postgres: cannot connect.");
+
+        //    // При старте гарантируем наличие таблицы Info
+        //    await equipInfoService.EnsureTableAsync();
+
+        //    AppHost.Services.GetRequiredService<MainWindow>().Show();
+        //}
 
         protected override async void OnExit(ExitEventArgs e)
         {

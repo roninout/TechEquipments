@@ -70,21 +70,13 @@
                                           NullText="Stations"
                                           IsTextEditable="False"
                                           ItemsSource="{Binding Vm.EquipmentList.Stations}"
-                                          EditValue="{Binding SelectedStation, UpdateSourceTrigger=PropertyChanged}"/>
+                                          EditValue="{Binding Vm.EquipmentList.SelectedStation, UpdateSourceTrigger=PropertyChanged}"/>
 
                         <!--<TextBlock Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center"
                                    Text="Station"
                                    Style="{StaticResource AppLabelTextStyle}"/>-->
 
                         <!-- Type -->
-                        <!--<dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
-                                          HorizontalContentAlignment ="Left"
-                                          Style="{StaticResource AppBaseEditStyle}"
-                                          NullText="Types"
-                                          IsTextEditable="False"
-                                          ItemsSource="{Binding TypeFilters}"
-                                          EditValue="{Binding SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>-->
-
                         <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
                                           HorizontalContentAlignment="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
@@ -93,7 +85,7 @@
                                           ItemsSource="{Binding TypeFilters}"
                                           ItemTemplate="{StaticResource EquipTypeFilterItemTemplate}"
                                           ApplyItemTemplateToSelectedItem="True"
-                                          EditValue="{Binding SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                          EditValue="{Binding Vm.EquipmentList.SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
                         <!--<TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center"
                                    Text="Type"
@@ -106,7 +98,7 @@
                              ItemsSource="{Binding EquipmentsView}"
                              ItemTemplate="{StaticResource EquipmentListItemTemplate}"
                              ItemContainerStyle="{StaticResource AppListBoxItemStyle}"
-                             SelectedItem="{Binding SelectedListBoxEquipment}"
+                             SelectedItem="{Binding Vm.EquipmentList.SelectedListBoxEquipment}"
                              SelectionChanged="Equipments_SelectionChanged"/>
                     
                     <!-- Версия -->
@@ -188,13 +180,13 @@
                                Margin="0,0,8,0"
                                VerticalAlignment="Center"
                                Style="{StaticResource AppTextBlockStyle}"
-                               Visibility="{Binding IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
+                               Visibility="{Binding Vm.IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
 
                     <dxe:DateEdit Width="140"
                                   Margin="0,0,12,0"
                                   Style="{StaticResource AppBaseEditStyle}"
                                   EditValue="{Binding DbDate, UpdateSourceTrigger=PropertyChanged}"
-                                  Visibility="{Binding IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
+                                  Visibility="{Binding Vm.IsDbTabSelected, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- ===== Search (всегда) ===== -->
                     <dxe:TextEdit x:Name="SearchTextEdit"
@@ -202,16 +194,16 @@
                                   Style="{StaticResource AppBaseEditStyle}"
                                   HorizontalContentAlignment="Left"
                                   NullText="Equipment name..."
-                                  EditValue="{Binding EquipName, UpdateSourceTrigger=PropertyChanged}"/>
+                                  EditValue="{Binding Vm.EquipmentList.EquipName, UpdateSourceTrigger=PropertyChanged}"/>
 
                     <!-- ===== ONE multifunction button ===== -->
-                    <dx:SimpleButton Content="{Binding MainActionButtonText}"
+                    <dx:SimpleButton Content="{Binding Vm.MainActionButtonText}"
                                      Width="110"
                                      Margin="8,0,0,0"
                                      Style="{StaticResource AppButtonStyle}"
-                                     IsEnabled="{Binding CanMainAction}"
+                                     IsEnabled="{Binding Vm.CanMainAction}"
                                      Click="MainAction_Click"
-                                     Visibility="{Binding ShowMainActionButton, Converter={StaticResource BoolToVis}}"/>
+                                     Visibility="{Binding Vm.ShowMainActionButton, Converter={StaticResource BoolToVis}}"/>
 
                 </StackPanel>
 
@@ -398,27 +390,27 @@
         <Border Grid.Row="1"
                 Padding="10,6"
                 Background="#0A000000"
-                Visibility="{Binding IsBottomStatusVisible, Converter={StaticResource BoolToVis}}">
+                Visibility="{Binding Vm.IsBottomStatusVisible, Converter={StaticResource BoolToVis}}">
 
             <DockPanel LastChildFill="True">
                 <!-- Текст статуса -->
                 <TextBlock DockPanel.Dock="Left"
                            Style="{StaticResource AppTextStyle}"
-                           Text="{Binding BottomStatusText}"
-                           Foreground="{Binding BottomStatusBrush}"
+                           Text="{Binding Vm.BottomStatusText}"
+                           Foreground="{Binding Vm.BottomStatusBrush}"
                            Margin="0,0,12,0"/>
                 <!--<TextBlock DockPanel.Dock="Left"
                            Style="{StaticResource AppTextStyle}"
-                           Text="{Binding BottomText}"
+                           Text="{Binding Vm.BottomText}"
                            Margin="0,0,12,0"/>-->
 
                 <!-- Один ProgressBar:- EquipList: Value/Maximum- DB: IsIndeterminate=true -->
                 <ProgressBar Height="16"
                              Minimum="0"
-                             Maximum="{Binding BottomProgressMaximum, Mode=OneWay}"
-                             Value="{Binding BottomProgressValue, Mode=OneWay}"
-                             IsIndeterminate="{Binding BottomProgressIsIndeterminate, Mode=OneWay}"
-                             Visibility="{Binding IsBottomLoading, Converter={StaticResource BoolToVis}}"/>
+                             Maximum="{Binding Vm.BottomProgressMaximum, Mode=OneWay}"
+                             Value="{Binding Vm.BottomProgressValue, Mode=OneWay}"
+                             IsIndeterminate="{Binding Vm.BottomProgressIsIndeterminate, Mode=OneWay}"
+                             Visibility="{Binding Vm.IsBottomLoading, Converter={StaticResource BoolToVis}}"/>
 
             </DockPanel>
         </Border>

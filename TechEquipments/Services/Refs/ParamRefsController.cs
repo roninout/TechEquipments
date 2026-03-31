@@ -100,9 +100,6 @@ namespace TechEquipments
             set => _vm.Param.CurrentParamSettingsPage = value;
         }
 
-        private string SelectedStation => _vm.EquipmentList.SelectedStation;
-        private EquipTypeGroup SelectedTypeFilter => _vm.EquipmentList.SelectedTypeFilter;
-
         /// <summary>
         /// Устанавливает активную страницу Param settings.
         /// </summary>

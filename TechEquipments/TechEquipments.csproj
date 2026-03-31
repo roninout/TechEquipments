@@ -14,6 +14,7 @@
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <InformationalVersion>1.0.0-build-$([System.DateTime]::Now.ToString('yyyyMMdd-HHmm'))</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     
   </PropertyGroup>
 

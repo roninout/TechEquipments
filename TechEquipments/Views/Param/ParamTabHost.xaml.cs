@@ -13,13 +13,24 @@ namespace TechEquipments.Views.Param
             InitializeComponent();
         }
 
+        private MainWindow? Host
+        {
+            get
+            {
+                if (Window.GetWindow(this) is MainWindow mw)
+                    return mw;
+
+                return Application.Current?.MainWindow as MainWindow;
+            }
+        }
+
         /// <summary>
         /// Кнопка: генерация QR по текущему тексту поиска/выбранному оборудованию.
         /// </summary>
         private async void GenerateQr_Click(object sender, RoutedEventArgs e)
         {
-            if (DataContext is MainWindow mw)
-                await mw.Param_GenerateQrAsync();
+            if (Host != null)
+                await Host.Param_GenerateQrAsync();
         }
 
         /// <summary>
@@ -27,8 +38,8 @@ namespace TechEquipments.Views.Param
         /// </summary>
         private async void ScanQr_Click(object sender, RoutedEventArgs e)
         {
-            if (DataContext is MainWindow mw)
-                await mw.Param_ScanQrToExternalTagAndSearchAsync();
+            if (Host != null)
+                await Host.Param_ScanQrToExternalTagAndSearchAsync();
         }
     }
 }
