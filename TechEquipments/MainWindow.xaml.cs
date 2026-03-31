@@ -2,6 +2,7 @@
 using DevExpress.Xpf.Bars;
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
+using DevExpress.XtraPrinting.Native;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -188,6 +189,11 @@ namespace TechEquipments
         }
         #endregion
 
+        #region Station
+        private CancellationTokenSource? _stationHealthCts;
+        private Task? _stationHealthTask;
+        #endregion
+
         #endregion
 
         public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService, MainViewModel vm)
@@ -203,7 +209,10 @@ namespace TechEquipments
             _equipInfoService = equipInfoService;
 
             _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
-            Closed += (_, __) => _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
+            Closed += (_, __) => {
+                _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
+                StopStationHealthMonitor();
+            };
 
             Vm.Shell.IsCtApiConnected = _ctApiService.IsConnectionAvailable;
 
@@ -390,6 +399,7 @@ namespace TechEquipments
                 var items = await _equipmentService.GetAllEquipmentsAsync(progress, ct);
 
                 _equipmentListController.ReplaceLoadedEquipments(items);
+                RestartStationHealthMonitor();
 
                 // Если на старте использовали ExternalTag —
                 // сначала выставляем Station/TypeGroup,
@@ -440,7 +450,7 @@ namespace TechEquipments
                     Vm.Shell.CtApiStatusText = string.IsNullOrWhiteSpace(message)
                         ? "CtApi connection lost."
                         : message;
-
+                    MarkAllStationsOffline(true);
                     return;
                 }
 
@@ -450,7 +460,7 @@ namespace TechEquipments
                 Vm.Shell.BottomText = string.IsNullOrWhiteSpace(message)
                     ? $"CtApi connection restored at {DateTime.Now:HH:mm:ss}"
                     : message;
-
+                RestartStationHealthMonitor();
             }
 
             if (!Dispatcher.CheckAccess())
@@ -517,6 +527,140 @@ namespace TechEquipments
                 // считаем DB-функционал недоступным и отключаем соответствующие вкладки.
                 Vm.Database.IsDbConnected = false;
                 Vm.Shell.BottomText = $"Info storage init error: {ex.Message}";
+            }
+        }
+
+        #endregion
+
+        #region Station
+
+        private void RestartStationHealthMonitor()
+        {
+            StopStationHealthMonitor();
+
+            // Если станций ещё нет — нечего мониторить.
+            if (Vm.EquipmentList.Stations.Count <= 1) // только "All"
+                return;
+
+            _stationHealthCts = new CancellationTokenSource();
+            _stationHealthTask = RunStationHealthMonitorAsync(_stationHealthCts.Token);
+        }
+
+        private void StopStationHealthMonitor()
+        {
+            try
+            {
+                _stationHealthCts?.Cancel();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            _stationHealthCts?.Dispose();
+            _stationHealthCts = null;
+            _stationHealthTask = null;
+        }
+
+        private void MarkAllStationsOffline(bool isOffline)
+        {
+            foreach (var station in Vm.EquipmentList.Stations)
+            {
+                if (string.Equals(station.Name, "All", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                station.IsOffline = isOffline;
+            }
+        }
+
+        private async Task RunStationHealthMonitorAsync(CancellationToken ct)
+        {
+            var periodSeconds = Math.Max(5, _config.GetValue("StationHealth:PeriodSeconds", 15));
+            var failThreshold = Math.Max(1, _config.GetValue("StationHealth:FailCount", 3));
+
+            var failCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(periodSeconds));
+
+            try
+            {
+                await ProbeStationsOnceAsync(failCounts, failThreshold, ct);
+
+                while (await timer.WaitForNextTickAsync(ct))
+                {
+                    await ProbeStationsOnceAsync(failCounts, failThreshold, ct);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // normal shutdown
+            }
+        }
+
+        private async Task ProbeStationsOnceAsync(Dictionary<string, int> failCounts, int failThreshold, CancellationToken ct)
+        {
+            // Snapshot коллекции берём через UI thread.
+            var stations = await Dispatcher.InvokeAsync(() =>
+                _equipmentListController.GetStationProbeItems());
+
+            if (stations == null || stations.Count == 0)
+                return;
+
+            // Если глобально CtApi disconnected — сразу считаем станции offline.
+            if (!_ctApiService.IsConnectionAvailable)
+            {
+                await Dispatcher.InvokeAsync(() => MarkAllStationsOffline(true));
+                return;
+            }
+
+            foreach (var station in stations)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var ok = await ProbeStationAsync(station);
+
+                if (ok)
+                {
+                    failCounts[station.Name] = 0;
+
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        station.IsOffline = false;
+                    });
+
+                    continue;
+                }
+
+                failCounts.TryGetValue(station.Name, out var fails);
+                fails++;
+                failCounts[station.Name] = fails;
+
+                if (fails >= failThreshold)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        station.IsOffline = true;
+                    });
+                }
+            }
+        }
+
+        private async Task<bool> ProbeStationAsync(StationStatusItem station)
+        {
+            try
+            {
+                var probeTag = (station.ProbeTagName ?? "").Trim();
+
+                // Нет probe tag — не считаем станцию offline.
+                if (string.IsNullOrWhiteSpace(probeTag))
+                    return true;
+
+                var result = await _ctApiService.TagReadAsync(probeTag);
+                return result != "Unknown";
+            }
+            catch
+            {
+                return false;
             }
         }
 

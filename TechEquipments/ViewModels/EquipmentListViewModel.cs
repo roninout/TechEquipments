@@ -13,8 +13,8 @@ namespace TechEquipments.ViewModels
     /// </summary>
     public sealed class EquipmentListViewModel : ObservableObject
     {
-        public ObservableCollection<EquipListBoxItem> Equipments { get; } = new();
-        public ObservableCollection<string> Stations { get; } = new();
+        public ObservableCollection<EquipListBoxItem> Equipments { get; } = new();        
+        public ObservableCollection<StationStatusItem> Stations { get; } = new();
 
         private string _equipName = "";
         public string EquipName

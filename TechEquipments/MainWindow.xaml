@@ -16,6 +16,19 @@
         <!-- Конвертер bool -> Visibility -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
+        <DataTemplate x:Key="StationItemTemplate">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Style="{StaticResource AppTextBlockStyle}"/>
+
+                <Image Width="16" Height="16" Margin="10,0,6,0" VerticalAlignment="Center"
+                       Visibility="{Binding IsOffline, Converter={StaticResource BoolToVis}}"
+                       ToolTip="No connection to this station"
+                       Source="{dx:DXImage 'DevAV/Priorities/LowPriority_16x16.png'}"/>
+
+            </StackPanel>
+        </DataTemplate>
+
+
         <!-- Подсветка событий/типов -->
         <local:EventKeyToBrushConverter x:Key="EventKeyToBrush"/>
         <local:EquipTypeGroupToBrushConverter x:Key="TypeGroupToBrush"/>
@@ -65,11 +78,15 @@
 
                         <!-- Station -->
                         <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="0"
-                                          HorizontalContentAlignment ="Left"
+                                          HorizontalContentAlignment="Left"
                                           Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Stations"
                                           IsTextEditable="False"
                                           ItemsSource="{Binding Vm.EquipmentList.Stations}"
+                                          DisplayMember="Name"
+                                          ValueMember="Name"
+                                          ItemTemplate="{StaticResource StationItemTemplate}"
+                                          ApplyItemTemplateToSelectedItem="True"
                                           EditValue="{Binding Vm.EquipmentList.SelectedStation, UpdateSourceTrigger=PropertyChanged}"/>
 
                         <!--<TextBlock Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center"

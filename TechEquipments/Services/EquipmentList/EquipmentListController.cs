@@ -63,17 +63,29 @@ namespace TechEquipments
                 EquipVm.Equipments.Add(it);
 
             EquipVm.Stations.Clear();
-            EquipVm.Stations.Add("All");
-
-            foreach (var st in items
-                .Select(x => x.Station)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+            EquipVm.Stations.Add(new StationStatusItem
             {
-                EquipVm.Stations.Add(st);
-            }
+                Name = "All",
+                IsOffline = false
+            });
 
+            foreach (var group in items
+                .Where(x => !string.IsNullOrWhiteSpace(x.Station))
+                .GroupBy(x => x.Station.Trim(), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                // Берём первое подходящее equipment этой станции.
+                // Предпочитаем то, у которого есть Tag.
+                var probe = group.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Tag)) ?? group.First();
+
+                EquipVm.Stations.Add(new StationStatusItem
+                {
+                    Name = group.Key,
+                    ProbeEquipmentName = (probe.Equipment ?? "").Trim(),
+                    ProbeTagName = (probe.Tag ?? "").Trim(),
+                    IsOffline = false
+                });
+            }
             NormalizeSelectedStation();
         }
 
@@ -84,10 +96,17 @@ namespace TechEquipments
         public void NormalizeSelectedStation()
         {
             if (!EquipVm.Stations.Any(s =>
-                    string.Equals(s, EquipVm.SelectedStation, StringComparison.OrdinalIgnoreCase)))
+                    string.Equals(s.Name, EquipVm.SelectedStation, StringComparison.OrdinalIgnoreCase)))
             {
                 EquipVm.SelectedStation = "All";
             }
+        }
+
+        public List<StationStatusItem> GetStationProbeItems()
+        {
+            return EquipVm.Stations
+                .Where(s => !string.Equals(s.Name, "All", StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         /// <summary>
@@ -175,10 +194,17 @@ namespace TechEquipments
             if (obj is not EquipListBoxItem it)
                 return false;
 
-            var st = (EquipVm.SelectedStation ?? "All").Trim();
+            var st = (EquipVm.SelectedStation ?? "").Trim();
+
+            // Пустое/битое значение станции трактуем как All,
+            // чтобы offline-иконки и временные UI-состояния
+            // не могли опустошить ListBox.
+            if (string.IsNullOrWhiteSpace(st))
+                st = "All";
+
             if (!string.Equals(st, "All", StringComparison.OrdinalIgnoreCase))
             {
-                if (!string.Equals(it.Station, st, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals((it.Station ?? "").Trim(), st, StringComparison.OrdinalIgnoreCase))
                     return false;
             }
 
