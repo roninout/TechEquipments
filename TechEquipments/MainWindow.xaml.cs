@@ -218,8 +218,8 @@ namespace TechEquipments
 
             _config = config;
             _dbController = new DbController(dbService, Vm, Dispatcher);
-            _infoController = new InfoController(equipInfoService, Vm.Info, Vm.EquipmentList, Vm.Database, this);
-            
+            _infoController = new InfoController(equipInfoService, Vm.Info, Vm.EquipmentList, Vm.Database, this, qrScannerService);
+
             _qrController = new QrController(
                 _equipmentService,
                 qrCodeService,
@@ -1567,6 +1567,9 @@ namespace TechEquipments
         /// </summary>
         public Task Info_OnDocumentLibraryEditValueChangedAsync()
             => _infoController.SyncCurrentDocumentSelectionFromLibraryAsync();
+
+        public Task Info_CapturePhotoFromCameraAsync()
+            => _infoController.CapturePhotoFromCameraAsync();
 
         #endregion
 

@@ -134,7 +134,6 @@
                                         </dxe:ComboBoxEdit>
                                         
                                         <!--ImageEdit-->
-                                        <!--<dxe:ImageEdit Grid.Row="2" Stretch="Uniform" NullText="Image is empty" EditValue="{Binding SelectedInfoPhotoFile.FileData}" IsReadOnly="false" ShowMenuMode="Hover" ShowMenu="True"/>-->
                                         <dxe:ImageEdit Grid.Row="2"
                                                        Stretch="Uniform"
                                                        NullText="Image is empty"
@@ -146,7 +145,7 @@
                                                     <Setter Property="ShowMenu" Value="False"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
-                                                            <Setter Property="ShowMenu" Value="True"/>
+                                                            <Setter Property="ShowMenu" Value="False"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -295,11 +294,40 @@
                             <!-- Bottom -->
                             <StackPanel Grid.Row="2" Orientation="Vertical" VerticalAlignment="Top">
 
+                                <!-- Capture photo: только для фото и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"                                                     
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Electronics_Photo.svg'}"
+                                                     Click="CapturePhoto_Click"
+                                                     ToolTip="Capture photo"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoGeneralPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
                                 <!-- Add image: только для фото и только в Edit mode -->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60"
                                                      Height="60"
                                                      Padding="0"
+                                                     Margin="0,8,0,0"
                                                      GlyphWidth="40"
                                                      GlyphHeight="40"
                                                      Glyph="{dx:DXImage 'SvgImages/Dashboards/ImageImport.svg'}"

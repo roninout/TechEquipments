@@ -42,6 +42,12 @@ namespace TechEquipments.Views.Info
                 await Host.Info_LoadPhotoFilesAsync();
         }
 
+        private async void CapturePhoto_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_CapturePhotoFromCameraAsync();
+        }
+
         private void RemovePhoto_Click(object sender, RoutedEventArgs e)
         {
             Host?.Info_RemoveSelectedPhoto();

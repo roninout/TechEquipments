@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using TechEquipments.ViewModels;
+using TechEquipments.Views.Info;
 
 namespace TechEquipments
 {
@@ -24,6 +25,8 @@ namespace TechEquipments
     public sealed class InfoController
     {
         private readonly IEquipInfoService _equipInfoService;
+        private readonly IQrScannerService _qrScannerService;
+
         private readonly InfoViewModel _vm;
         private readonly EquipmentListViewModel _equipmentVm;
         private readonly DatabaseViewModel _databaseVm;
@@ -32,13 +35,14 @@ namespace TechEquipments
         private int _loadCurrentRequestId;
         private bool _suppressLibrarySelectionSync;
 
-        public InfoController(IEquipInfoService equipInfoService, InfoViewModel vm, EquipmentListViewModel equipmentVm, DatabaseViewModel databaseVm, Window ownerWindow)
+        public InfoController(IEquipInfoService equipInfoService, InfoViewModel vm, EquipmentListViewModel equipmentVm, DatabaseViewModel databaseVm, Window ownerWindow, IQrScannerService qrScannerService)
         {
             _equipInfoService = equipInfoService ?? throw new ArgumentNullException(nameof(equipInfoService));
             _vm = vm ?? throw new ArgumentNullException(nameof(vm));
             _equipmentVm = equipmentVm ?? throw new ArgumentNullException(nameof(equipmentVm));
             _databaseVm = databaseVm ?? throw new ArgumentNullException(nameof(databaseVm));
             _ownerWindow = ownerWindow ?? throw new ArgumentNullException(nameof(ownerWindow));
+            _qrScannerService = qrScannerService ?? throw new ArgumentNullException(nameof(qrScannerService));
         }
 
         private string ResolveSelectedEquipForInfo()
@@ -50,6 +54,18 @@ namespace TechEquipments
                 text = sel;
 
             return text;
+        }
+
+        private static string BuildCapturedPhotoFileName(string? equipName)
+        {
+            var baseName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(baseName))
+                baseName = "Equipment";
+
+            foreach (var ch in Path.GetInvalidFileNameChars())
+                baseName = baseName.Replace(ch, '_');
+
+            return $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}.jpg";
         }
 
         public async Task LoadCurrentAsync()
@@ -273,6 +289,108 @@ namespace TechEquipments
             }
 
             _vm.InfoStatusText = $"Images linked: {_vm.CurrentEquipInfo.Photos.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
+        }
+
+        public async Task CapturePhotoFromCameraAsync()
+        {
+            if (!_vm.IsInfoEditMode)
+                return;
+
+            var equipName = ResolveSelectedEquipForInfo();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(equipName);
+            _vm.CurrentEquipInfo.EquipName = equipName;
+
+            var equipTypeGroupKey = ResolveSelectedEquipTypeGroupKey();
+            if (string.IsNullOrWhiteSpace(equipTypeGroupKey))
+                return;
+
+            string? tempFile = null;
+
+            try
+            {
+                var cameras = await _qrScannerService.GetAvailableCamerasAsync();
+                if (cameras == null || cameras.Count == 0)
+                {
+                    DXMessageBox.Show(_ownerWindow, "No camera devices were found.", "Capture photo", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var preferredIndex = await _qrScannerService.GetPreferredCameraIndexAsync();
+                if (!cameras.Any(x => x.Index == preferredIndex))
+                    preferredIndex = cameras[0].Index;
+
+                var captureWindow = new PhotoCaptureWindow(_qrScannerService, cameras, preferredIndex){Owner = _ownerWindow};
+
+                var ok = captureWindow.ShowDialog();
+                if (ok != true)
+                    return;
+
+                tempFile = captureWindow.CapturedFilePath;
+                if (string.IsNullOrWhiteSpace(tempFile) || !File.Exists(tempFile))
+                    return;
+
+                // Переименовываем снимок по шаблону: Equipment_yyyyMMdd_HHmmss.jpg
+                var friendlyFileName = BuildCapturedPhotoFileName(equipName);
+                var renamedTempFile = Path.Combine(Path.GetDirectoryName(tempFile)!, friendlyFileName);
+
+                // Если вдруг файл с таким именем уже есть в temp-папке, добавим суффикс _01, _02 и т.д.
+                if (File.Exists(renamedTempFile))
+                {
+                    var baseName = Path.GetFileNameWithoutExtension(friendlyFileName);
+                    var ext = Path.GetExtension(friendlyFileName);
+
+                    int i = 1;
+                    do
+                    {
+                        renamedTempFile = Path.Combine(Path.GetDirectoryName(tempFile)!, $"{baseName}_{i:00}{ext}");
+                        i++;
+                    }
+                    while (File.Exists(renamedTempFile));
+                }
+
+                File.Move(tempFile, renamedTempFile);
+                tempFile = renamedTempFile;
+
+                var addResult = await _equipInfoService.AddFilesToLibraryAsync(InfoFileKind.Photo, equipTypeGroupKey, new[] { tempFile });
+                await LoadLibrariesAsync();
+
+                MergeAssetsIntoSelection(_vm.CurrentEquipInfo.Photos, addResult.ResolvedAssets, equipName);
+                SyncCheckedSelectionsFromCurrentModel();
+
+                var selectedPhoto = addResult.ResolvedAssets.LastOrDefault(asset => asset != null && asset.Id > 0);
+
+                if (selectedPhoto != null)
+                    _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault(x => x.Id == selectedPhoto.Id);
+                else
+                    _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault();
+
+                if (addResult.ExistingInLibraryFileNames.Count > 0)
+                {
+                    DXMessageBox.Show(_ownerWindow, "This photo already existed in the shared library and was linked to the equipment:\n\n" + string.Join("\n", addResult.ExistingInLibraryFileNames), "Existing photo", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+                _vm.InfoStatusText = $"Photo captured and linked. Total linked images: {_vm.CurrentEquipInfo.Photos.Count}.";
+            }
+            catch (Exception ex)
+            {
+                _vm.InfoStatusText = $"Capture photo error: {ex.Message}";
+                DXMessageBox.Show(_ownerWindow, ex.Message, "Capture photo", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(tempFile) && File.Exists(tempFile))
+                        File.Delete(tempFile);
+                }
+                catch
+                {
+                    // ignore temp cleanup failures
+                }
+            }
         }
 
         public void RemoveSelectedPhoto()
