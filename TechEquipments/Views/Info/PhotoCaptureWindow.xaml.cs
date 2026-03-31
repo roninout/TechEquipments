@@ -177,6 +177,10 @@ namespace TechEquipments.Views.Info
 
                 _cap.Set(VideoCaptureProperties.FrameWidth, 640);
                 _cap.Set(VideoCaptureProperties.FrameHeight, 480);
+
+                //_cap.Set(VideoCaptureProperties.FrameWidth, 1280);
+                //_cap.Set(VideoCaptureProperties.FrameHeight, 720);
+
                 _cap.Set(VideoCaptureProperties.Fps, 30);
                 _cap.Set(VideoCaptureProperties.BufferSize, 1);
 

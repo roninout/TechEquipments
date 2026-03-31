@@ -44,7 +44,7 @@
                 <ColumnDefinition Width="240"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="140"/>
-                <ColumnDefinition Width="140"/>
+                <ColumnDefinition Width="300"/>
             </Grid.ColumnDefinitions>
 
             <!-- Camera selector -->
@@ -63,13 +63,14 @@
             <Border Grid.Column="1" Background="Transparent"/>
 
             <!-- Capture -->
-            <StackPanel Grid.Column="2"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Margin="0,0,10,0">
-                <dx:SimpleButton Width="120"
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,0">
+                
+                <dx:SimpleButton Width="140" Height="40" Padding="0" Margin="0,0,0,0"
                                  Content="Capture"
-                                 Style="{DynamicResource AppButtonStyle}"
+                                 GlyphWidth="40"
+                                 GlyphHeight="40"
+                                 Glyph="{dx:DXImage 'SvgImages/Icon Builder/Electronics_Photo.svg'}"
+                                 Style="{DynamicResource AppButtonStyle}" ToolTip="Capture photo"
                                  Click="Capture_Click"/>
             </StackPanel>
 
@@ -77,7 +78,7 @@
             <StackPanel Grid.Column="3"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right">
-                <dx:SimpleButton Width="120"
+                <dx:SimpleButton Width="140"
                                  Content="Cancel"
                                  Style="{DynamicResource AppButtonStyle}"
                                  Click="Cancel_Click"/>
