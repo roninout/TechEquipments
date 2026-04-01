@@ -77,9 +77,8 @@
                         </Grid.RowDefinitions>
 
                         <!-- Station -->
-                        <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="0"
+                        <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="0" PopupMinHeight="160"
                                           HorizontalContentAlignment="Left"
-                                          Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Stations"
                                           IsTextEditable="False"
                                           ItemsSource="{Binding Vm.EquipmentList.Stations}"
@@ -87,7 +86,9 @@
                                           ValueMember="Name"
                                           ItemTemplate="{StaticResource StationItemTemplate}"
                                           ApplyItemTemplateToSelectedItem="True"
-                                          EditValue="{Binding Vm.EquipmentList.SelectedStation, UpdateSourceTrigger=PropertyChanged}"/>
+                                          EditValue="{Binding Vm.EquipmentList.SelectedStation, UpdateSourceTrigger=PropertyChanged}">
+                            
+                        </dxe:ComboBoxEdit>
 
                         <!--<TextBlock Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center"
                                    Text="Station"
@@ -96,13 +97,14 @@
                         <!-- Type -->
                         <dxe:ComboBoxEdit Grid.Row="0" Grid.Column="2"
                                           HorizontalContentAlignment="Left"
-                                          Style="{StaticResource AppBaseEditStyle}"
                                           NullText="Types"
                                           IsTextEditable="False"
                                           ItemsSource="{Binding TypeFilters}"
                                           ItemTemplate="{StaticResource EquipTypeFilterItemTemplate}"
                                           ApplyItemTemplateToSelectedItem="True"
-                                          EditValue="{Binding Vm.EquipmentList.SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                          EditValue="{Binding Vm.EquipmentList.SelectedTypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                            
+                        </dxe:ComboBoxEdit>
 
                         <!--<TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center"
                                    Text="Type"

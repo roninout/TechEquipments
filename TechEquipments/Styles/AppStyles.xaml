@@ -23,6 +23,22 @@
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
     </Style>
 
+    <!-- ============ Автоматически для всех ComboBoxEdit ============ -->
+    <Style TargetType="{x:Type dxe:ComboBoxEdit}"
+       BasedOn="{StaticResource AppBaseEditStyle}">
+        <Setter Property="StyleSettings">
+            <Setter.Value>
+                <dxe:ComboBoxStyleSettings>
+                    <dxe:ComboBoxStyleSettings.ItemContainerStyle>
+                        <Style TargetType="{x:Type dxe:ComboBoxEditItem}">
+                            <Setter Property="MinHeight" Value="30"/>
+                        </Style>
+                    </dxe:ComboBoxStyleSettings.ItemContainerStyle>
+                </dxe:ComboBoxStyleSettings>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============ BUTTONS ============ -->
     <Style x:Key="AppButtonStyle" TargetType="{x:Type dx:SimpleButton}">
         <Setter Property="Height" Value="40"/>
