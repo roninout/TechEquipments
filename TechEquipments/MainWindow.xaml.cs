@@ -1,8 +1,6 @@
 ﻿using CtApi;
-using DevExpress.Xpf.Bars;
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
-using DevExpress.XtraPrinting.Native;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -16,7 +14,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using TechEquipments.ViewModels;
