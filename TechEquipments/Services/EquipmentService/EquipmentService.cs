@@ -113,6 +113,8 @@ namespace TechEquipments
         // возвращает данные эквипмента
         public async Task<EquipRefModel> GetEquipData(string sEquipName, string sEquipItem = "STW")
         {
+            sEquipItem = await ResolveSoeEquipItemAsync(sEquipName, sEquipItem);
+
             var sTagName = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.{sEquipItem}\", 0)");
             var sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 3)");
             var sEquipDescription = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Comment\", 1)");
@@ -134,12 +136,15 @@ namespace TechEquipments
             if (string.IsNullOrWhiteSpace(sEquipName))
                 throw new ArgumentException("Equipment name is empty.", nameof(sEquipName));
 
+            // Для main equipment определяем правильный SOE item: Atv -> STW01, остальные -> STW.
+            var mainSoeItem = await ResolveSoeEquipItemAsync(sEquipName, sEquipItem);
+
             // главный эквип
             var main = await GetEquipData(sEquipName, sEquipItem);
             var model = new EquipModel { MainModel = main };
 
-            // refs
-            var equipRefNames = await GetEquipRef(sEquipName, "TabDIDO", sEquipItem) ?? new List<string>();
+            // refs открываем от корректного item главного equipment
+            var equipRefNames = await GetEquipRef(sEquipName, "TabDIDO", mainSoeItem) ?? new List<string>();
 
             // убираем мусор/дубликаты
             equipRefNames = equipRefNames
@@ -151,7 +156,7 @@ namespace TechEquipments
                 return model;
 
             // грузим refs параллельно
-            var tasks = equipRefNames.Select(n => GetEquipData(n, sEquipItem)).ToArray();
+            var tasks = equipRefNames.Select(n => GetEquipData(n)).ToArray();
             var refs = await Task.WhenAll(tasks);
 
             model.RefEquipments.AddRange(refs.Where(r => r != null));
@@ -441,6 +446,40 @@ namespace TechEquipments
             await _ctApiService.TagWriteAsync(tagName, cicodeString);
 
             ct.ThrowIfCancellationRequested();
+        }
+
+        /// <summary>
+        /// Возвращает правильный SOE item для equipment.
+        /// Сейчас нужен один special-case:
+        /// - Atv / AtvSiemens -> STW01
+        /// Все остальные -> STW
+        /// </summary>
+        private async Task<string> ResolveSoeEquipItemAsync(string sEquipName, string sEquipItem = "STW")
+        {
+            sEquipItem = (sEquipItem ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(sEquipItem))
+                sEquipItem = "STW";
+
+            // Если уже явно передали не-STW, не переопределяем.
+            if (!string.Equals(sEquipItem, "STW", StringComparison.OrdinalIgnoreCase))
+                return sEquipItem;
+
+            var sEquipType = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{sEquipName}\",\"Type\", 3)");
+            var group = EquipTypeRegistry.GetGroup(sEquipType);
+
+            if (group == EquipTypeGroup.Atv)
+            {
+                // Для Atv SOE идёт по STW01.
+                // На всякий случай проверим, что tag реально существует в конфигурации.
+                var stw01TagName = await _ctApiService.CicodeAsync($"TagInfo(\"{sEquipName}.STW01\", 0)");
+                if (!string.IsNullOrWhiteSpace(stw01TagName) &&
+                    !string.Equals(stw01TagName, "Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "STW01";
+                }
+            }
+
+            return "STW";
         }
 
         #endregion
