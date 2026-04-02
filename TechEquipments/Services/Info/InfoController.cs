@@ -1056,5 +1056,42 @@ namespace TechEquipments
                 ? ""
                 : group.ToString();
         }
+
+        public async Task EnsureSelectedPhotoLoadedAsync()
+        {
+            var selected = _vm.SelectedInfoPhotoFile;
+            if (selected == null)
+                return;
+
+            // Если байты уже есть - ничего делать не нужно
+            if (selected.FileData is { Length: > 0 })
+                return;
+
+            if (selected.Id <= 0)
+                return;
+
+            try
+            {
+                var full = await _equipInfoService.GetLibraryFileByIdAsync(InfoFileKind.Photo, selected.Id);
+                if (full?.FileData == null || full.FileData.Length == 0)
+                {
+                    _vm.InfoStatusText = $"Image '{selected.DisplayName}' is not available in DB.";
+                    return;
+                }
+
+                // Догружаем недостающие поля прямо в выбранный объект
+                selected.FileData = full.FileData;
+                selected.FileHash = full.FileHash;
+                selected.FileName = full.FileName;
+                selected.UpdatedAt = full.UpdatedAt;
+                selected.EquipTypeGroupKey = full.EquipTypeGroupKey;
+
+                _vm.InfoStatusText = $"Image loaded: {selected.DisplayName}";
+            }
+            catch (Exception ex)
+            {
+                _vm.InfoStatusText = $"Image load error: {ex.Message}";
+            }
+        }
     }
 }

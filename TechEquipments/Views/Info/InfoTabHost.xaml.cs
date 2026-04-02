@@ -1,6 +1,7 @@
-﻿using System.Windows;
+﻿using DevExpress.Xpf.Editors;
+using System.Windows;
+using System.Windows.Input;
 using System.Windows.Controls;
-using DevExpress.Xpf.Editors;
 
 namespace TechEquipments.Views.Info
 {
@@ -96,6 +97,24 @@ namespace TechEquipments.Views.Info
         {
             if (Host != null)
                 await Host.Info_OnDocumentLibraryEditValueChangedAsync();
+        }
+
+        private async void PhotoThumbs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_OnSelectedPhotoChangedAsync();
+        }
+
+        private void PhotoThumbItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not ListBoxItem item)
+                return;
+
+            item.IsSelected = true;
+            item.Focus();
+
+            // Важно: чтобы клик не "съедался" внутренним ImageEdit
+            e.Handled = true;
         }
     }
 }

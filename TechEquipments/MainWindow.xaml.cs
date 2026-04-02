@@ -1640,6 +1640,11 @@ namespace TechEquipments
         public Task Info_CapturePhotoFromCameraAsync()
             => _infoController.CapturePhotoFromCameraAsync();
 
+        public Task Info_OnSelectedPhotoChangedAsync()
+        {
+            return _infoController.EnsureSelectedPhotoLoadedAsync();
+        }
+
         #endregion
     }
 }
