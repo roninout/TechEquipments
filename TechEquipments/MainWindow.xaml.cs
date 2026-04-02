@@ -38,9 +38,9 @@ namespace TechEquipments
         private readonly IConfiguration _configService;
         private readonly IEquipInfoService _equipInfoService;
 
-        private ParamController _paramController;
-        private ParamWriteController _paramWriteController;
-        private ParamTrendController _trendController;
+        private readonly ParamController _paramController;
+        private readonly ParamWriteController _paramWriteController;
+        private readonly ParamTrendController _trendController;
         private readonly ParamRefsController _paramRefsController;
         private readonly DbController _dbController;
         private readonly QrController _qrController;
@@ -56,6 +56,8 @@ namespace TechEquipments
         /// <summary>Строки SOE (вкладка SOE).</summary>
         public ObservableCollection<EquipmentSOEDto> equipmentSOEDtos { get; } = new();
 
+        private CancellationTokenSource? _equipListCts; // CTS для отмены загрузки списка оборудования.
+        private CancellationTokenSource? _stationHealthCts;
 
         #region Fields
 
@@ -68,11 +70,6 @@ namespace TechEquipments
         #endregion
 
         #region Tab / date bridge
-
-        /// <summary>
-        /// CTS для отмены загрузки списка оборудования.
-        /// </summary>
-        private CancellationTokenSource? _equipListCts;
 
         public int SelectedMainTabIndex
         {
@@ -181,11 +178,6 @@ namespace TechEquipments
                 return ver == null ? "" : $"v{ver.Major}.{ver.Minor}.{ver.Build}";
             }
         }
-        #endregion
-
-        #region Station
-        private CancellationTokenSource? _stationHealthCts;
-        private Task? _stationHealthTask;
         #endregion
 
         #endregion
@@ -497,10 +489,10 @@ namespace TechEquipments
         {
             _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
 
-            Closing += (_, __) =>
-            {
-                StopBackgroundWorkForShutdown();
-            };
+            //Closing += (_, __) =>
+            //{
+            //    StopBackgroundWorkForShutdown();
+            //};
 
             Closed += (_, __) =>
             {
@@ -565,7 +557,7 @@ namespace TechEquipments
                 return;
 
             _stationHealthCts = new CancellationTokenSource();
-            _stationHealthTask = RunStationHealthMonitorAsync(_stationHealthCts.Token);
+            _ = RunStationHealthMonitorAsync(_stationHealthCts.Token);
         }
 
         private void StopStationHealthMonitor()
@@ -581,7 +573,6 @@ namespace TechEquipments
 
             _stationHealthCts?.Dispose();
             _stationHealthCts = null;
-            _stationHealthTask = null;
         }
 
         private void MarkAllStationsOffline(bool isOffline)
