@@ -35,21 +35,23 @@ namespace TechEquipments
     {
         private readonly IEquipmentService _equipmentService;
         private readonly ICtApiService _ctApiService;
-        private readonly IConfiguration _config;
+        private readonly IConfiguration _configService;
         private readonly IEquipInfoService _equipInfoService;
 
         private ParamController _paramController;
         private ParamWriteController _paramWriteController;
-        private readonly ParamRefsController _paramRefs;
+        private ParamTrendController _trendController;
+        private readonly ParamRefsController _paramRefsController;
         private readonly DbController _dbController;
         private readonly QrController _qrController;
         private readonly SoeController _soeController;
-        private readonly UiStateController _uiState;
+        private readonly UiStateController _uiStateController;
         private readonly InfoController _infoController;
         private readonly EquipmentListController _equipmentListController;
 
         public MainViewModel Vm { get; }
-        private EquipmentListViewModel EquipVm => Vm.EquipmentList;
+        public ParamTrendVm Trend { get; }
+        private EquipmentListViewModel EquipVm => Vm.EquipmentList;       
 
         /// <summary>Строки SOE (вкладка SOE).</summary>
         public ObservableCollection<EquipmentSOEDto> equipmentSOEDtos { get; } = new();
@@ -86,10 +88,10 @@ namespace TechEquipments
                 OnPropertyChanged(nameof(SelectedMainTab));
 
                 // ВАЖНО: во время восстановления состояния никаких автодействий
-                if (_uiState.IsRestoringState) return;
+                if (_uiStateController.IsRestoringState) return;
 
                 _dbController.CancelCurrentLoad();
-                _uiState.ScheduleSave();
+                _uiStateController.ScheduleSave();
 
                 _ = OnTabActivatedLikeSearchAsync(force: true);
             }
@@ -105,7 +107,7 @@ namespace TechEquipments
                 OnPropertyChanged();
 
                 _dbController.ScheduleReload();
-                _uiState.ScheduleSave();
+                _uiStateController.ScheduleSave();
             }
         }
 
@@ -152,14 +154,6 @@ namespace TechEquipments
 
         #endregion
 
-        #region Trend
-
-        public ParamTrendVm Trend { get; }
-
-        private ParamTrendController _trendCtl;
-
-        #endregion
-
         #region Security
 
         private bool _isLogoLoginToggleInProgress;
@@ -202,23 +196,31 @@ namespace TechEquipments
 
             Vm = vm;
 
-            _equipmentListController = new EquipmentListController(Vm, Dispatcher, () => EquipmentsListBox);
-
+            // ===== core services =====
             _equipmentService = equipmentService;
-            _ctApiService = ctApiService;
             _equipInfoService = equipInfoService;
+            _ctApiService = ctApiService;
+            _configService = config;
 
-            _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
-            Closed += (_, __) => {
-                _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
-                StopStationHealthMonitor();
-            };
+            // ===== core VM/state =====
+            Trend = new ParamTrendVm();
+            Trend.AutoLive = _configService.GetValue("Trend:AutoLive", true);
 
             Vm.Shell.IsCtApiConnected = _ctApiService.IsConnectionAvailable;
+            Vm.Shell.UseParamAreaOverlay = _configService.GetValue("Global:Overlay", true);
 
-            _config = config;
+            // ===== controllers =====
+            _equipmentListController = new EquipmentListController(Vm, Dispatcher, () => EquipmentsListBox);
+
             _dbController = new DbController(dbService, Vm, Dispatcher);
-            _infoController = new InfoController(equipInfoService, Vm.Info, Vm.EquipmentList, Vm.Database, this, qrScannerService);
+
+            _infoController = new InfoController(
+                _equipInfoService,
+                Vm.Info,
+                Vm.EquipmentList,
+                Vm.Database,
+                this,
+                qrScannerService);
 
             _qrController = new QrController(
                 _equipmentService,
@@ -240,8 +242,8 @@ namespace TechEquipments
                 equipmentSOEDtos,
                 Dispatcher,
                 () => this);
-            
-            _uiState = new UiStateController(
+
+            _uiStateController = new UiStateController(
                 stateService,
                 _equipmentService,
                 Vm,
@@ -254,45 +256,21 @@ namespace TechEquipments
                 _equipmentListController.ExportRememberedEquipmentsByFilter,
                 _equipmentListController.ImportRememberedEquipmentsByFilter);
 
-            SubscribeEquipmentListBridge();
-
-            // Если настройки нет — сохраняем текущее поведение (overlay включен)
-            Vm.Shell.UseParamAreaOverlay = _config.GetValue("Global:Overlay", true);
-
-            // Vm + Controller
-            Trend = new ParamTrendVm();
-            Trend.AutoLive = _config.GetValue("Trend:AutoLive", true);
-
-            _trendCtl = new ParamTrendController(
+            _trendController = new ParamTrendController(
                 Trend,
                 Dispatcher,
                 _equipmentService,
                 _ctApiService,
-                resolveEquip: ResolveSelectedEquipForParam,        // твой существующий метод
-                getParamModel: () => Vm.Param.CurrentParamModel,            // твоя текущая модель параметров
-                getParamCycles: () => Vm.Param.ParamReadCycles             // счетчик циклов
-            );
-
-            _paramController = new ParamController(
-                _equipmentService,
-                Vm,
-                Dispatcher,
-                _ctApiService,
-                _paramRwGate,
-                getTrendIsChartVisible: () => Trend.IsChartVisible,
-                getIsEditingField: () => IsEditingField,
-                resolveSelectedEquipForParam: ResolveSelectedEquipForParam,
-                resetAreaIfTypeGroupChanged: newGroup => _paramRefs.ResetAreaIfTypeGroupChanged(newGroup),
-                refreshActiveParamSectionAsync: ct => _paramRefs.RefreshActiveParamSectionAsync(ct),
-                pollTrendOnceSafeAsync: ct => _trendCtl.PollOnceSafeAsync(ct, txt => Vm.Shell.BottomText = txt),
-                notifyMainParamLoaded: (equipName, state) => NotifyMainParamLoadedCore(equipName, state));
+                resolveEquip: ResolveSelectedEquipForParam,
+                getParamModel: () => Vm.Param.CurrentParamModel,
+                getParamCycles: () => Vm.Param.ParamReadCycles);
 
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
                 ctApiService: _ctApiService,
-                requiredWritePrivilege: _config.GetValue("CtApiSecurity:WritePrivilege", 1),
-                requiredWriteArea: _config.GetValue("CtApiSecurity:WriteArea", 0),
-                requiredUserNameContains: _config["CtApiSecurity:RequiredUserNameContains"] ?? "Tab",
+                requiredWritePrivilege: _configService.GetValue("CtApiSecurity:WritePrivilege", 1),
+                requiredWriteArea: _configService.GetValue("CtApiSecurity:WriteArea", 0),
+                requiredUserNameContains: _configService["CtApiSecurity:RequiredUserNameContains"] ?? "Tab",
                 getSelectedTab: () => SelectedMainTab,
                 resolveSelectedEquip: ResolveSelectedEquipForParam,
                 resolveEquipNameForWrite: ResolveEquipNameForWrite,
@@ -303,13 +281,12 @@ namespace TechEquipments
                 setParamReadResumeAtUtc: dt => Vm.Param.ParamReadResumeAtUtc = dt,
                 setBottomText: txt => Vm.Shell.ParamStatusText = txt,
                 getOwnerWindow: () => this,
-                endParamFieldEdit: EndParamFieldEdit
-            );
+                endParamFieldEdit: EndParamFieldEdit);
 
-            _paramRefs = new ParamRefsController(
+            _paramRefsController = new ParamRefsController(
                 _equipmentService,
                 _ctApiService,
-                _config,
+                _configService,
                 Vm,
                 Dispatcher,
                 _paramRwGate,
@@ -330,39 +307,24 @@ namespace TechEquipments
                     Vm.Param.SuppressParamWritesFromPolling = false;
                 }), DispatcherPriority.ContextIdle));
 
-            DataContext = this; // DataContext на себя: используется во всём XAML (binding)
+            _paramController = new ParamController(
+                _equipmentService,
+                Vm,
+                Dispatcher,
+                _ctApiService,
+                _paramRwGate,
+                getTrendIsChartVisible: () => Trend.IsChartVisible,
+                getIsEditingField: () => IsEditingField,
+                resolveSelectedEquipForParam: ResolveSelectedEquipForParam,
+                resetAreaIfTypeGroupChanged: newGroup => _paramRefsController.ResetAreaIfTypeGroupChanged(newGroup),
+                refreshActiveParamSectionAsync: ct => _paramRefsController.RefreshActiveParamSectionAsync(ct),
+                pollTrendOnceSafeAsync: ct => _trendController.PollOnceSafeAsync(ct, txt => Vm.Shell.BottomText = txt),
+                notifyMainParamLoaded: (equipName, state) => NotifyMainParamLoadedCore(equipName, state));
 
-            _equipmentListController.InitEquipmentsView();
-            _equipmentListController.InitSearchTimer();
-
-            OnPropertyChanged(nameof(EquipmentsView));
-
-            Loaded += async (_, __) =>
-            {
-                _layoutReady = true;
-                InitLeftPaneState();
-
-                // CtApi для этого приложения считаем обязательным условием старта.
-                // Если связи нет — не запускаем UI в полуживом состоянии.
-                //if (!await EnsureCtApiAvailableAtStartupAsync())
-                //    return;
-
-                // ExternalTag имеет приоритет над user-state.json.
-                var usedExt = await _uiState.TryApplyStartupStateFromExternalTagAsync();
-                if (!usedExt)
-                    await _uiState.RestoreStateAsync();
-
-                // Загружаем equipment list, но без лишних startup side-effects.
-                await LoadEquipmentsListAsync();
-
-                // DB — мягкая деградация: если недоступна, просто отключаем DB/Info сценарии.
-                await _dbController.CheckDbAsync();
-                await EnsureInfoStorageReadyAsync();
-
-                // Один финальный startup-activation по фактически выбранной вкладке.
-                await OnTabActivatedLikeSearchAsync(force: true);
-            };
-
+            // ===== view bridge / lifecycle =====
+            InitWindowLifecycle();
+            InitViewAndBindings();
+            InitLoadedHandler();
         }
 
         #region Startup loading
@@ -404,10 +366,10 @@ namespace TechEquipments
                 // Если на старте использовали ExternalTag —
                 // сначала выставляем Station/TypeGroup,
                 // а уже потом один раз нормализуем selection.
-                if (_uiState.StartupUsedExternalTag &&
-                    !string.IsNullOrWhiteSpace(_uiState.StartupExternalTag))
+                if (_uiStateController.StartupUsedExternalTag &&
+                    !string.IsNullOrWhiteSpace(_uiStateController.StartupExternalTag))
                 {
-                    _qrController.TryApplyStationTypeFiltersFromQr(_uiState.StartupExternalTag);
+                    _qrController.TryApplyStationTypeFiltersFromQr(_uiStateController.StartupExternalTag);
                 }
 
                 // ВАЖНО:
@@ -530,6 +492,66 @@ namespace TechEquipments
             }
         }
 
+        // Lifecycle окна
+        private void InitWindowLifecycle()
+        {
+            _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
+
+            Closing += (_, __) =>
+            {
+                StopBackgroundWorkForShutdown();
+            };
+
+            Closed += (_, __) =>
+            {
+                _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
+                StopBackgroundWorkForShutdown();
+            };
+        }
+        
+        // View/init/bindings
+        private void InitViewAndBindings()
+        {
+            SubscribeEquipmentListBridge();
+
+            DataContext = this;
+
+            _equipmentListController.InitEquipmentsView();
+            _equipmentListController.InitSearchTimer();
+
+            OnPropertyChanged(nameof(EquipmentsView));
+        }
+
+        // Startup Loaded
+        private void InitLoadedHandler()
+        {
+            Loaded += async (_, __) =>
+            {
+                _layoutReady = true;
+                InitLeftPaneState();
+
+                // CtApi для этого приложения считаем обязательным условием старта.
+                // Если связи нет — не запускаем UI в полуживом состоянии.
+                //if (!await EnsureCtApiAvailableAtStartupAsync())
+                //    return;
+
+                // ExternalTag имеет приоритет над user-state.json.
+                var usedExt = await _uiStateController.TryApplyStartupStateFromExternalTagAsync();
+                if (!usedExt)
+                    await _uiStateController.RestoreStateAsync();
+
+                // Загружаем equipment list, но без лишних startup side-effects.
+                await LoadEquipmentsListAsync();
+
+                // DB — мягкая деградация: если недоступна, просто отключаем DB/Info сценарии.
+                await _dbController.CheckDbAsync();
+                await EnsureInfoStorageReadyAsync();
+
+                // Один финальный startup-activation по фактически выбранной вкладке.
+                await OnTabActivatedLikeSearchAsync(force: true);
+            };
+        }
+
         #endregion
 
         #region Station
@@ -575,8 +597,8 @@ namespace TechEquipments
 
         private async Task RunStationHealthMonitorAsync(CancellationToken ct)
         {
-            var periodSeconds = Math.Max(5, _config.GetValue("StationHealth:PeriodSeconds", 15));
-            var failThreshold = Math.Max(1, _config.GetValue("StationHealth:FailCount", 3));
+            var periodSeconds = Math.Max(5, _configService.GetValue("StationHealth:PeriodSeconds", 15));
+            var failThreshold = Math.Max(1, _configService.GetValue("StationHealth:FailCount", 3));
 
             var failCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -688,13 +710,13 @@ namespace TechEquipments
             {
                 StopParamOverlayWait();
 
-                if (!suppressAutoActivation && !_uiState.IsRestoringState && SelectedMainTab == MainTabKind.Info)
+                if (!suppressAutoActivation && !_uiStateController.IsRestoringState && SelectedMainTab == MainTabKind.Info)
                     _ = _infoController.LoadCurrentAsync();
 
                 return;
             }
 
-            if (_uiState.IsRestoringState || suppressAutoActivation)
+            if (_uiStateController.IsRestoringState || suppressAutoActivation)
                 return;
 
             if (SelectedMainTab == MainTabKind.Param)
@@ -764,7 +786,7 @@ namespace TechEquipments
                 return;
 
             // Во время восстановления состояния — не запускаем автодействия
-            if (_uiState.IsRestoringState)
+            if (_uiStateController.IsRestoringState)
                 return;
 
             // Подставляем выбранное оборудование в строку поиска (EquipName)
@@ -937,8 +959,8 @@ namespace TechEquipments
 
             try
             {
-                var toggleUser = (_config["CtApiSecurity:ToggleLoginUser"] ?? "").Trim();
-                var togglePassword = (_config["CtApiSecurity:ToggleLoginPassword"] ?? "").Trim();
+                var toggleUser = (_configService["CtApiSecurity:ToggleLoginUser"] ?? "").Trim();
+                var togglePassword = (_configService["CtApiSecurity:ToggleLoginPassword"] ?? "").Trim();
 
                 if (string.IsNullOrWhiteSpace(toggleUser))
                 {
@@ -1045,7 +1067,7 @@ namespace TechEquipments
                     return;
 
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await _paramRefs.RefreshActiveParamSectionAsync(cts.Token);
+                await _paramRefsController.RefreshActiveParamSectionAsync(cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -1231,6 +1253,39 @@ namespace TechEquipments
             _paramController?.Stop();
         }
 
+        private void StopBackgroundWorkForShutdown()
+        {
+            try
+            {
+                StopStationHealthMonitor();
+            }
+            catch { }
+
+            try
+            {
+                StopParamPolling();
+            }
+            catch { }
+
+            try
+            {
+                _soeController?.Cancel();
+            }
+            catch { }
+
+            try
+            {
+                _dbController?.CancelCurrentLoad();
+            }
+            catch { }
+
+            try
+            {
+                _equipListCts?.Cancel();
+            }
+            catch { }
+        }
+
         #endregion
 
         #region Param Write
@@ -1299,21 +1354,21 @@ namespace TechEquipments
         /// Вынесено в ParamRefsController.
         /// </summary>
         public void SetParamSettingsPage(ParamSettingsPage page)
-            => _paramRefs.SetParamSettingsPage(page);
+            => _paramRefsController.SetParamSettingsPage(page);
 
         /// <summary>
         /// Переход по клику из DI/DO списка к связанному оборудованию.
         /// Вынесено в ParamRefsController.
         /// </summary>
         public void Param_NavigateToLinkedEquip(DiDoRefRow? row)
-            => _paramRefs.NavigateToLinkedEquip(row);
+            => _paramRefsController.NavigateToLinkedEquip(row);
 
         /// <summary>
         /// Переход к связанному оборудованию по имени.
         /// Вынесено в ParamRefsController.
         /// </summary>
         public void Param_NavigateToLinkedEquip(string? equipName)
-            => _paramRefs.NavigateToLinkedEquip(equipName);
+            => _paramRefsController.NavigateToLinkedEquip(equipName);
 
         #endregion
 
@@ -1321,16 +1376,16 @@ namespace TechEquipments
 
         // прокси для View
         public void OnParamChartUserRangeChanged(DateTime minLocal, DateTime maxLocal)
-            => _trendCtl.OnUserRangeChanged(minLocal, maxLocal);
+            => _trendController.OnUserRangeChanged(minLocal, maxLocal);
 
         public void SetParamChartLiveMode(bool resetPoints = false)
-            => _trendCtl.SetLiveMode(resetPoints);
+            => _trendController.SetLiveMode(resetPoints);
 
         public void ShowParamChart(bool reset = false)
-            => _trendCtl.ShowChart(reset);
+            => _trendController.ShowChart(reset);
 
         public void ShowParamSettings()
-            => _trendCtl.ShowSettings();
+            => _trendController.ShowSettings();
 
         /// <summary>
         /// Called from AIParamView.ParamChart_BoundDataChanged.
@@ -1581,7 +1636,7 @@ namespace TechEquipments
                 {
                     case nameof(EquipmentListViewModel.EquipName):
                         _equipmentListController.ScheduleSearch(EquipVm.EquipName);
-                        _uiState.ScheduleSave();
+                        _uiStateController.ScheduleSave();
                         NotifyParamQrUiChanged();
                         break;
 
@@ -1592,7 +1647,7 @@ namespace TechEquipments
                     case nameof(EquipmentListViewModel.SelectedTypeFilter):
                     case nameof(EquipmentListViewModel.SelectedStation):
                         RestoreOrSelectEquipmentAfterFilterChanged();
-                        _uiState.ScheduleSave();
+                        _uiStateController.ScheduleSave();
                         NotifyParamQrUiChanged();
                         break;
                 }
