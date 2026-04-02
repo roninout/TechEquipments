@@ -51,7 +51,7 @@ namespace TechEquipments
 
         public MainViewModel Vm { get; }
         public ParamTrendVm Trend { get; }
-        private EquipmentListViewModel EquipVm => Vm.EquipmentList;       
+        private EquipmentListViewModel EquipVm => Vm.EquipmentList;
 
         /// <summary>Строки SOE (вкладка SOE).</summary>
         public ObservableCollection<EquipmentSOEDto> equipmentSOEDtos { get; } = new();
@@ -137,7 +137,7 @@ namespace TechEquipments
         private string? _lastSectionLoadedEquipName;
         private ParamSettingsPage _lastSectionLoadedPage = ParamSettingsPage.None;
         private ParamLoadState _lastSectionLoadedState = ParamLoadState.Waiting;
-        
+
         private readonly SemaphoreSlim _paramRwGate = new(1, 1); // Общий “замок” на чтение/запись Param (чтение и запись не пересекаются)
 
         // ===== Param editing (anti-overwrite during typing) =====
@@ -500,7 +500,7 @@ namespace TechEquipments
                 StopBackgroundWorkForShutdown();
             };
         }
-        
+
         // View/init/bindings
         private void InitViewAndBindings()
         {
@@ -1244,39 +1244,6 @@ namespace TechEquipments
             _paramController?.Stop();
         }
 
-        private void StopBackgroundWorkForShutdown()
-        {
-            try
-            {
-                StopStationHealthMonitor();
-            }
-            catch { }
-
-            try
-            {
-                StopParamPolling();
-            }
-            catch { }
-
-            try
-            {
-                _soeController?.Cancel();
-            }
-            catch { }
-
-            try
-            {
-                _dbController?.CancelCurrentLoad();
-            }
-            catch { }
-
-            try
-            {
-                _equipListCts?.Cancel();
-            }
-            catch { }
-        }
-
         #endregion
 
         #region Param Write
@@ -1487,6 +1454,65 @@ namespace TechEquipments
             return currentEquip;
         }
 
+        private void SubscribeEquipmentListBridge()
+        {
+            EquipVm.PropertyChanged += (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(EquipmentListViewModel.EquipName):
+                        _equipmentListController.ScheduleSearch(EquipVm.EquipName);
+                        _uiStateController.ScheduleSave();
+                        NotifyParamQrUiChanged();
+                        break;
+
+                    case nameof(EquipmentListViewModel.SelectedListBoxEquipment):
+                        NotifyParamQrUiChanged();
+                        break;
+
+                    case nameof(EquipmentListViewModel.SelectedTypeFilter):
+                    case nameof(EquipmentListViewModel.SelectedStation):
+                        RestoreOrSelectEquipmentAfterFilterChanged();
+                        _uiStateController.ScheduleSave();
+                        NotifyParamQrUiChanged();
+                        break;
+                }
+            };
+        }
+
+        private void StopBackgroundWorkForShutdown()
+        {
+            try
+            {
+                StopStationHealthMonitor();
+            }
+            catch { }
+
+            try
+            {
+                StopParamPolling();
+            }
+            catch { }
+
+            try
+            {
+                _soeController?.Cancel();
+            }
+            catch { }
+
+            try
+            {
+                _dbController?.CancelCurrentLoad();
+            }
+            catch { }
+
+            try
+            {
+                _equipListCts?.Cancel();
+            }
+            catch { }
+        }
+
         #endregion
 
         #region Settings
@@ -1618,32 +1644,5 @@ namespace TechEquipments
             => _infoController.CapturePhotoFromCameraAsync();
 
         #endregion
-
-        private void SubscribeEquipmentListBridge()
-        {
-            EquipVm.PropertyChanged += (_, e) =>
-            {
-                switch (e.PropertyName)
-                {
-                    case nameof(EquipmentListViewModel.EquipName):
-                        _equipmentListController.ScheduleSearch(EquipVm.EquipName);
-                        _uiStateController.ScheduleSave();
-                        NotifyParamQrUiChanged();
-                        break;
-
-                    case nameof(EquipmentListViewModel.SelectedListBoxEquipment):
-                        NotifyParamQrUiChanged();
-                        break;
-
-                    case nameof(EquipmentListViewModel.SelectedTypeFilter):
-                    case nameof(EquipmentListViewModel.SelectedStation):
-                        RestoreOrSelectEquipmentAfterFilterChanged();
-                        _uiStateController.ScheduleSave();
-                        NotifyParamQrUiChanged();
-                        break;
-                }
-            };
-        }
-
     }
 }
