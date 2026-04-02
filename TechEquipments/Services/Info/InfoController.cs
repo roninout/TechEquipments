@@ -31,6 +31,7 @@ namespace TechEquipments
         private readonly EquipmentListViewModel _equipmentVm;
         private readonly DatabaseViewModel _databaseVm;
         private readonly Window _ownerWindow;
+        private readonly Dictionary<long, byte[]> _photoBytesCache = new();
 
         private int _loadCurrentRequestId;
         private bool _suppressLibrarySelectionSync;
@@ -131,10 +132,19 @@ namespace TechEquipments
                 _vm.CurrentEquipInfo = info;
 
                 SyncCheckedSelectionsFromCurrentModel();
+                SyncPhotoLibraryFlagsFromCurrentModel();
+
+                // Cache
+                foreach (var photo in _vm.CurrentEquipInfo.Photos)
+                    PutPhotoToCache(photo);
+
+                WarmupLinkedPhotoLibraryThumbnails();
 
                 _vm.SelectedInfoPhotoFile = info.Photos.FirstOrDefault();
                 _vm.SelectedInfoInstructionFile = info.Instructions.FirstOrDefault();
                 _vm.SelectedInfoSchemeFile = info.Schemes.FirstOrDefault();
+
+                _vm.SelectedInfoPhotoLibraryFile = null;
 
                 _vm.CurrentInfoDocumentPreviewPath = null;
                 _vm.InfoDocumentMessage = "";
@@ -179,6 +189,17 @@ namespace TechEquipments
 
             _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(equipName);
             _vm.CurrentEquipInfo.EquipName = equipName;
+
+            SyncCheckedSelectionsFromCurrentModel();
+            SyncPhotoLibraryFlagsFromCurrentModel();
+            WarmupLinkedPhotoLibraryThumbnails();
+
+            var preferredPhotoId =
+                _vm.SelectedInfoPhotoFile?.Id
+                ?? _vm.CurrentEquipInfo.Photos.FirstOrDefault()?.Id
+                ?? 0;
+
+            SelectPhotoLibraryFileById(preferredPhotoId);
 
             _vm.IsInfoEditMode = true;
             _vm.InfoStatusText = $"Editing info: {equipName}";
@@ -263,18 +284,26 @@ namespace TechEquipments
 
             MergeAssetsIntoSelection(_vm.CurrentEquipInfo.Photos, addResult.ResolvedAssets, equipName);
             SyncCheckedSelectionsFromCurrentModel();
+            SyncPhotoLibraryFlagsFromCurrentModel();
+
+            // cache
+            foreach (var photo in addResult.ResolvedAssets)
+                PutPhotoToCache(photo);
+
+            WarmupLinkedPhotoLibraryThumbnails();
 
             // После Add выбираем именно добавленный/подцепленный файл, а не первый в списке.
             var selectedPhoto = addResult.ResolvedAssets.LastOrDefault(asset => asset != null && asset.Id > 0);
 
             if (selectedPhoto != null)
             {
-                _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos
-                    .FirstOrDefault(x => x.Id == selectedPhoto.Id);
+                _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault(x => x.Id == selectedPhoto.Id);
+                SelectPhotoLibraryFileById(selectedPhoto.Id);
             }
             else
             {
                 _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault();
+                SelectPhotoLibraryFileById(_vm.SelectedInfoPhotoFile?.Id ?? 0);
             }
 
             if (addResult.ExistingInLibraryFileNames.Count > 0)
@@ -359,13 +388,25 @@ namespace TechEquipments
 
                 MergeAssetsIntoSelection(_vm.CurrentEquipInfo.Photos, addResult.ResolvedAssets, equipName);
                 SyncCheckedSelectionsFromCurrentModel();
+                SyncPhotoLibraryFlagsFromCurrentModel();
+
+                foreach (var photo in addResult.ResolvedAssets)
+                    PutPhotoToCache(photo);
+
+                WarmupLinkedPhotoLibraryThumbnails();
 
                 var selectedPhoto = addResult.ResolvedAssets.LastOrDefault(asset => asset != null && asset.Id > 0);
 
                 if (selectedPhoto != null)
+                {
                     _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault(x => x.Id == selectedPhoto.Id);
+                    SelectPhotoLibraryFileById(selectedPhoto.Id);
+                }
                 else
+                {
                     _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault();
+                    SelectPhotoLibraryFileById(_vm.SelectedInfoPhotoFile?.Id ?? 0);
+                }
 
                 if (addResult.ExistingInLibraryFileNames.Count > 0)
                 {
@@ -413,9 +454,11 @@ namespace TechEquipments
             _vm.SelectedInfoPhotoFile =
                 index >= 0 && index < list.Count ? list[index] : list.LastOrDefault();
 
-            _vm.InfoStatusText = "Photo removed from current card.";
-
             SyncCheckedSelectionsFromCurrentModel();
+            SyncPhotoLibraryFlagsFromCurrentModel();
+            SelectPhotoLibraryFileById(_vm.SelectedInfoPhotoFile?.Id ?? 0);
+
+            _vm.InfoStatusText = "Photo removed from current card.";
         }
 
         public async Task LoadCurrentDocumentFilesAsync()
@@ -768,6 +811,7 @@ namespace TechEquipments
                 DisplayName = src.DisplayName,
                 FileHash = src.FileHash,
                 FileData = src.FileData,
+                IsLinkedToCurrentEquipment = src.IsLinkedToCurrentEquipment,
                 SortOrder = src.SortOrder,
                 UpdatedAt = src.UpdatedAt
             };
@@ -827,6 +871,49 @@ namespace TechEquipments
             {
                 _suppressLibrarySelectionSync = false;
             }
+        }
+
+        private void SyncPhotoLibraryFlagsFromCurrentModel()
+        {
+            var linkedById = (_vm.CurrentEquipInfo?.Photos ?? Enumerable.Empty<EquipmentInfoFileDto>())
+                .Where(x => x != null && x.Id > 0)
+                .GroupBy(x => x.Id)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (var item in _vm.AvailableInfoPhotoLibrary)
+            {
+                var isLinked = item.Id > 0 && linkedById.ContainsKey(item.Id);
+                item.IsLinkedToCurrentEquipment = isLinked;
+
+                // Если это уже linked photo и в linked-модели есть FileData,
+                // подкинем их и в library item, чтобы миниатюра сразу была видна.
+                if (isLinked &&
+                    linkedById.TryGetValue(item.Id, out var linked) &&
+                    (item.FileData == null || item.FileData.Length == 0) &&
+                    linked.FileData is { Length: > 0 })
+                {
+                    item.FileData = linked.FileData;
+                    item.FileHash = linked.FileHash;
+                    item.FileName = linked.FileName;
+                    item.UpdatedAt = linked.UpdatedAt;
+                    item.EquipTypeGroupKey = linked.EquipTypeGroupKey;
+                }
+            }
+        }
+
+        private void SelectPhotoLibraryFileById(long id)
+        {
+            if (_vm.AvailableInfoPhotoLibrary.Count == 0)
+            {
+                _vm.SelectedInfoPhotoLibraryFile = null;
+                return;
+            }
+
+            _vm.SelectedInfoPhotoLibraryFile =
+                (id > 0
+                    ? _vm.AvailableInfoPhotoLibrary.FirstOrDefault(x => x.Id == id)
+                    : null)
+                ?? _vm.AvailableInfoPhotoLibrary.FirstOrDefault();
         }
 
         private ObservableCollection<EquipmentInfoFileDto> GetLibraryCollection(InfoFileKind kind)
@@ -944,7 +1031,11 @@ namespace TechEquipments
                 .Distinct()
                 .ToList();
 
-            // Что уже есть в linked model — сохраняем, включая FileData
+            var preferredId =
+                _vm.SelectedInfoPhotoLibraryFile?.Id
+                ?? _vm.SelectedInfoPhotoFile?.Id
+                ?? 0;
+
             var existingById = target
                 .Where(x => x != null && x.Id > 0)
                 .GroupBy(x => x.Id)
@@ -954,14 +1045,12 @@ namespace TechEquipments
 
             foreach (var id in selectedIds)
             {
-                // Уже есть в linked model -> не теряем FileData
                 if (existingById.TryGetValue(id, out var existing))
                 {
                     rebuilt.Add(CloneFile(existing, equipName));
                     continue;
                 }
 
-                // Новый выбор из library -> догружаем полный record с FileData
                 var fullPhoto = await _equipInfoService.GetLibraryFileByIdAsync(InfoFileKind.Photo, id);
                 if (fullPhoto == null)
                     continue;
@@ -975,7 +1064,10 @@ namespace TechEquipments
 
             NormalizeSortOrder(target, equipName);
 
-            _vm.SelectedInfoPhotoFile = target.FirstOrDefault();
+            _vm.SelectedInfoPhotoFile =
+                preferredId > 0
+                    ? target.FirstOrDefault(x => x.Id == preferredId) ?? target.FirstOrDefault()
+                    : target.FirstOrDefault();
         }
 
         private static long TryConvertToInt64(object? value)
@@ -1028,6 +1120,45 @@ namespace TechEquipments
             _vm.InfoStatusText = "Photo links updated.";
         }
 
+        public async Task OnPhotoLibraryCheckChangedAsync(EquipmentInfoFileDto file)
+        {
+            if (!_vm.IsInfoEditMode || _vm.CurrentEquipInfo == null)
+                return;
+
+            _vm.SelectedInfoPhotoLibraryFile = file;
+
+            _suppressLibrarySelectionSync = true;
+            try
+            {
+                _vm.SelectedInfoPhotoLibraryIds = _vm.AvailableInfoPhotoLibrary
+                    .Where(x => x != null && x.Id > 0 && x.IsLinkedToCurrentEquipment)
+                    .Select(x => (object)x.Id)
+                    .Distinct()
+                    .ToList();
+            }
+            finally
+            {
+                _suppressLibrarySelectionSync = false;
+            }
+
+            await ApplyCheckedPhotoSelectionToModelAsync();
+
+            SyncCheckedSelectionsFromCurrentModel();
+            SyncPhotoLibraryFlagsFromCurrentModel();
+            WarmupLinkedPhotoLibraryThumbnails();
+
+            if (file.Id > 0)
+            {
+                _vm.SelectedInfoPhotoFile =
+                    _vm.CurrentEquipInfo.Photos.FirstOrDefault(x => x.Id == file.Id)
+                    ?? _vm.SelectedInfoPhotoFile;
+            }
+
+            await EnsureSelectedPhotoLoadedAsync();
+
+            _vm.InfoStatusText = "Photo links updated.";
+        }
+
         public async Task SyncCurrentDocumentSelectionFromLibraryAsync()
         {
             if (_suppressLibrarySelectionSync)
@@ -1059,13 +1190,18 @@ namespace TechEquipments
 
         public async Task EnsureSelectedPhotoLoadedAsync()
         {
-            var selected = _vm.SelectedInfoPhotoFile;
+            var selected = _vm.CurrentPhotoPreviewFile;
             if (selected == null)
                 return;
 
-            // Если байты уже есть - ничего делать не нужно
-            if (selected.FileData is { Length: > 0 })
+            if (TryRestorePhotoFromCache(selected))
                 return;
+
+            if (selected.FileData is { Length: > 0 })
+            {
+                PutPhotoToCache(selected);
+                return;
+            }
 
             if (selected.Id <= 0)
                 return;
@@ -1079,12 +1215,37 @@ namespace TechEquipments
                     return;
                 }
 
-                // Догружаем недостающие поля прямо в выбранный объект
                 selected.FileData = full.FileData;
                 selected.FileHash = full.FileHash;
                 selected.FileName = full.FileName;
                 selected.UpdatedAt = full.UpdatedAt;
                 selected.EquipTypeGroupKey = full.EquipTypeGroupKey;
+
+                PutPhotoToCache(selected);
+
+                var linked = _vm.CurrentEquipInfo?.Photos.FirstOrDefault(x => x.Id == selected.Id);
+                if (linked != null && (linked.FileData == null || linked.FileData.Length == 0))
+                {
+                    linked.FileData = full.FileData;
+                    linked.FileHash = full.FileHash;
+                    linked.FileName = full.FileName;
+                    linked.UpdatedAt = full.UpdatedAt;
+                    linked.EquipTypeGroupKey = full.EquipTypeGroupKey;
+
+                    PutPhotoToCache(linked);
+                }
+
+                var lib = _vm.AvailableInfoPhotoLibrary.FirstOrDefault(x => x.Id == selected.Id);
+                if (lib != null && (lib.FileData == null || lib.FileData.Length == 0))
+                {
+                    lib.FileData = full.FileData;
+                    lib.FileHash = full.FileHash;
+                    lib.FileName = full.FileName;
+                    lib.UpdatedAt = full.UpdatedAt;
+                    lib.EquipTypeGroupKey = full.EquipTypeGroupKey;
+
+                    PutPhotoToCache(lib);
+                }
 
                 _vm.InfoStatusText = $"Image loaded: {selected.DisplayName}";
             }
@@ -1093,5 +1254,62 @@ namespace TechEquipments
                 _vm.InfoStatusText = $"Image load error: {ex.Message}";
             }
         }
+
+        #region Cache
+
+        private void PutPhotoToCache(EquipmentInfoFileDto? file)
+        {
+            if (file == null || file.Id <= 0 || file.FileData == null || file.FileData.Length == 0)
+                return;
+
+            _photoBytesCache[file.Id] = file.FileData;
+        }
+
+        private bool TryRestorePhotoFromCache(EquipmentInfoFileDto? file)
+        {
+            if (file == null || file.Id <= 0)
+                return false;
+
+            if (file.FileData is { Length: > 0 })
+                return true;
+
+            if (_photoBytesCache.TryGetValue(file.Id, out var bytes) && bytes is { Length: > 0 })
+            {
+                file.FileData = bytes;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void WarmupLinkedPhotoLibraryThumbnails()
+        {
+            var linkedById = (_vm.CurrentEquipInfo?.Photos ?? Enumerable.Empty<EquipmentInfoFileDto>())
+                .Where(x => x != null && x.Id > 0)
+                .GroupBy(x => x.Id)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (var item in _vm.AvailableInfoPhotoLibrary)
+            {
+                if (item == null || item.Id <= 0)
+                    continue;
+
+                // 1. если уже есть в linked model — берем оттуда
+                if (linkedById.TryGetValue(item.Id, out var linked) &&
+                    linked.FileData is { Length: > 0 })
+                {
+                    item.FileData = linked.FileData;
+                    PutPhotoToCache(linked);
+                    PutPhotoToCache(item);
+                    continue;
+                }
+
+                // 2. если есть в memory cache — берем из него
+                TryRestorePhotoFromCache(item);
+            }
+        }
+
+        #endregion
+
     }
 }

@@ -1626,12 +1626,6 @@ namespace TechEquipments
             => _infoController.ExportCurrentDocumentAsync();
 
         /// <summary>
-        /// Синхронизировать linked photo files из checked-combo.
-        /// </summary>
-        public Task Info_OnPhotoLibraryEditValueChangedAsync()
-            => _infoController.SyncPhotoSelectionFromLibraryAsync();
-
-        /// <summary>
         /// Синхронизировать linked document files из checked-combo.
         /// </summary>
         public Task Info_OnDocumentLibraryEditValueChangedAsync()
@@ -1643,6 +1637,10 @@ namespace TechEquipments
         public Task Info_OnSelectedPhotoChangedAsync()
         {
             return _infoController.EnsureSelectedPhotoLoadedAsync();
+        }
+        public Task Info_OnPhotoLibraryCheckChangedAsync(EquipmentInfoFileDto file)
+        {
+            return _infoController.OnPhotoLibraryCheckChangedAsync(file);
         }
 
         #endregion

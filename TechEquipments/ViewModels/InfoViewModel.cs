@@ -32,7 +32,26 @@ namespace TechEquipments.ViewModels
         public EquipmentInfoFileDto? SelectedInfoPhotoFile
         {
             get => _selectedInfoPhotoFile;
-            set => SetProperty(ref _selectedInfoPhotoFile, value);
+            set
+            {
+                if (!SetProperty(ref _selectedInfoPhotoFile, value))
+                    return;
+
+                Raise(nameof(CurrentPhotoPreviewFile));
+            }
+        }
+
+        private EquipmentInfoFileDto? _selectedInfoPhotoLibraryFile;
+        public EquipmentInfoFileDto? SelectedInfoPhotoLibraryFile
+        {
+            get => _selectedInfoPhotoLibraryFile;
+            set
+            {
+                if (!SetProperty(ref _selectedInfoPhotoLibraryFile, value))
+                    return;
+
+                Raise(nameof(CurrentPhotoPreviewFile));
+            }
         }
 
         private EquipmentInfoFileDto? _selectedInfoInstructionFile;
@@ -137,9 +156,14 @@ namespace TechEquipments.ViewModels
                 if (!SetProperty(ref _isInfoEditMode, value))
                     return;
 
-                Raise(nameof(IsInfoReadOnly));
+                Raise(nameof(IsInfoReadOnly),
+                      nameof(CurrentPhotoPreviewFile));
             }
         }
+
+        public EquipmentInfoFileDto? CurrentPhotoPreviewFile => IsInfoEditMode
+            ? SelectedInfoPhotoLibraryFile
+            : SelectedInfoPhotoFile;
 
         public bool IsInfoReadOnly => !IsInfoEditMode;
 

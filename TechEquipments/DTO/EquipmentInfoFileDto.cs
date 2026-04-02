@@ -19,6 +19,7 @@ namespace TechEquipments
         private byte[]? _fileData;
         private int _sortOrder;
         private DateTime? _updatedAt;
+        private bool _isLinkedToCurrentEquipment;
 
         public long Id
         {
@@ -84,6 +85,16 @@ namespace TechEquipments
         {
             get => _updatedAt;
             set => SetField(ref _updatedAt, value);
+        }
+
+        /// <summary>
+        /// Только для edit-mode списка library.
+        /// Показывает, связан ли файл с текущим equipment.
+        /// </summary>
+        public bool IsLinkedToCurrentEquipment
+        {
+            get => _isLinkedToCurrentEquipment;
+            set => SetField(ref _isLinkedToCurrentEquipment, value);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

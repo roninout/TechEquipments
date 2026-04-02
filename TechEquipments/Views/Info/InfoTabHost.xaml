@@ -78,156 +78,241 @@
                                 </Grid>
 
                                 <!-- ===== PHOTO ===== -->
-                                <dxlc:LayoutItem Grid.Row="1">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <!-- checked-combo в edit mode -->
-                                            <RowDefinition Height="Auto"/>
+                                <dxlc:LayoutItem Grid.Row="1" VerticalAlignment="Stretch">
+                                    <Grid MinHeight="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="235"/>
+                                            <ColumnDefinition Width="10"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
 
-                                            <!-- миниатюры слева, большое фото справа -->
-                                            <RowDefinition Height="*"/>
-                                        </Grid.RowDefinitions>
+                                        <!-- ===== Слева: список фото ===== -->
+                                        <dxlc:LayoutGroup Grid.Column="0"
+                                                          View="GroupBox"
+                                                          GroupBoxDisplayMode="Light"
+                                                          Orientation="Vertical"
+                                                          VerticalAlignment="Stretch"
+                                                          MinHeight="0">
 
-                                        <!-- Checked-combo: только в Edit mode -->
-                                        <dxe:ComboBoxEdit Grid.Row="0"
-                                                          Height="40"
-                                                          Padding="10,0"
-                                                          Margin="0,0,0,8"
-                                                          ItemsSource="{Binding AvailableInfoPhotoLibrary}"
-                                                          DisplayMember="DisplayName"
-                                                          ValueMember="Id"
-                                                          EditValue="{Binding SelectedInfoPhotoLibraryIds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          SeparatorString="; "
-                                                          NullText="Select existing images"
-                                                          EditValueChanged="PhotoLibraryEditValueChanged">
+                                            <dxlc:LayoutItem VerticalAlignment="Stretch">
+                                                <Grid MinHeight="0">
+                                                    <!-- ===== View mode: только linked photos ===== -->
+                                                    <ListBox x:Name="PhotoViewListBox"
+                                                             ItemsSource="{Binding CurrentEquipInfo.Photos}"
+                                                             SelectedItem="{Binding SelectedInfoPhotoFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             SelectionChanged="PhotoThumbs_SelectionChanged"
+                                                             BorderThickness="0"
+                                                             Background="Transparent"
+                                                             HorizontalContentAlignment="Stretch"
+                                                             VerticalAlignment="Stretch"
+                                                             MinHeight="0"
+                                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                             ScrollViewer.CanContentScroll="True">
 
-                                            <dxe:ComboBoxEdit.Style>
-                                                <Style TargetType="{x:Type dxe:ComboBoxEdit}">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </dxe:ComboBoxEdit.Style>
+                                                        <ListBox.Style>
+                                                            <Style TargetType="{x:Type ListBox}">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </ListBox.Style>
 
-                                            <dxe:ComboBoxEdit.StyleSettings>
-                                                <dxe:CheckedComboBoxStyleSettings ShowSelectAllItem="True"/>
-                                            </dxe:ComboBoxEdit.StyleSettings>
-                                        </dxe:ComboBoxEdit>
+                                                        <ListBox.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Vertical"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ListBox.ItemsPanel>
 
-                                        <!-- Основная область -->
-                                        <Grid Grid.Row="1">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="190"/>
-                                                <ColumnDefinition Width="10"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
+                                                        <ListBox.ItemContainerStyle>
+                                                            <Style TargetType="{x:Type ListBoxItem}">
+                                                                <Setter Property="Padding" Value="0"/>
+                                                                <Setter Property="Margin" Value="0,0,0,8"/>
+                                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                                <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                                                                <Setter Property="BorderThickness" Value="0"/>
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Setter Property="Focusable" Value="True"/>
+                                                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="PhotoThumbItem_PreviewMouseLeftButtonDown"/>
+                                                            </Style>
+                                                        </ListBox.ItemContainerStyle>
 
-                                            <!-- ===== Лента миниатюр слева ===== -->
-                                            <dxlc:LayoutGroup Grid.Column="0"
-                                                              View="GroupBox"
-                                                              GroupBoxDisplayMode="Light"
-                                                              Orientation="Vertical">
+                                                        <ListBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Width="170" Height="104" Background="White">
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="*"/>
+                                                                        <RowDefinition Height="22"/>
+                                                                    </Grid.RowDefinitions>
 
-                                                <ListBox ItemsSource="{Binding CurrentEquipInfo.Photos}"
-                                                         SelectedItem="{Binding SelectedInfoPhotoFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                         SelectionChanged="PhotoThumbs_SelectionChanged"
-                                                         BorderThickness="0"
-                                                         Background="Transparent"
-                                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                                         HorizontalContentAlignment="Stretch">
+                                                                    <dxe:ImageEdit Grid.Row="0"
+                                                                                   EditValue="{Binding FileData}"
+                                                                                   Stretch="UniformToFill"
+                                                                                   NullText="No preview"
+                                                                                   IsReadOnly="True"
+                                                                                   ShowMenu="False"
+                                                                                   IsHitTestVisible="False"/>
 
-                                                    <ListBox.ItemsPanel>
-                                                        <ItemsPanelTemplate>
-                                                            <StackPanel Orientation="Vertical"/>
-                                                        </ItemsPanelTemplate>
-                                                    </ListBox.ItemsPanel>
+                                                                    <Grid Grid.Row="1" Background="#88000000" IsHitTestVisible="False">
+                                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                                   Margin="6,0"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Foreground="White"
+                                                                                   FontSize="11"
+                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                    </Grid>
 
-                                                    <ListBox.ItemContainerStyle>
-                                                        <Style TargetType="{x:Type ListBoxItem}">
-                                                            <Setter Property="Padding" Value="0"/>
-                                                            <Setter Property="Margin" Value="0,0,0,8"/>
-                                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                                            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
-                                                            <Setter Property="BorderThickness" Value="0"/>
-                                                            <Setter Property="Background" Value="Transparent"/>
-                                                            <Setter Property="Focusable" Value="True"/>
-
-                                                            <!-- Важно: принудительно выбираем элемент по клику -->
-                                                            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="PhotoThumbItem_PreviewMouseLeftButtonDown"/>
-                                                        </Style>
-                                                    </ListBox.ItemContainerStyle>
-
-                                                    <ListBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <Grid Width="150" Height="104" Background="White">
-                                                                <Grid.RowDefinitions>
-                                                                    <RowDefinition Height="*"/>
-                                                                    <RowDefinition Height="22"/>
-                                                                </Grid.RowDefinitions>
-
-                                                                <!-- preview -->
-                                                                <dxe:ImageEdit Grid.Row="0"
-                                                                               EditValue="{Binding FileData}"
-                                                                               Stretch="UniformToFill"
-                                                                               NullText="No preview"
-                                                                               IsReadOnly="True"
-                                                                               ShowMenu="False"
+                                                                    <Rectangle x:Name="ThumbRect"
+                                                                               Grid.RowSpan="2"
+                                                                               Stroke="#BFBFBF"
+                                                                               StrokeThickness="1"
+                                                                               Fill="Transparent"
                                                                                IsHitTestVisible="False"/>
-
-                                                                <!-- caption -->
-                                                                <Grid Grid.Row="1"
-                                                                      Background="#88000000"
-                                                                      IsHitTestVisible="False">
-                                                                    <TextBlock Text="{Binding DisplayName}"
-                                                                               Margin="6,0"
-                                                                               VerticalAlignment="Center"
-                                                                               Foreground="White"
-                                                                               FontSize="11"
-                                                                               TextTrimming="CharacterEllipsis"/>
                                                                 </Grid>
 
-                                                                <!-- рамка -->
-                                                                <Rectangle x:Name="ThumbRect"
-                                                                            Grid.RowSpan="2"
-                                                                            Stroke="#BFBFBF"
-                                                                            StrokeThickness="1"
-                                                                            Fill="Transparent"/>
-                                                            </Grid>
+                                                                <DataTemplate.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                                        <Setter TargetName="ThumbRect" Property="Stroke" Value="#2D8CFF"/>
+                                                                        <Setter TargetName="ThumbRect" Property="StrokeThickness" Value="2"/>
+                                                                    </DataTrigger>
+                                                                </DataTemplate.Triggers>
+                                                            </DataTemplate>
+                                                        </ListBox.ItemTemplate>
+                                                    </ListBox>
 
-                                                            <DataTemplate.Triggers>
-                                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                                                    <Setter TargetName="ThumbRect" Property="Stroke" Value="#2D8CFF"/>
-                                                                    <Setter TargetName="ThumbRect" Property="StrokeThickness" Value="2"/>
-                                                                </DataTrigger>
-                                                            </DataTemplate.Triggers>
-                                                        </DataTemplate>
-                                                    </ListBox.ItemTemplate>
-                                                </ListBox>
-                                            </dxlc:LayoutGroup>
+                                                    <!-- ===== Edit mode: вся library + checkbox ===== -->
+                                                    <ListBox x:Name="PhotoEditListBox"
+                                                             ItemsSource="{Binding AvailableInfoPhotoLibrary}"
+                                                             SelectedItem="{Binding SelectedInfoPhotoLibraryFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             SelectionChanged="PhotoThumbs_SelectionChanged"
+                                                             BorderThickness="0"
+                                                             Background="Transparent"
+                                                             HorizontalContentAlignment="Stretch"
+                                                             VerticalAlignment="Stretch"
+                                                             MinHeight="0"
+                                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                             ScrollViewer.CanContentScroll="True">
 
-                                            <!-- ===== Большое фото справа ===== -->
-                                            <dxlc:LayoutGroup Grid.Column="2" View="Group" GroupBoxDisplayMode="Light" Orientation="Vertical">
+                                                        <ListBox.Style>
+                                                            <Style TargetType="{x:Type ListBox}">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </ListBox.Style>
 
-                                                <dxe:ImageEdit Stretch="Uniform" NullText="Image is empty" EditValue="{Binding SelectedInfoPhotoFile.FileData}" IsReadOnly="False">
-                                                    <dxe:ImageEdit.Style>
-                                                        <Style TargetType="{x:Type dxe:ImageEdit}">
-                                                            <Setter Property="ShowMenu" Value="False"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
-                                                                    <Setter Property="ShowMenu" Value="False"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </dxe:ImageEdit.Style>
-                                                </dxe:ImageEdit>
-                                                
-                                            </dxlc:LayoutGroup>
-                                            
-                                        </Grid>
+                                                        <ListBox.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Vertical"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ListBox.ItemsPanel>
+
+                                                        <ListBox.ItemContainerStyle>
+                                                            <Style TargetType="{x:Type ListBoxItem}">
+                                                                <Setter Property="Padding" Value="0"/>
+                                                                <Setter Property="Margin" Value="0,0,0,8"/>
+                                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                                <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                                                                <Setter Property="BorderThickness" Value="0"/>
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Setter Property="Focusable" Value="True"/>
+                                                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="PhotoThumbItem_PreviewMouseLeftButtonDown"/>
+                                                            </Style>
+                                                        </ListBox.ItemContainerStyle>
+
+                                                        <ListBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Width="170" Height="126" Background="White">
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="26"/>
+                                                                        <RowDefinition Height="*"/>
+                                                                        <RowDefinition Height="22"/>
+                                                                    </Grid.RowDefinitions>
+
+                                                                    <!-- checkbox -->
+                                                                    <dxe:CheckEdit Grid.Row="0"
+                                                                                   Margin="4,2,4,0"
+                                                                                   HorizontalAlignment="Left"
+                                                                                   VerticalAlignment="Center"
+                                                                                   IsChecked="{Binding IsLinkedToCurrentEquipment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                   Checked="PhotoLibraryCheckEdit_Changed"
+                                                                                   Unchecked="PhotoLibraryCheckEdit_Changed"/>
+
+                                                                    <!-- thumb -->
+                                                                    <dxe:ImageEdit Grid.Row="1"
+                                                                                   EditValue="{Binding FileData}"
+                                                                                   Stretch="UniformToFill"
+                                                                                   NullText="No preview"
+                                                                                   IsReadOnly="True"
+                                                                                   ShowMenu="False"
+                                                                                   IsHitTestVisible="False"/>
+
+                                                                    <!-- caption -->
+                                                                    <Grid Grid.Row="2" Background="#88000000" IsHitTestVisible="False">
+                                                                        
+                                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                                   Margin="6,0"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Foreground="White"
+                                                                                   FontSize="11"
+                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                    </Grid>
+
+                                                                    <Rectangle x:Name="ThumbRect"
+                                                                               Grid.RowSpan="3"
+                                                                               Stroke="#BFBFBF"
+                                                                               StrokeThickness="1"
+                                                                               Fill="Transparent"
+                                                                               IsHitTestVisible="False"/>
+                                                                </Grid>
+
+                                                                <DataTemplate.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                                        <Setter TargetName="ThumbRect" Property="Stroke" Value="#2D8CFF"/>
+                                                                        <Setter TargetName="ThumbRect" Property="StrokeThickness" Value="2"/>
+                                                                    </DataTrigger>
+                                                                </DataTemplate.Triggers>
+                                                            </DataTemplate>
+                                                        </ListBox.ItemTemplate>
+                                                    </ListBox>
+                                                </Grid>
+                                            </dxlc:LayoutItem>
+                                        </dxlc:LayoutGroup>
+
+                                        <!-- ===== Справа: большое preview ===== -->
+                                        <dxlc:LayoutGroup Grid.Column="2"
+                                                          View="GroupBox"
+                                                          GroupBoxDisplayMode="Light"
+                                                          Orientation="Vertical"
+                                                          VerticalAlignment="Stretch"
+                                                          MinHeight="0">
+
+                                            <dxlc:LayoutItem Label="" VerticalAlignment="Stretch">
+                                                <Grid x:Name="PhotoPreviewHost" MinHeight="0" Background="Transparent">
+
+                                                    <dxe:ImageEdit EditValue="{Binding CurrentPhotoPreviewFile.FileData}"
+                                                                   NullText="Image is empty"
+                                                                   Stretch="Uniform"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   MaxWidth="{Binding ActualWidth, ElementName=PhotoPreviewHost}"
+                                                                   MaxHeight="{Binding ActualHeight, ElementName=PhotoPreviewHost}"
+                                                                   BorderThickness="0"
+                                                                   Padding="0"
+                                                                   IsReadOnly="True"
+                                                                   ShowMenu="False"/>
+
+                                                </Grid>
+                                            </dxlc:LayoutItem>
+                                        </dxlc:LayoutGroup>
+
                                     </Grid>
                                 </dxlc:LayoutItem>
 

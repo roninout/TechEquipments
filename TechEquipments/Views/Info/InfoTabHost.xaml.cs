@@ -1,6 +1,7 @@
 ﻿using DevExpress.Xpf.Editors;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Controls;
 
 namespace TechEquipments.Views.Info
@@ -87,34 +88,52 @@ namespace TechEquipments.Views.Info
                 await Host.ShowInfoPageAsync(page);
         }
 
-        private async void PhotoLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)
-        {
-            if (Host != null)
-                await Host.Info_OnPhotoLibraryEditValueChangedAsync();
-        }
-
-        private async void DocumentLibraryEditValueChanged(object sender, EditValueChangedEventArgs e)
-        {
-            if (Host != null)
-                await Host.Info_OnDocumentLibraryEditValueChangedAsync();
-        }
-
         private async void PhotoThumbs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (Host != null)
                 await Host.Info_OnSelectedPhotoChangedAsync();
         }
 
+        private async void PhotoLibraryCheckEdit_Changed(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not EquipmentInfoFileDto file)
+                return;
+
+            if (Host != null)
+                await Host.Info_OnPhotoLibraryCheckChangedAsync(file);
+        }
+
         private void PhotoThumbItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            // Не перехватываем клик по самому CheckEdit,
+            // иначе чекбокс не будет нормально переключаться.
+            if (IsInsideCheckEdit(e.OriginalSource as DependencyObject))
+                return;
+
             if (sender is not ListBoxItem item)
                 return;
 
             item.IsSelected = true;
             item.Focus();
+        }
 
-            // Важно: чтобы клик не "съедался" внутренним ImageEdit
-            e.Handled = true;
+        private static bool IsInsideCheckEdit(DependencyObject? source)
+        {
+            while (source != null)
+            {
+                if (source is CheckEdit)
+                    return true;
+
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return false;
+        }
+
+        private async void DocumentLibraryEditValueChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_OnDocumentLibraryEditValueChangedAsync();
         }
     }
 }
