@@ -1,8 +1,11 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using DevExpress.XtraRichEdit.Fields.Expression;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.VisualBasic.Devices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,18 +42,43 @@ namespace CtApi
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            SetCtApiDirectory(_config["CtApi:Path"]);
+            var path = (_config["CtApi:Path"] ?? "").Trim();
+            var ip = (_config["CtApi:Ip"] ?? "").Trim();
+            var user = _config["CtApi:User"];
+            var password = _config["CtApi:Password"];
 
-            var ip = _config["CtApi:Ip"];
-            if (string.IsNullOrWhiteSpace(ip))
-                await OpenAsync();
-            else
-                await OpenAsync(ip, _config["CtApi:User"], _config["CtApi:Password"]);
+            try
+            {
+                SetCtApiDirectory(path);
 
-            SetConnectionState(true, null);
+                if (string.IsNullOrWhiteSpace(ip))
+                    await OpenAsync();
+                else
+                    await OpenAsync(ip, user, password);
 
-            _healthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _healthTask = RunHealthMonitorAsync(_healthCts.Token);
+                SetConnectionState(true, null);
+
+                _healthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                _healthTask = RunHealthMonitorAsync(_healthCts.Token);
+            }
+            catch (DllNotFoundException ex)
+            {
+                SetConnectionState(false, $"CtApi.dll or dependency not found. Path: {path}");
+                TechLogger.Logger.Error($"CtApiService.StartAsync failed on SetCtApiDirectory. Path={path}.\nException: {ex}");
+                throw;
+            }
+            catch (SEHException ex)
+            {
+                SetConnectionState(false, $"CtApi native crash on Open. Path: {path}; Ip: {ip}");
+                TechLogger.Logger.Error($"CtApiService.StartAsync native crash. Path={path}, Ip={ip}.\nException: {ex}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                SetConnectionState(false, $"CtApi start failed. Path: {path}; Ip: {ip}");
+                TechLogger.Logger.Error($"CtApiService.StartAsync failed. Path={path}, Ip={ip}.\nException: {ex}");
+                throw;
+            }
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)

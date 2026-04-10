@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Windows;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,18 @@ namespace TechEquipments
     {
         public static IHost AppHost { get; private set; } = null!;
 
+        /// <summary>
+        /// Mutex для запрета запуска второго экземпляра приложения.
+        /// Global\ - чтобы защита работала не только в рамках одной сессии Windows.
+        /// </summary>
+        private Mutex? _singleInstanceMutex;
+
+        /// <summary>
+        /// Уникальное имя mutex.
+        /// Лучше не менять без необходимости, чтобы всегда считалось одним и тем же приложением.
+        /// </summary>
+        private const string SingleInstanceMutexName = @"Global\TechEquipments_SingleInstance";
+
         public App()
         {
             AppHost = Host.CreateDefaultBuilder()
@@ -31,7 +44,7 @@ namespace TechEquipments
                 .ConfigureServices((context, services) =>
                 {
                     // EF Core DbContextFactory
-                    string connStr = context.Configuration.GetConnectionString("Postgres");                    
+                    string connStr = context.Configuration.GetConnectionString("Postgres");
                     services.AddDbContextFactory<PgDbContext>(options => options.UseNpgsql(connStr));
                     services.AddSingleton<IDbService, PgDbService>();
                     services.AddSingleton<IEquipInfoService, EquipInfoService>();
@@ -56,6 +69,24 @@ namespace TechEquipments
         {
             base.OnStartup(e);
 
+            // Проверяем, не запущен ли уже другой экземпляр приложения
+            _singleInstanceMutex = new Mutex(initiallyOwned: true, name: SingleInstanceMutexName, createdNew: out bool createdNew);
+
+            if (!createdNew)
+            {
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
+
+                DXMessageBox.Show(
+                    "TechEquipments is already running.",
+                    "Application already started",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                Shutdown();
+                return;
+            }
+
             try
             {
                 await AppHost.StartAsync();
@@ -63,37 +94,51 @@ namespace TechEquipments
             }
             catch (Exception ex)
             {
-                DXMessageBox.Show($"Application startup failed.\n\n{ex.Message}","Startup error",MessageBoxButton.OK,MessageBoxImage.Error);
+                ReleaseSingleInstanceMutex();
+
+                DXMessageBox.Show(
+                    $"Application startup failed.\n\n{ex.Message}",
+                    "Startup error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
                 Shutdown();
             }
         }
 
-        //protected override async void OnStartup(StartupEventArgs e)
-        //{
-        //    base.OnStartup(e);
-        //    await AppHost.StartAsync();
-
-        //    using var scope = AppHost.Services.CreateScope();
-
-        //    var dbService = scope.ServiceProvider.GetRequiredService<IDbService>();
-        //    var equipInfoService = scope.ServiceProvider.GetRequiredService<IEquipInfoService>();
-
-        //    var ok = await dbService.CanConnectAsync();
-        //    if (!ok)
-        //        throw new Exception("Postgres: cannot connect.");
-
-        //    // При старте гарантируем наличие таблицы Info
-        //    await equipInfoService.EnsureTableAsync();
-
-        //    AppHost.Services.GetRequiredService<MainWindow>().Show();
-        //}
-
         protected override async void OnExit(ExitEventArgs e)
         {
-            await AppHost.StopAsync();
-            AppHost.Dispose();
-            base.OnExit(e);
+            try
+            {
+                await AppHost.StopAsync();
+                AppHost.Dispose();
+            }
+            finally
+            {
+                ReleaseSingleInstanceMutex();
+                base.OnExit(e);
+            }
         }
 
+        /// <summary>
+        /// Безопасно освобождаем mutex при выходе или ошибке старта.
+        /// </summary>
+        private void ReleaseSingleInstanceMutex()
+        {
+            if (_singleInstanceMutex == null)
+                return;
+
+            try
+            {
+                _singleInstanceMutex.ReleaseMutex();
+            }
+            catch
+            {
+                // Игнорируем, если mutex уже не принадлежит текущему экземпляру
+            }
+
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+        }
     }
 }

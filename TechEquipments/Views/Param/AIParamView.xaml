@@ -124,7 +124,8 @@
                     -->
                     <dxc:ChartControl DataSource="{Binding DataContext.Trend.Points, RelativeSource={RelativeSource AncestorType=Window}}"
                                       BoundDataChanged="ParamChart_BoundDataChanged"
-                                      CustomDrawCrosshair="Chart_CustomDrawCrosshair">
+                                      CustomDrawCrosshair="Chart_CustomDrawCrosshair"
+                                      IsManipulationEnabled="True">
                         <dxc:ChartControl.Diagram>
                             <dxc:XYDiagram2D
                                 SeriesDataMember="Series"
@@ -134,7 +135,7 @@
                                 Zoom="ParamChart_DiagramZoom">
 
                                 <dxc:XYDiagram2D.NavigationOptions>
-                                    <dxc:NavigationOptions UseMouse="True" UseScrollBars="True" UseKeyboard="True"/>
+                                    <dxc:NavigationOptions UseMouse="True" UseScrollBars="True" UseKeyboard="True" UseTouchDevice="True"/>
                                 </dxc:XYDiagram2D.NavigationOptions>
 
                                 <!-- AxisX -->
