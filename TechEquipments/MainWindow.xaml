@@ -10,7 +10,7 @@
     x:Class="TechEquipments.MainWindow"
     Icon="/TechEquipments;component/Resources/Icons/app.ico"
     Title="{Binding Vm.Shell.WindowTitle}"
-    Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown">
+    Height="800" Width="1200" PreviewKeyDown="ThemedWindow_PreviewKeyDown" WindowState="Maximized">
 
     <dx:ThemedWindow.Resources>
         <!-- Конвертер bool -> Visibility -->

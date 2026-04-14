@@ -426,32 +426,29 @@
 
                         </StackPanel>
 
-                        <!-- Низ: Live/History (прилипает к низу автоматически) -->
-                        <dx:SimpleButton Grid.Row="2"
-                             x:Name="TrendModeButton"
-                             Width="60" Height="60"
-                             Padding="0" GlyphWidth="40" GlyphHeight="40"
-                             Click="LiveButton_Click"
-                             Visibility="{Binding DataContext.Trend.IsChartVisible, RelativeSource={RelativeSource AncestorType=Window},Converter={StaticResource BoolToVis}}">
+                        <!-- Низ: + / - / Live-History -->
+                        <StackPanel Grid.Row="2" Orientation="Vertical" VerticalAlignment="Bottom">
 
-                            <dx:SimpleButton.Style>
-                                <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
-                                    <!-- По умолчанию Live -->
-                                    <Setter Property="Glyph" Value="{dx:DXImage SvgImages/XAF/Action_Debug_Start.svg}"/>
-                                    <Setter Property="ToolTip" Value="Live"/>
+                            <dx:SimpleButton Padding="0"
+                                             GlyphWidth="40" GlyphHeight="40"
+                                             Glyph="{dx:DXImage 'SvgImages/DiagramIcons/ZoomIn.svg'}"
+                                             ToolTip="Zoom in"
+                                             Style="{StaticResource ParamTrendHistoryZoomButtonStyle}"
+                                             Click="TrendZoomIn_Click"/>
 
-                                    <Style.Triggers>
-                                        <!-- Если History -->
-                                        <DataTrigger Binding="{Binding DataContext.Trend.IsLiveMode, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                         Value="False">
-                                            <Setter Property="Glyph" Value="{dx:DXImage SvgImages/Arrows/Last.svg}"/>
-                                            <Setter Property="ToolTip" Value="History"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </dx:SimpleButton.Style>
+                            <dx:SimpleButton Margin="0,8,0,0" Padding="0"
+                                             GlyphWidth="40" GlyphHeight="40"
+                                             Glyph="{dx:DXImage 'SvgImages/DiagramIcons/ZoomOut.svg'}"
+                                             Click="TrendZoomOut_Click"
+                                             ToolTip="Zoom out"
+                                             Style="{StaticResource ParamTrendHistoryZoomButtonStyle}"/>
 
-                        </dx:SimpleButton>
+                            <ToggleButton x:Name="TrendModeButton"
+                                          Margin="0,8,0,0"
+                                          Click="TrendModeToggle_Click"
+                                          Style="{StaticResource ParamTrendModeToggleStyle}"/>
+
+                        </StackPanel>
 
                     </Grid>
                 </dxlc:LayoutItem>

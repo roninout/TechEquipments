@@ -403,6 +403,7 @@
                                     <dxpdf:PdfViewerControl Grid.Row="1"
                                                             CommandBarStyle="None"
                                                             ShowStartScreen="False"
+                                                            CursorMode="HandTool"
                                                             DocumentSource="{Binding CurrentInfoDocumentPreviewPath}"
                                                             Visibility="{Binding IsInfoDocumentViewerVisible, Converter={StaticResource BoolToVis}}"/>
                                 </Grid>

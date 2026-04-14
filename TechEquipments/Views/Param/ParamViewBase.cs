@@ -238,5 +238,137 @@ namespace TechEquipments.Views.Param
             if (e.OldFocus is TextBox && e.OldFocus is not CheckEdit)
                 Host?.EndParamFieldEdit();
         }
+
+        /// <summary>
+        /// Toggle Live/History.
+        /// Live -> History: фиксируем текущий видимый диапазон как history-range.
+        /// History -> Live: возвращаем live mode.
+        /// </summary>
+        public void TrendModeToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            if (Host == null)
+                return;
+
+            if (Host.Trend.IsLiveMode)
+            {
+                // Переходим в History, сохраняя текущий видимый диапазон
+                Host.OnParamChartUserRangeChanged(Host.Trend.AxisXMin, Host.Trend.AxisXMax);
+            }
+            else
+            {
+                // Возвращаемся в Live
+                Host.SetParamChartLiveMode(resetPoints: false);
+            }
+        }
+
+        /// <summary>
+        /// Zoom in для History-режима.
+        /// Симулирует приближение, как при wheel zoom.
+        /// </summary>
+        public void TrendZoomIn_Click(object sender, RoutedEventArgs e)
+        {
+            ChangeHistoryZoom(0.8);
+        }
+
+        /// <summary>
+        /// Zoom out для History-режима.
+        /// Симулирует отдаление, как при wheel zoom.
+        /// </summary>
+        public void TrendZoomOut_Click(object sender, RoutedEventArgs e)
+        {
+            ChangeHistoryZoom(1.25);
+        }
+
+        /// <summary>
+        /// Меняем масштаб history-range вокруг центра текущего окна.
+        /// factor < 1  => zoom in
+        /// factor > 1  => zoom out
+        /// </summary>
+        private void ChangeHistoryZoom(double factor)
+        {
+            if (DesignerProperties.GetIsInDesignMode(this))
+                return;
+
+            if (Host == null)
+                return;
+
+            // Кнопки показываем только в History, но на всякий случай защищаемся и тут
+            if (Host.Trend.IsLiveMode)
+                return;
+
+            if (factor <= 0)
+                return;
+
+            var currentMin = Host.Trend.AxisXMin;
+            var currentMax = Host.Trend.AxisXMax;
+            var wholeMin = Host.Trend.AxisXWholeMin;
+            var wholeMax = Host.Trend.AxisXWholeMax;
+
+            var currentSpan = currentMax - currentMin;
+            var wholeSpan = wholeMax - wholeMin;
+
+            if (currentSpan <= TimeSpan.Zero || wholeSpan <= TimeSpan.Zero)
+                return;
+
+            var minSpanTicks = TimeSpan.FromSeconds(5).Ticks;
+            var maxSpanTicks = Math.Max(wholeSpan.Ticks, minSpanTicks);
+
+            var newSpanTicks = (long)(currentSpan.Ticks * factor);
+
+            if (newSpanTicks < minSpanTicks)
+                newSpanTicks = minSpanTicks;
+
+            if (newSpanTicks > maxSpanTicks)
+                newSpanTicks = maxSpanTicks;
+
+            var centerTicks = currentMin.Ticks + (currentSpan.Ticks / 2);
+            var newMinTicks = centerTicks - (newSpanTicks / 2);
+            var newMaxTicks = newMinTicks + newSpanTicks;
+
+            var kind = currentMin.Kind == DateTimeKind.Unspecified
+                ? DateTimeKind.Local
+                : currentMin.Kind;
+
+            var newMin = new DateTime(newMinTicks, kind);
+            var newMax = new DateTime(newMaxTicks, kind);
+
+            ClampHistoryRange(ref newMin, ref newMax, wholeMin, wholeMax);
+
+            Host.OnParamChartUserRangeChanged(newMin, newMax);
+        }
+
+        /// <summary>
+        /// Ограничиваем history-range пределами WholeRange.
+        /// </summary>
+        private static void ClampHistoryRange(ref DateTime min, ref DateTime max, DateTime wholeMin, DateTime wholeMax)
+        {
+            var span = max - min;
+            if (span <= TimeSpan.Zero)
+                return;
+
+            if (min < wholeMin)
+            {
+                min = wholeMin;
+                max = min + span;
+            }
+
+            if (max > wholeMax)
+            {
+                max = wholeMax;
+                min = max - span;
+            }
+
+            if (min < wholeMin)
+                min = wholeMin;
+
+            if (max > wholeMax)
+                max = wholeMax;
+
+            if (max <= min)
+                max = min.AddSeconds(5);
+        }
     }
 }

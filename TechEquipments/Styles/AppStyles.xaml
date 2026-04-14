@@ -158,98 +158,6 @@ DataContext = EquipTypeGroup (enum)
         </StackPanel>
     </DataTemplate>
 
-    <!--<DataTemplate x:Key="EquipmentListItemTemplate">
-        <Grid Margin="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="24"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            --><!-- Иконка типа --><!--
-            <Image Grid.Column="0"
-               Width="16"
-               Height="16"
-               Margin="0,0,8,0"
-               VerticalAlignment="Center"
-               HorizontalAlignment="Center">
-                <Image.Style>
-                    <Style TargetType="Image">
-
-                        --><!-- Иконка по умолчанию. Подставь сюда свой DX PNG resource key.--><!--
-                        <Setter Property="Source"
-                            Value="{dx:DXImage 'Office2013/Support/Question_16x16.png'}"/>
-
-                        <Style.Triggers>
-
-                            --><!-- AI --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.AI}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Chart/FullStackedLine_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- DI --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.DI}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Chart/Stepline_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- DO --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.DO}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Chart/OpenHighLowCloseCandleStick_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- Motor --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.Motor}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Reports/GroupFieldCollection_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- VGA --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.VGA}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleLinearVertical_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- VGA_EL --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.VGA_EL}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleRightQuarterCircular_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- VGD --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.VGD}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Chart/StepArea_16x16.png'}"/>
-                            </DataTrigger>
-
-                            --><!-- Atv --><!--
-                            <DataTrigger Binding="{Binding TypeGroup}" Value="{x:Static local:EquipTypeGroup.Atv}">
-                                <Setter Property="Source"
-                                    Value="{dx:DXImage 'Office2013/Gauges/GaugeStyleLinearHorizontal_16x16.png'}"/>
-                            </DataTrigger>
-
-                        </Style.Triggers>
-                    </Style>
-                </Image.Style>
-            </Image>
-
-            --><!-- Текст оборудования --><!--
-            <TextBlock Grid.Column="1"
-                   VerticalAlignment="Center"
-                   Text="{Binding Equipment}"
-                   TextTrimming="CharacterEllipsis">
-                <TextBlock.ToolTip>
-                    <StackPanel>
-                        <TextBlock Text="{Binding Equipment}" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding Type}"/>
-                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxWidth="320"/>
-                    </StackPanel>
-                </TextBlock.ToolTip>
-        </TextBlock>
-        </Grid>
-    </DataTemplate>-->
-
     <!-- ============ GRID HEADERS ============ -->
     <Style x:Key="AppGridColumnHeaderStyle" TargetType="{x:Type dxg:GridColumnHeader}">
         <Setter Property="FontSize" Value="14"/>
@@ -801,6 +709,73 @@ DataContext = EquipTypeGroup (enum)
                      Value="True">
                 <Setter Property="LabelTemplate" Value="{StaticResource TimeWorkAlarmBlinkLabelTemplate}"/>
             </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Кнопки + / - для history zoom -->
+    <Style x:Key="ParamTrendHistoryZoomButtonStyle"
+           TargetType="{x:Type dx:SimpleButton}"
+           BasedOn="{StaticResource AppButtonStyle}">
+        <Setter Property="Width" Value="60"/>
+        <Setter Property="Height" Value="60"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="FontSize" Value="24"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Visibility" Value="Collapsed"/>
+
+        <Style.Triggers>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding DataContext.Trend.IsChartVisible, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="True"/>
+                    <Condition Binding="{Binding DataContext.Trend.IsLiveMode, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="False"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="Visibility" Value="Visible"/>
+            </MultiDataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Toggle Live / History с иконкой вместо текста -->
+    <Style x:Key="ParamTrendModeToggleStyle"
+           TargetType="{x:Type ToggleButton}"
+           BasedOn="{StaticResource AppToggleStyle}">
+        <Setter Property="Width" Value="60"/>
+        <Setter Property="Height" Value="60"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Visibility" Value="Collapsed"/>
+        <Setter Property="IsChecked"
+                Value="{Binding DataContext.Trend.IsLiveMode,
+                                RelativeSource={RelativeSource AncestorType={x:Type Window}},
+                                Mode=OneWay}"/>
+
+        <!-- По умолчанию: History -->
+        <Setter Property="ToolTip" Value="History"/>
+        <Setter Property="Content">
+            <Setter.Value>
+                <Image Width="40"
+                       Height="40"
+                       Source="{dx:DXImage SvgImages/Arrows/Last.svg}"/>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+            <!-- Показываем кнопку только когда график видим -->
+            <DataTrigger Binding="{Binding DataContext.Trend.IsChartVisible,
+                                           RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                         Value="True">
+                <Setter Property="Visibility" Value="Visible"/>
+            </DataTrigger>
+
+            <!-- Live -->
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="ToolTip" Value="Live"/>
+                <Setter Property="Content">
+                    <Setter.Value>
+                        <Image Width="40"
+                               Height="40"
+                               Source="{dx:DXImage SvgImages/XAF/Action_Debug_Start.svg}"/>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
