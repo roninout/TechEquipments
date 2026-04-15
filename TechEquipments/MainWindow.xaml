@@ -142,7 +142,7 @@
 
                     <!-- Кнопка скрытия/показа левой панели -->
                     <ToggleButton x:Name="LeftPaneToggle"
-                                  Width="32"
+                                  Width="45"
                                   Margin="0,0,8,0"
                                   Style="{StaticResource AppToggleStyle}"
                                   Click="LeftPaneToggle_Click">

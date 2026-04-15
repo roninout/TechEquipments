@@ -48,30 +48,34 @@ namespace TechEquipments.Views.Param
             if (Host == null)
                 return;
 
-            // Новое значение уже применилось после клика
+            // Фиксируем целевое значение сразу, ДО модального окна.
+            // Дальше используем только его, а не tb.IsChecked,
+            // потому что во время подтверждения polling может перебиндить UI обратно.
             var newValue = tb.IsChecked == true;
 
-            // Старое значение берём из кэша, а если его нет — из модели
+            // Старое значение берём из кэша, а если его нет — из текущей модели.
             var oldValue = _lastMode;
 
             if (oldValue == null && DataContext is MotorModel model)
                 oldValue = model.Param.Mode;
 
-            // Подтверждение только при переходе 1 -> 0
+            // Подтверждение только при переходе Automatic -> Service (1 -> 0)
             if (oldValue == true && newValue == false)
             {
                 if (!ConfirmModeToService())
                 {
+                    // Пользователь отменил -> возвращаем UI в прежнее состояние
                     tb.IsChecked = true;
                     _lastMode = true;
                     return;
                 }
             }
 
-            // Запись в SCADA через общий механизм
-            Host.ParamEditable_WriteFromUi(tb.Tag as string, tb.IsChecked, oldValue);
+            // ВАЖНО:
+            // пишем зафиксированное newValue, а не текущее tb.IsChecked.
+            Host.ParamEditable_WriteFromUi(tb.Tag as string, newValue, oldValue);
 
-            // Запоминаем последнее значение
+            // Обновляем локальный кэш последнего подтверждённого значения
             _lastMode = newValue;
         }
 

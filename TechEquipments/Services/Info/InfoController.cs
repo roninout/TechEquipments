@@ -20,7 +20,7 @@ namespace TechEquipments
     /// - edit/save
     /// - page switching
     /// - работа с фото / instruction / scheme
-    /// - cache PDF рядом с exe
+    /// - cache PDF in LocalAppData
     /// </summary>
     public sealed class InfoController
     {
@@ -622,7 +622,7 @@ namespace TechEquipments
             {
                 var folderName = _vm.CurrentInfoPage == InfoPageKind.Scheme ? "Schemes" : "Instruction";
 
-                _vm.InfoDocumentMessage = $"File '{selected.FileName}' is stored in DB but not cached locally. Click 'Export PDF' to save it to .\\{folderName} and open it.";
+                _vm.InfoDocumentMessage = $"File '{selected.FileName}' is stored in DB but not cached locally. " + $"Click 'Export PDF' to save it to the local TechEquipments cache and open it.";
 
                 _vm.IsInfoDocumentExportVisible = true;
                 return Task.CompletedTask;
@@ -739,9 +739,40 @@ namespace TechEquipments
             return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
-        private static string GetInstructionFolder() => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Instruction");
+        /// <summary>
+        /// Корневая папка локального кэша приложения.
+        /// Храним в профиле пользователя, чтобы не требовать admin-прав
+        /// при запуске из Program Files / защищённой папки.
+        /// </summary>
+        private static string GetAppLocalDataFolder()
+        {
+            var root = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TechEquipments");
 
-        private static string GetSchemesFolder() => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Schemes");
+            Directory.CreateDirectory(root);
+            return root;
+        }
+
+        /// <summary>
+        /// Локальный кэш PDF инструкций.
+        /// </summary>
+        private static string GetInstructionFolder()
+        {
+            var folder = Path.Combine(GetAppLocalDataFolder(), "Instruction");
+            Directory.CreateDirectory(folder);
+            return folder;
+        }
+
+        /// <summary>
+        /// Локальный кэш PDF схем.
+        /// </summary>
+        private static string GetSchemesFolder()
+        {
+            var folder = Path.Combine(GetAppLocalDataFolder(), "Schemes");
+            Directory.CreateDirectory(folder);
+            return folder;
+        }
 
         private static string MakeSafeFileName(string text)
         {

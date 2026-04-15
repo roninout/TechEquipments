@@ -189,23 +189,29 @@ namespace TechEquipments
 
         /// <summary>
         /// Сохранение состояния сразу (обычно вызывается таймером).
+        /// ВАЖНО:
+        /// не создаём UserState с нуля, иначе можно потерять поля,
+        /// которыми управляют другие части приложения
+        /// (например, QrCameraIndex).
         /// </summary>
         public async Task SaveAsync()
         {
             if (_isRestoringState)
                 return;
 
-            var state = new UserState
-            {
-                LastEquipName = (_vm.EquipmentList.EquipName ?? "").Trim(),
-                DbDate = _vm.Database.DbDate.Date,
-                SelectedTab = _vm.SelectedMainTab,
-                SelectedStation = (_vm.EquipmentList.SelectedStation ?? "All").Trim(),
-                SelectedTypeFilter = _vm.EquipmentList.SelectedTypeFilter,
-                LastEquipmentsByFilter = _exportRememberedEquipmentsByFilter()
-            };
+            // Загружаем уже существующее состояние, чтобы сохранить "чужие" поля,
+            // например QrCameraIndex, который пишет QR scanner service.
+            var state = await _stateService.LoadAsync() ?? new UserState();
+
+            state.LastEquipName = (_vm.EquipmentList.EquipName ?? "").Trim();
+            state.DbDate = _vm.Database.DbDate.Date;
+            state.SelectedTab = _vm.SelectedMainTab;
+            state.SelectedStation = (_vm.EquipmentList.SelectedStation ?? "All").Trim();
+            state.SelectedTypeFilter = _vm.EquipmentList.SelectedTypeFilter;
+            state.LastEquipmentsByFilter = _exportRememberedEquipmentsByFilter();
 
             await _stateService.SaveAsync(state);
         }
+
     }
 }
