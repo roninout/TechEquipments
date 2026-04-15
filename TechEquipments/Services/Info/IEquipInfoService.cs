@@ -17,8 +17,18 @@ namespace TechEquipments
 
         Task<IReadOnlyList<EquipmentInfoFileDto>> GetLibraryAsync(InfoFileKind kind, string equipTypeGroupKey, CancellationToken ct = default);
 
-        Task<EquipInfoLibraryAddResult> AddFilesToLibraryAsync( InfoFileKind kind, string equipTypeGroupKey, IEnumerable<string> filePaths, CancellationToken ct = default);
+        Task<EquipInfoLibraryAddResult> AddFilesToLibraryAsync(InfoFileKind kind, string equipTypeGroupKey, IEnumerable<string> filePaths, CancellationToken ct = default);
 
         Task<EquipmentInfoFileDto?> GetLibraryFileByIdAsync(InfoFileKind kind, long id, CancellationToken ct = default);
+
+        /// <summary>
+        /// Получить сохранённую позицию просмотра PDF.
+        /// </summary>
+        Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(string equipName, InfoPageKind pageKind, long fileId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Сохранить/обновить позицию просмотра PDF.
+        /// </summary>
+        Task SaveDocumentViewStateAsync(EquipmentInfoDocumentViewStateDto model, CancellationToken ct = default);
     }
 }

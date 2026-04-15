@@ -12,6 +12,11 @@ using System.Windows;
 using TechEquipments.ViewModels;
 using TechEquipments.Views.Info;
 
+using DevExpress.Pdf;
+using DevExpress.Xpf.DocumentViewer;
+using DevExpress.Xpf.PdfViewer;
+using System.Windows.Threading;
+
 namespace TechEquipments
 {
     /// <summary>
@@ -671,6 +676,190 @@ namespace TechEquipments
             finally
             {
                 _vm.IsInfoLoading = false;
+            }
+        }
+
+        /// <summary>
+        /// Запомнить текущую позицию просмотра PDF:
+        /// page + zoom + anchor point в центре viewer.
+        /// Сохраняем только по явной кнопке в edit mode.
+        /// </summary>
+        public async Task RememberCurrentDocumentPositionAsync(PdfViewerControl viewer)
+        {
+            if (viewer == null)
+                return;
+
+            if (!_vm.IsInfoEditMode || !_vm.IsInfoDocumentPage)
+                return;
+
+            var model = _vm.CurrentEquipInfo;
+            if (model == null)
+                return;
+
+            var equipName = (model.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            var selected = GetCurrentSelectedDocument();
+            if (selected == null)
+            {
+                DXMessageBox.Show(
+                    _ownerWindow,
+                    "No PDF document is selected.",
+                    "Remember PDF position",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            if (selected.Id <= 0)
+            {
+                DXMessageBox.Show(
+                    _ownerWindow,
+                    "This PDF does not have a persistent library ID yet. Save the card and reopen the document first.",
+                    "Remember PDF position",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            if (!_vm.IsInfoDocumentViewerVisible || string.IsNullOrWhiteSpace(_vm.CurrentInfoDocumentPreviewPath))
+            {
+                DXMessageBox.Show(
+                    _ownerWindow,
+                    "Open the PDF preview first.",
+                    "Remember PDF position",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            // Берём якорную точку в центре viewer —
+            // это даёт наиболее ожидаемое восстановление "той же области".
+            var center = new Point(
+                Math.Max(viewer.ActualWidth / 2.0, 1.0),
+                Math.Max(viewer.ActualHeight / 2.0, 1.0));
+
+            var position = viewer.ConvertPixelToDocumentPosition(center);
+            if (position == null || position.PageNumber <= 0)
+            {
+                DXMessageBox.Show(
+                    _ownerWindow,
+                    "Cannot determine the current PDF position.",
+                    "Remember PDF position",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                return;
+            }
+
+            var existing = await _equipInfoService.GetDocumentViewStateAsync(
+                equipName,
+                _vm.CurrentInfoPage,
+                selected.Id);
+
+            if (existing != null)
+            {
+                var overwrite = DXMessageBox.Show(
+                    _ownerWindow,
+                    "A saved position already exists for this PDF document.\n\nDo you want to overwrite it?",
+                    "Remember PDF position",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (overwrite != MessageBoxResult.Yes)
+                    return;
+            }
+
+            var state = new EquipmentInfoDocumentViewStateDto
+            {
+                EquipName = equipName,
+                InfoPageKind = _vm.CurrentInfoPage,
+                FileId = selected.Id,
+                FileName = selected.FileName ?? "",
+                PageNumber = position.PageNumber,
+                ZoomFactor = viewer.ZoomFactor,
+                AnchorX = position.Point.X,
+                AnchorY = position.Point.Y
+            };
+
+            await _equipInfoService.SaveDocumentViewStateAsync(state);
+
+            _vm.InfoStatusText = $"PDF position saved: {selected.DisplayName}";
+        }
+
+        /// <summary>
+        /// Восстановить ранее сохранённую позицию просмотра PDF.
+        /// Вызывается после загрузки документа в viewer.
+        /// </summary>
+        public async Task RestoreCurrentDocumentPositionAsync(PdfViewerControl viewer)
+        {
+            if (viewer == null)
+                return;
+
+            if (!_vm.IsInfoDocumentPage)
+                return;
+
+            var model = _vm.CurrentEquipInfo;
+            if (model == null)
+                return;
+
+            var equipName = (model.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            var selected = GetCurrentSelectedDocument();
+            if (selected == null || selected.Id <= 0)
+                return;
+
+            var state = await _equipInfoService.GetDocumentViewStateAsync(
+                equipName,
+                _vm.CurrentInfoPage,
+                selected.Id);
+
+            if (state == null)
+                return;
+
+            try
+            {
+                // 1) Даём viewer закончить внутреннюю initial navigation / layout.
+                await viewer.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+
+                // Небольшая пауза помогает на первом открытии документа,
+                // когда DocumentLoaded уже пришёл, но visual state ещё не стабилизировался.
+                await Task.Delay(80);
+
+                // 2) Сначала восстанавливаем zoom и страницу.
+                await viewer.Dispatcher.InvokeAsync(() =>
+                {
+                    if (state.ZoomFactor > 0)
+                        viewer.ZoomFactor = state.ZoomFactor;
+
+                    if (state.PageNumber > 0)
+                        viewer.CurrentPageNumber = state.PageNumber;
+                }, DispatcherPriority.ApplicationIdle);
+
+                // 3) Ещё один короткий проход, чтобы viewer успел принять zoom/page.
+                await Task.Delay(50);
+
+                // 4) Теперь уже позиционируем в точную область.
+                await viewer.Dispatcher.InvokeAsync(() =>
+                {
+                    var position = new PdfDocumentPosition(
+                        state.PageNumber,
+                        new PdfPoint(state.AnchorX, state.AnchorY));
+
+                    viewer.ScrollIntoView(position, ScrollIntoViewMode.Center);
+                }, DispatcherPriority.ApplicationIdle);
+
+                _vm.InfoStatusText = $"PDF position restored: {selected.DisplayName}";
+            }
+            catch (Exception ex)
+            {
+                _vm.InfoStatusText = $"PDF position restore error: {ex.Message}";
             }
         }
 

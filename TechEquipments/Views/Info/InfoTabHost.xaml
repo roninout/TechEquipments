@@ -400,10 +400,12 @@
                                                          Visibility="{Binding IsInfoDocumentExportVisible, Converter={StaticResource BoolToVis}}"/>
                                     </StackPanel>
 
-                                    <dxpdf:PdfViewerControl Grid.Row="1"
+                                    <dxpdf:PdfViewerControl x:Name="PdfViewer"
+                                                            Grid.Row="1"
                                                             CommandBarStyle="None"
                                                             ShowStartScreen="False"
                                                             CursorMode="HandTool"
+                                                            DocumentLoaded="PdfViewer_DocumentLoaded"
                                                             DocumentSource="{Binding CurrentInfoDocumentPreviewPath}"
                                                             Visibility="{Binding IsInfoDocumentViewerVisible, Converter={StaticResource BoolToVis}}"/>
                                 </Grid>
@@ -599,6 +601,36 @@
                                     </dx:SimpleButton>
                                 </dxlc:LayoutItem>
 
+                                <!-- Remember PDF position: только для Instruction/Scheme, только в Edit mode, только когда viewer реально открыт -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/DiagramIcons/FitToDrawing.svg'}"
+                                                     Click="RememberPdfPosition_Click"
+                                                     ToolTip="Remember position"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoDocumentPage}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoDocumentViewerVisible}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+                                
                                 <!-- Edit: по умолчанию видна, в режиме редактирования скрывается -->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60"

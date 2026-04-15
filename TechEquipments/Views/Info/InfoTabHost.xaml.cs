@@ -67,6 +67,12 @@ namespace TechEquipments.Views.Info
                 await Host.Info_RemoveCurrentDocumentAsync();
         }
 
+        private async void RememberPdfPosition_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_RememberCurrentDocumentPositionAsync(PdfViewer);
+        }
+
         private async void ExportPdf_Click(object sender, RoutedEventArgs e)
         {
             if (Host != null)
@@ -75,8 +81,17 @@ namespace TechEquipments.Views.Info
 
         private async void DocumentSelectionChanged(object sender, DevExpress.Xpf.Editors.EditValueChangedEventArgs e)
         {
+            // Даём binding SelectedItem успеть зафиксировать CurrentInfoSelectedDocumentFile
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
             if (Host != null)
                 await Host.Info_OnCurrentDocumentSelectionChangedAsync();
+        }
+
+        private async void PdfViewer_DocumentLoaded(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_RestoreCurrentDocumentPositionAsync(PdfViewer);
         }
 
         private async void PageButton_Click(object sender, RoutedEventArgs e)

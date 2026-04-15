@@ -1,6 +1,7 @@
 ﻿using CtApi;
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
+using DevExpress.Xpf.PdfViewer;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -1642,6 +1643,18 @@ namespace TechEquipments
         {
             return _infoController.OnPhotoLibraryCheckChangedAsync(file);
         }
+
+        /// <summary>
+        /// Запомнить текущую позицию просмотра PDF.
+        /// </summary>
+        public Task Info_RememberCurrentDocumentPositionAsync(PdfViewerControl viewer)
+            => _infoController.RememberCurrentDocumentPositionAsync(viewer);
+
+        /// <summary>
+        /// Восстановить сохранённую позицию просмотра PDF после загрузки документа.
+        /// </summary>
+        public Task Info_RestoreCurrentDocumentPositionAsync(PdfViewerControl viewer)
+            => _infoController.RestoreCurrentDocumentPositionAsync(viewer);
 
         #endregion
     }

@@ -35,6 +35,8 @@ namespace TechEquipments
         private readonly string _qualifiedInfoInstructionLinkTable;
         private readonly string _qualifiedInfoSchemeLinkTable;
 
+        private readonly string _qualifiedInfoDocumentViewTable;
+
         public EquipInfoService(IDbContextFactory<PgDbContext> dbFactory, IConfiguration config)
         {
             _dbFactory = dbFactory;
@@ -50,6 +52,8 @@ namespace TechEquipments
             _qualifiedInfoPhotoLinkTable = Qualify($"{_tablePrefix}_equip_info_photo");
             _qualifiedInfoInstructionLinkTable = Qualify($"{_tablePrefix}_equip_info_instruction");
             _qualifiedInfoSchemeLinkTable = Qualify($"{_tablePrefix}_equip_info_scheme");
+
+            _qualifiedInfoDocumentViewTable = Qualify($"{_tablePrefix}_equip_info_pdf_view");
         }
 
         public async Task EnsureTableAsync(CancellationToken ct = default)
@@ -151,6 +155,23 @@ namespace TechEquipments
                                         PRIMARY KEY (equip_name, scheme_id)
                                     );";
 
+            // Сохранённая позиция просмотра PDF: одна запись на equipment + page kind + file id
+            var sqlInfoPdfView = $@"
+                                    CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
+                                    (
+                                        equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+                                        info_page_kind   text NOT NULL,
+                                        file_id          bigint NOT NULL,
+                                        file_name        text NOT NULL,
+                                        page_number      integer NOT NULL,
+                                        zoom_factor      double precision NOT NULL,
+                                        anchor_x         double precision NOT NULL,
+                                        anchor_y         double precision NOT NULL,
+                                        updated_at       timestamp NOT NULL DEFAULT now(),
+
+                                        PRIMARY KEY (equip_name, info_page_kind, file_id)
+                                    );";
+
             await db.Database.ExecuteSqlRawAsync(sqlInfo, ct);
             await db.Database.ExecuteSqlRawAsync(sqlPhoto, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInstruction, ct);
@@ -158,6 +179,7 @@ namespace TechEquipments
             await db.Database.ExecuteSqlRawAsync(sqlInfoPhotoLink, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInfoInstructionLink, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInfoSchemeLink, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlInfoPdfView, ct);
 
             // Индексы для library-комбобоксов по группе типа
             await db.Database.ExecuteSqlRawAsync(
@@ -171,6 +193,10 @@ namespace TechEquipments
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_{_tablePrefix}_equip_scheme_type
            ON {_qualifiedSchemeTable} (equip_type_group, display_name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_{_tablePrefix}_equip_pdf_view_lookup
+           ON {_qualifiedInfoDocumentViewTable} (equip_name, info_page_kind, file_id);", ct);
         }
 
         public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
@@ -693,6 +719,127 @@ VALUES
                 FileData = reader.IsDBNull(5) ? null : (byte[])reader.GetValue(5),
                 UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6)
             };
+        }
+
+        public async Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(string equipName, InfoPageKind pageKind, long fileId, CancellationToken ct = default)
+        {
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName) || fileId <= 0)
+                return null;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                                SELECT
+                                    equip_name,
+                                    info_page_kind,
+                                    file_id,
+                                    file_name,
+                                    page_number,
+                                    zoom_factor,
+                                    anchor_x,
+                                    anchor_y,
+                                    updated_at
+                                FROM {_qualifiedInfoDocumentViewTable}
+                                WHERE equip_name = @equip_name
+                                  AND info_page_kind = @info_page_kind
+                                  AND file_id = @file_id
+                                LIMIT 1;";
+
+            AddParameter(cmd, "@equip_name", equipName);
+            AddParameter(cmd, "@info_page_kind", pageKind.ToString());
+            AddParameter(cmd, "@file_id", fileId);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            return new EquipmentInfoDocumentViewStateDto
+            {
+                EquipName = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                InfoPageKind = Enum.TryParse<InfoPageKind>(reader.IsDBNull(1) ? "" : reader.GetString(1), out var parsedKind)
+                    ? parsedKind
+                    : pageKind,
+                FileId = reader.IsDBNull(2) ? 0 : reader.GetInt64(2),
+                FileName = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                PageNumber = reader.IsDBNull(4) ? 1 : reader.GetInt32(4),
+                ZoomFactor = reader.IsDBNull(5) ? 1.0 : reader.GetDouble(5),
+                AnchorX = reader.IsDBNull(6) ? 0.0 : reader.GetDouble(6),
+                AnchorY = reader.IsDBNull(7) ? 0.0 : reader.GetDouble(7),
+                UpdatedAt = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTime>(8)
+            };
+        }
+
+        public async Task SaveDocumentViewStateAsync(EquipmentInfoDocumentViewStateDto model, CancellationToken ct = default)
+        {
+            if (model == null)
+                throw new ArgumentNullException(nameof(model));
+
+            var equipName = (model.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                throw new InvalidOperationException("EquipName is empty.");
+
+            if (model.FileId <= 0)
+                throw new InvalidOperationException("FileId must be greater than 0.");
+
+            if (model.PageNumber <= 0)
+                throw new InvalidOperationException("PageNumber must be greater than 0.");
+
+            if (model.ZoomFactor <= 0)
+                throw new InvalidOperationException("ZoomFactor must be greater than 0.");
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                                INSERT INTO {_qualifiedInfoDocumentViewTable}
+                                (
+                                    equip_name,
+                                    info_page_kind,
+                                    file_id,
+                                    file_name,
+                                    page_number,
+                                    zoom_factor,
+                                    anchor_x,
+                                    anchor_y,
+                                    updated_at
+                                )
+                                VALUES
+                                (
+                                    @equip_name,
+                                    @info_page_kind,
+                                    @file_id,
+                                    @file_name,
+                                    @page_number,
+                                    @zoom_factor,
+                                    @anchor_x,
+                                    @anchor_y,
+                                    now()
+                                )
+                                ON CONFLICT (equip_name, info_page_kind, file_id)
+                                DO UPDATE SET
+                                    file_name   = EXCLUDED.file_name,
+                                    page_number = EXCLUDED.page_number,
+                                    zoom_factor = EXCLUDED.zoom_factor,
+                                    anchor_x    = EXCLUDED.anchor_x,
+                                    anchor_y    = EXCLUDED.anchor_y,
+                                    updated_at  = now();";
+
+            AddParameter(cmd, "@equip_name", equipName);
+            AddParameter(cmd, "@info_page_kind", model.InfoPageKind.ToString());
+            AddParameter(cmd, "@file_id", model.FileId);
+            AddParameter(cmd, "@file_name", model.FileName);
+            AddParameter(cmd, "@page_number", model.PageNumber);
+            AddParameter(cmd, "@zoom_factor", model.ZoomFactor);
+            AddParameter(cmd, "@anchor_x", model.AnchorX);
+            AddParameter(cmd, "@anchor_y", model.AnchorY);
+
+            await cmd.ExecuteNonQueryAsync(ct);
         }
     }
 }
