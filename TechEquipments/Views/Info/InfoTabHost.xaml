@@ -544,6 +544,35 @@
                                     </dx:SimpleButton>
                                 </dxlc:LayoutItem>
 
+                                <!-- Delete image from DB: только для фото и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Trash.svg'}"
+                                                     Click="DeletePhotoFromDb_Click"
+                                                     ToolTip="Delete image from database"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoGeneralPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
                                 <!-- Add PDF: только для Instruction/Scheme и только в Edit mode -->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60"
@@ -601,6 +630,35 @@
                                     </dx:SimpleButton>
                                 </dxlc:LayoutItem>
 
+                                <!-- Delete PDF from DB: только для Instruction/Scheme и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Trash.svg'}"
+                                                     Click="DeleteDocumentFromDb_Click"
+                                                     ToolTip="Delete PDF from database"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoDocumentPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+                                
                                 <!-- Remember PDF position: только для Instruction/Scheme, только в Edit mode, только когда viewer реально открыт -->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60"

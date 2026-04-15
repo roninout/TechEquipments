@@ -795,6 +795,11 @@ VALUES
             var conn = db.Database.GetDbConnection();
             await EnsureConnectionOpenAsync(conn, ct);
 
+            // ВАЖНО:
+            // saved PDF position ссылается по FK на info table,
+            // поэтому для нового equipment сначала гарантируем базовую строку.
+            await EnsureInfoRowExistsAsync(conn, equipName, ct);
+
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                                 INSERT INTO {_qualifiedInfoDocumentViewTable}
@@ -840,6 +845,58 @@ VALUES
             AddParameter(cmd, "@anchor_y", model.AnchorY);
 
             await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        /// <summary>
+        /// Гарантирует наличие базовой строки equipment в info table.
+        /// Нужно для сущностей, которые ссылаются на equip_name по FK
+        /// (например, saved PDF view position), даже если карточка ещё ни разу не сохранялась вручную.
+        /// </summary>
+        private async Task EnsureInfoRowExistsAsync(DbConnection conn, string equipName, CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                                INSERT INTO {_qualifiedInfoTable}
+                                (
+                                    equip_name,
+                                    install_time,
+                                    revision_time,
+                                    updated_at
+                                )
+                                VALUES
+                                (
+                                    @equip_name,
+                                    NULL,
+                                    NULL,
+                                    now()
+                                )
+                                ON CONFLICT (equip_name)
+                                DO NOTHING;";
+
+            AddParameter(cmd, "@equip_name", equipName);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        public async Task<bool> DeleteLibraryFileAsync(InfoFileKind kind, long id, CancellationToken ct = default)
+        {
+            if (id <= 0)
+                return false;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            var table = GetLibraryTable(kind);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                                DELETE FROM {table}
+                                WHERE id = @id;";
+
+            AddParameter(cmd, "@id", id);
+
+            var affected = await cmd.ExecuteNonQueryAsync(ct);
+            return affected > 0;
         }
     }
 }

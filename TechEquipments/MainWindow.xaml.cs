@@ -1656,6 +1656,18 @@ namespace TechEquipments
         public Task Info_RestoreCurrentDocumentPositionAsync(PdfViewerControl viewer)
             => _infoController.RestoreCurrentDocumentPositionAsync(viewer);
 
+        /// <summary>
+        /// Полностью удалить выбранное фото из shared DB library.
+        /// </summary>
+        public Task Info_DeleteSelectedPhotoFromDbAsync()
+            => _infoController.DeleteSelectedPhotoFromDbAsync();
+
+        /// <summary>
+        /// Полностью удалить выбранный PDF из shared DB library.
+        /// </summary>
+        public Task Info_DeleteCurrentDocumentFromDbAsync()
+            => _infoController.DeleteCurrentDocumentFromDbAsync();
+
         #endregion
     }
 }

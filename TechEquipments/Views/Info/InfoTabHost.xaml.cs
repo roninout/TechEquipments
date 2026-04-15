@@ -55,6 +55,12 @@ namespace TechEquipments.Views.Info
             Host?.Info_RemoveSelectedPhoto();
         }
 
+        private async void DeletePhotoFromDb_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_DeleteSelectedPhotoFromDbAsync();
+        }
+
         private async void LoadDocument_Click(object sender, RoutedEventArgs e)
         {
             if (Host != null)
@@ -65,6 +71,12 @@ namespace TechEquipments.Views.Info
         {
             if (Host != null)
                 await Host.Info_RemoveCurrentDocumentAsync();
+        }
+
+        private async void DeleteDocumentFromDb_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_DeleteCurrentDocumentFromDbAsync();
         }
 
         private async void RememberPdfPosition_Click(object sender, RoutedEventArgs e)

@@ -30,5 +30,11 @@ namespace TechEquipments
         /// Сохранить/обновить позицию просмотра PDF.
         /// </summary>
         Task SaveDocumentViewStateAsync(EquipmentInfoDocumentViewStateDto model, CancellationToken ct = default);
+
+        /// <summary>
+        /// Полностью удалить файл из shared library.
+        /// ВАЖНО: из-за ON DELETE CASCADE файл автоматически отвяжется от всех equipment.
+        /// </summary>
+        Task<bool> DeleteLibraryFileAsync(InfoFileKind kind, long id, CancellationToken ct = default);
     }
 }

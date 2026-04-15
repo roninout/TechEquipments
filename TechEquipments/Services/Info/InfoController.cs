@@ -1531,5 +1531,189 @@ namespace TechEquipments
 
         #endregion
 
+        #region Delete
+
+        // Полное удаление фото из БД
+        public async Task DeleteSelectedPhotoFromDbAsync()
+        {
+            if (!_vm.IsInfoEditMode || _vm.CurrentEquipInfo == null)
+                return;
+
+            var selected =
+                _vm.SelectedInfoPhotoLibraryFile
+                ?? _vm.SelectedInfoPhotoFile;
+
+            if (selected == null || selected.Id <= 0)
+                return;
+
+            var name = string.IsNullOrWhiteSpace(selected.DisplayName)
+                ? selected.FileName
+                : selected.DisplayName;
+
+            var confirm = DXMessageBox.Show(
+                _ownerWindow,
+                "This will permanently delete the selected image from the shared database library.\n\n" +
+                "The image will also be unlinked from all equipment cards.\n\n" +
+                $"File: {name}\n\n" +
+                "Do you want to continue?",
+                "Delete image from database",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                _vm.IsInfoLoading = true;
+
+                var deleted = await _equipInfoService.DeleteLibraryFileAsync(InfoFileKind.Photo, selected.Id);
+                if (!deleted)
+                {
+                    DXMessageBox.Show(
+                        _ownerWindow,
+                        "The selected image was not found in the database.",
+                        "Delete image from database",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+
+                    return;
+                }
+
+                // Удаляем из текущей карточки
+                for (int i = _vm.CurrentEquipInfo.Photos.Count - 1; i >= 0; i--)
+                {
+                    if (_vm.CurrentEquipInfo.Photos[i].Id == selected.Id)
+                        _vm.CurrentEquipInfo.Photos.RemoveAt(i);
+                }
+
+                NormalizeSortOrder(_vm.CurrentEquipInfo.Photos, _vm.CurrentEquipInfo.EquipName);
+
+                // Удаляем из общей library-коллекции текущего type group
+                for (int i = _vm.AvailableInfoPhotoLibrary.Count - 1; i >= 0; i--)
+                {
+                    if (_vm.AvailableInfoPhotoLibrary[i].Id == selected.Id)
+                        _vm.AvailableInfoPhotoLibrary.RemoveAt(i);
+                }
+
+                _vm.SelectedInfoPhotoFile = _vm.CurrentEquipInfo.Photos.FirstOrDefault();
+                SelectPhotoLibraryFileById(_vm.SelectedInfoPhotoFile?.Id ?? 0);
+
+                SyncCheckedSelectionsFromCurrentModel();
+                SyncPhotoLibraryFlagsFromCurrentModel();
+                await EnsureSelectedPhotoLoadedAsync();
+
+                _vm.InfoStatusText = "Image deleted from database.";
+            }
+            catch (Exception ex)
+            {
+                _vm.InfoStatusText = $"Delete image error: {ex.Message}";
+                DXMessageBox.Show(
+                    _ownerWindow,
+                    ex.Message,
+                    "Delete image from database",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                _vm.IsInfoLoading = false;
+            }
+        }
+
+        // Полное удаление PDF из БД
+        public async Task DeleteCurrentDocumentFromDbAsync()
+        {
+            if (!_vm.IsInfoEditMode || !_vm.IsInfoDocumentPage)
+                return;
+
+            var selected = GetCurrentSelectedDocument();
+            if (selected == null || selected.Id <= 0)
+                return;
+
+            var kind = _vm.CurrentInfoPage == InfoPageKind.Scheme
+                ? InfoFileKind.Scheme
+                : InfoFileKind.Instruction;
+
+            var name = string.IsNullOrWhiteSpace(selected.DisplayName)
+                ? selected.FileName
+                : selected.DisplayName;
+
+            var confirm = DXMessageBox.Show(
+                _ownerWindow,
+                "This will permanently delete the selected PDF from the shared database library.\n\n" +
+                "The PDF will also be unlinked from all equipment cards.\n\n" +
+                $"File: {name}\n\n" +
+                "Do you want to continue?",
+                "Delete PDF from database",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                _vm.IsInfoLoading = true;
+
+                var deleted = await _equipInfoService.DeleteLibraryFileAsync(kind, selected.Id);
+                if (!deleted)
+                {
+                    DXMessageBox.Show(
+                        _ownerWindow,
+                        "The selected PDF was not found in the database.",
+                        "Delete PDF from database",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+
+                    return;
+                }
+
+                var currentDocs = GetCurrentDocumentCollection();
+                for (int i = currentDocs.Count - 1; i >= 0; i--)
+                {
+                    if (currentDocs[i].Id == selected.Id)
+                        currentDocs.RemoveAt(i);
+                }
+
+                NormalizeSortOrder(currentDocs, _vm.CurrentEquipInfo?.EquipName ?? "");
+
+                var library = GetLibraryCollection(kind);
+                for (int i = library.Count - 1; i >= 0; i--)
+                {
+                    if (library[i].Id == selected.Id)
+                        library.RemoveAt(i);
+                }
+
+                var newSelected = currentDocs.FirstOrDefault();
+                SetCurrentSelectedDocument(newSelected);
+
+                _vm.CurrentInfoDocumentPreviewPath = null;
+                _vm.InfoDocumentMessage = "";
+                _vm.IsInfoDocumentExportVisible = false;
+
+                SyncCheckedSelectionsFromCurrentModel();
+
+                await PrepareCurrentDocumentAsync();
+
+                _vm.InfoStatusText = "PDF deleted from database.";
+            }
+            catch (Exception ex)
+            {
+                _vm.InfoStatusText = $"Delete PDF error: {ex.Message}";
+                DXMessageBox.Show(
+                    _ownerWindow,
+                    ex.Message,
+                    "Delete PDF from database",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                _vm.IsInfoLoading = false;
+            }
+        }
+
+        #endregion
     }
 }
