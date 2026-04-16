@@ -32,6 +32,10 @@ namespace TechEquipments.ViewModels
                     case nameof(ShellViewModel.BottomText):
                     case nameof(ShellViewModel.IsCtApiConnected):
                     case nameof(ShellViewModel.CtApiStatusText):
+                    case nameof(ShellViewModel.IsGlobalProgressActive):
+                    case nameof(ShellViewModel.GlobalProgressText):
+                    case nameof(ShellViewModel.GlobalProgressDone):
+                    case nameof(ShellViewModel.GlobalProgressTotal):
                         RaiseBottomBarComputed();
                         break;
                 }
@@ -140,6 +144,7 @@ namespace TechEquipments.ViewModels
         public bool IsBottomLoading =>
             EquipmentList.IsEquipListLoading ||
             Database.IsDbLoading ||
+            Shell.IsGlobalProgressActive ||
             (!Shell.UseParamAreaOverlay &&
              SelectedMainTab == MainTabKind.Param &&
              Shell.IsParamCenterLoading);
@@ -150,6 +155,11 @@ namespace TechEquipments.ViewModels
             {
                 if (EquipmentList.IsEquipListLoading)
                     return EquipListText;
+
+                if (Shell.IsGlobalProgressActive)
+                    return string.IsNullOrWhiteSpace(Shell.GlobalProgressText)
+                        ? "Working..."
+                        : Shell.GlobalProgressText;
 
                 if (!Shell.UseParamAreaOverlay &&
                     SelectedMainTab == MainTabKind.Param &&
@@ -164,6 +174,22 @@ namespace TechEquipments.ViewModels
 
         public bool IsBottomStatusVisible => IsBottomLoading || !Shell.IsCtApiConnected;
 
+        public bool IsBottomProgressVisible =>
+                    EquipmentList.IsEquipListLoading ||
+                    Database.IsDbLoading ||
+                    Shell.IsGlobalProgressActive ||
+                    (!Shell.UseParamAreaOverlay &&
+                     SelectedMainTab == MainTabKind.Param &&
+                     Shell.IsParamCenterLoading);
+
+        public bool BottomProgressIsIndeterminate =>
+                    (Database.IsDbLoading && !EquipmentList.IsEquipListLoading && !Shell.IsGlobalProgressActive)
+                    || ((!Shell.UseParamAreaOverlay &&
+                         SelectedMainTab == MainTabKind.Param &&
+                         Shell.IsParamCenterLoading &&
+                         !EquipmentList.IsEquipListLoading &&
+                         !Shell.IsGlobalProgressActive));
+
         public string BottomStatusText =>
             !Shell.IsCtApiConnected && !string.IsNullOrWhiteSpace(Shell.CtApiStatusText)
                 ? Shell.CtApiStatusText
@@ -172,23 +198,33 @@ namespace TechEquipments.ViewModels
         public Brush BottomStatusBrush =>
             !Shell.IsCtApiConnected ? Brushes.Red : Brushes.Black;
 
-        public bool IsBottomProgressVisible =>
-            EquipmentList.IsEquipListLoading ||
-            Database.IsDbLoading ||
-            (!Shell.UseParamAreaOverlay &&
-             SelectedMainTab == MainTabKind.Param &&
-             Shell.IsParamCenterLoading);
+        public int BottomProgressMaximum
+        {
+            get
+            {
+                if (EquipmentList.IsEquipListLoading)
+                    return EquipListMax;
 
-        public bool BottomProgressIsIndeterminate =>
-            ((!Shell.UseParamAreaOverlay &&
-              SelectedMainTab == MainTabKind.Param &&
-              Shell.IsParamCenterLoading &&
-              !EquipmentList.IsEquipListLoading))
-            || (Database.IsDbLoading && !EquipmentList.IsEquipListLoading);
+                if (Shell.IsGlobalProgressActive)
+                    return Math.Max(1, Shell.GlobalProgressTotal);
 
-        public int BottomProgressMaximum => EquipmentList.IsEquipListLoading ? EquipListMax : 100;
+                return 100;
+            }
+        }
 
-        public int BottomProgressValue => EquipmentList.IsEquipListLoading ? EquipmentList.EquipListDone : 0;
+        public int BottomProgressValue
+        {
+            get
+            {
+                if (EquipmentList.IsEquipListLoading)
+                    return EquipmentList.EquipListDone;
+
+                if (Shell.IsGlobalProgressActive)
+                    return Shell.GlobalProgressDone;
+
+                return 0;
+            }
+        }
 
         private void RaiseSelectedTabComputed()
         {

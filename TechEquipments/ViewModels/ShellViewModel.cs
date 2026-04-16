@@ -82,6 +82,34 @@
             set => SetProperty(ref _bottomText, value);
         }
 
+        private bool _isGlobalProgressActive;
+        public bool IsGlobalProgressActive
+        {
+            get => _isGlobalProgressActive;
+            set => SetProperty(ref _isGlobalProgressActive, value);
+        }
+
+        private string _globalProgressText = "";
+        public string GlobalProgressText
+        {
+            get => _globalProgressText;
+            set => SetProperty(ref _globalProgressText, value);
+        }
+
+        private int _globalProgressDone;
+        public int GlobalProgressDone
+        {
+            get => _globalProgressDone;
+            set => SetProperty(ref _globalProgressDone, value);
+        }
+
+        private int _globalProgressTotal;
+        public int GlobalProgressTotal
+        {
+            get => _globalProgressTotal;
+            set => SetProperty(ref _globalProgressTotal, value);
+        }
+
         private bool _isCtApiConnected = true;
         public bool IsCtApiConnected
         {

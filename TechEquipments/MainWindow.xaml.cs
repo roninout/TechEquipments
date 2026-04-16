@@ -1391,6 +1391,13 @@ namespace TechEquipments
             OnPropertyChanged(nameof(Param_ShowGenerateQrButton));
         }
 
+        /// <summary>
+        /// Массовая генерация QR-кодов по всему оборудованию.
+        /// Используется из Application settings.
+        /// </summary>
+        public Task<BulkQrGenerateResult> Settings_GenerateAllQrAsync()
+            => _qrController.GenerateAllQrAsync();
+
         #endregion
 
         #region INotifyPropertyChanged
@@ -1539,7 +1546,9 @@ namespace TechEquipments
             {
                 var settingsPath = GetRuntimeAppSettingsPath();
 
-                var wnd = new AppSettingsWindow(settingsPath)
+                var wnd = new AppSettingsWindow(
+                    settingsPath,
+                    generateAllQrAsync: Settings_GenerateAllQrAsync)
                 {
                     Owner = this
                 };

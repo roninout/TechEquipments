@@ -35,20 +35,40 @@
                  FontFamily="Consolas"
                  FontSize="13" />
 
-        <!-- Кнопки -->
-        <StackPanel Grid.Row="4"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right">
-            <dx:SimpleButton Width="120"
-                             Margin="0,0,8,0"
-                             Content="Apply"
-                             Style="{StaticResource AppButtonStyle}"
-                             Click="Apply_Click"/>
+        <!-- Нижняя панель: Кнопки -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-            <dx:SimpleButton Width="120"
-                             Content="Cancel"
+            <!-- Слева: массовая генерация QR -->
+            <dx:SimpleButton x:Name="GenerateAllQrButton"
+                             Grid.Column="0"
+                             Width="180"
+                             HorizontalAlignment="Left"
+                             Content="Generate all QR"
                              Style="{StaticResource AppButtonStyle}"
-                             Click="Cancel_Click"/>
-        </StackPanel>
+                             Click="GenerateAllQr_Click"/>
+
+            <!-- Справа: Apply / Cancel -->
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <dx:SimpleButton x:Name="ApplyButton"
+                                 Width="120"
+                                 Margin="0,0,8,0"
+                                 Content="Apply"
+                                 Style="{StaticResource AppButtonStyle}"
+                                 Click="Apply_Click"/>
+
+                <dx:SimpleButton x:Name="CancelButton"
+                                 Width="120"
+                                 Content="Cancel"
+                                 Style="{StaticResource AppButtonStyle}"
+                                 Click="Cancel_Click"/>
+            </StackPanel>
+        </Grid>
+
     </Grid>
 </dx:ThemedWindow>

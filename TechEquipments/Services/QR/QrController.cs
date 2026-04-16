@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Collections.Generic;
 using TechEquipments.ViewModels;
 
 namespace TechEquipments
@@ -92,6 +93,83 @@ namespace TechEquipments
             catch (Exception ex)
             {
                 DXMessageBox.Show(_ownerWindow, ex.ToString(), "QR generate error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Массово генерирует QR-коды по всему уже загруженному списку оборудования.
+        /// Прогресс выводится в нижний progress bar MainWindow.
+        /// </summary>
+        public async Task<BulkQrGenerateResult> GenerateAllQrAsync()
+        {
+            var result = new BulkQrGenerateResult();
+
+            try
+            {
+                var items = _vm.EquipmentList.Equipments
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+                    .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .OrderBy(x => x.Station)
+                    .ThenBy(x => x.TypeGroup.ToString())
+                    .ThenBy(x => x.Equipment)
+                    .ToList();
+
+                result.Total = items.Count;
+
+                if (items.Count == 0)
+                {
+                    _vm.Shell.BottomText = "No equipment found for QR generation.";
+                    return result;
+                }
+
+                BeginGlobalProgress(items.Count, "Generating QR codes...");
+
+                for (int i = 0; i < items.Count; i++)
+                {
+                    var item = items[i];
+                    var text = (item.Equipment ?? "").Trim();
+
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            result.Failed++;
+                            UpdateGlobalProgress(i + 1, items.Count, "Skipping empty equipment name...");
+                            continue;
+                        }
+
+                        var outputDir = GetQrOutputDirectory(item);
+                        var expectedPath = _qrCodeService.GetExpectedQrPngPath(text, outputDirectory: outputDir);
+
+                        if (File.Exists(expectedPath))
+                        {
+                            result.Skipped++;
+                            UpdateGlobalProgress(i + 1, items.Count, $"Skipping existing QR: {text}");
+                            continue;
+                        }
+
+                        await _qrCodeService.GenerateQrPngAsync(text, outputDirectory: outputDir);
+
+                        result.Created++;
+                        UpdateGlobalProgress(i + 1, items.Count, $"Generated QR: {text}");
+                    }
+                    catch
+                    {
+                        result.Failed++;
+                        UpdateGlobalProgress(i + 1, items.Count, $"Failed: {text}");
+                    }
+                }
+
+                _vm.Shell.BottomText =
+                    $"QR generation finished. Created: {result.Created}, skipped: {result.Skipped}, failed: {result.Failed}.";
+
+                _notifyParamQrUiChanged();
+                return result;
+            }
+            finally
+            {
+                EndGlobalProgress();
             }
         }
 
@@ -244,6 +322,41 @@ namespace TechEquipments
                 safe = safe.Substring(0, 60);
 
             return safe;
+        }
+
+        private void BeginGlobalProgress(int total, string text)
+        {
+            _vm.Shell.IsGlobalProgressActive = true;
+            _vm.Shell.GlobalProgressTotal = Math.Max(1, total);
+            _vm.Shell.GlobalProgressDone = 0;
+            _vm.Shell.GlobalProgressText = text;
+        }
+
+        private void UpdateGlobalProgress(int done, int total, string text)
+        {
+            _vm.Shell.GlobalProgressTotal = Math.Max(1, total);
+            _vm.Shell.GlobalProgressDone = Math.Min(done, total);
+            _vm.Shell.GlobalProgressText = $"{text} ({done}/{total})";
+        }
+
+        private void EndGlobalProgress()
+        {
+            _vm.Shell.IsGlobalProgressActive = false;
+            _vm.Shell.GlobalProgressDone = 0;
+            _vm.Shell.GlobalProgressTotal = 0;
+            _vm.Shell.GlobalProgressText = "";
+        }
+
+        private string GetQrOutputDirectory(EquipListBoxItem item)
+        {
+            var baseDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "QRCodes");
+
+            var stationPart = MakeSafePathPart(item.Station);
+            var groupPart = item.TypeGroup != EquipTypeGroup.All
+                ? MakeSafePathPart(item.TypeGroup.ToString())
+                : MakeSafePathPart(EquipTypeRegistry.GetGroup(item.Type ?? "").ToString());
+
+            return Path.Combine(baseDir, stationPart, groupPart);
         }
     }
 }

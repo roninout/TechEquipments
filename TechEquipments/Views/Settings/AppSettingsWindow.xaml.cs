@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace TechEquipments.Views.Settings
@@ -19,13 +20,17 @@ namespace TechEquipments.Views.Settings
     public partial class AppSettingsWindow : DevExpress.Xpf.Core.ThemedWindow
     {
         private readonly string _settingsPath;
+        private readonly Func<Task<BulkQrGenerateResult>>? _generateAllQrAsync;
 
-        public AppSettingsWindow(string settingsPath)
+        public AppSettingsWindow(string settingsPath, Func<Task<BulkQrGenerateResult>>? generateAllQrAsync = null)
         {
             InitializeComponent();
 
             _settingsPath = settingsPath ?? throw new ArgumentNullException(nameof(settingsPath));
+            _generateAllQrAsync = generateAllQrAsync;
+
             PathTextBlock.Text = $"File: {_settingsPath}";
+            GenerateAllQrButton.IsEnabled = _generateAllQrAsync != null;
 
             LoadSettingsText();
         }
@@ -111,6 +116,49 @@ namespace TechEquipments.Views.Settings
 
             // Просто факт Build() уже означает, что формат читается.
             _ = cfg;
+        }
+
+        /// <summary>
+        /// Массовая генерация QR-кодов по всему оборудованию.
+        /// Прогресс идёт в нижнюю панель MainWindow.
+        /// </summary>
+        private async void GenerateAllQr_Click(object sender, RoutedEventArgs e)
+        {
+            if (_generateAllQrAsync == null)
+                return;
+
+            try
+            {
+                GenerateAllQrButton.IsEnabled = false;
+                ApplyButton.IsEnabled = false;
+                CancelButton.IsEnabled = false;
+
+                var result = await _generateAllQrAsync();
+
+                DXMessageBox.Show(
+                    "QR codes generation is complete.\n\n" +
+                    $"Total: {result.Total}\n" +
+                    $"Created: {result.Created}\n" +
+                    $"Skipped: {result.Skipped}\n" +
+                    $"Failed: {result.Failed}",
+                    "QR generation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                DXMessageBox.Show(
+                    $"Failed to generate QR codes.\n\n{ex.Message}",
+                    "QR generation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                GenerateAllQrButton.IsEnabled = true;
+                ApplyButton.IsEnabled = true;
+                CancelButton.IsEnabled = true;
+            }
         }
 
         /// <summary>
