@@ -4,14 +4,24 @@ namespace TechEquipments
 {
     public sealed class EquipListBoxItem
     {
+        /// <summary>
+        /// Service field для TreeListControl.
+        /// Строковый ключ, чтобы совпадал с XAML RootValue="0".
+        /// </summary>
+        public string NodeId { get; set; } = "";
+
+        /// <summary>
+        /// 0 = root node.
+        /// </summary>
+        public string ParentNodeId { get; set; } = "0";
+
+        public bool IsGroup { get; set; }
+
         public string Equipment { get; init; } = "";
         public string Tag { get; init; } = "";
         public string Type { get; set; } = "";
         public string Station { get; set; } = "";
 
-        /// <summary>
-        /// Уже нормализованная группа типа. Нужна для фильтрации и для отображения значка в списке.
-        /// </summary>
         public EquipTypeGroup TypeGroup { get; set; } = EquipTypeGroup.All;
 
         private string _description = "";
@@ -21,7 +31,9 @@ namespace TechEquipments
             set => _description = CleanDescription(value);
         }
 
-        public override string ToString() => Equipment;
+        public string DisplayText => IsGroup ? (string.IsNullOrWhiteSpace(Description) ? Equipment : Description) : Equipment;
+
+        public override string ToString() => DisplayText;
 
         private static string CleanDescription(string? s)
         {
@@ -34,7 +46,6 @@ namespace TechEquipments
             {
                 s = s.Substring(2, s.Length - 3).Trim();
 
-                // снять кавычки, если есть
                 if (s.Length >= 2 && ((s[0] == '"' && s[^1] == '"') || (s[0] == '\'' && s[^1] == '\'')))
                     s = s.Substring(1, s.Length - 2).Trim();
             }

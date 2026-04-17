@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Threading;
 using TechEquipments.ViewModels;
+using DevExpress.Xpf.Grid;
 
 namespace TechEquipments
 {
@@ -24,7 +25,7 @@ namespace TechEquipments
     {
         private readonly MainViewModel _vm;
         private readonly Dispatcher _dispatcher;
-        private readonly Func<ListBox?> _getListBox;
+        private readonly Func<TreeListControl?> _getTreeList;
 
         public ICollectionView EquipmentsView { get; private set; } = null!;
 
@@ -37,11 +38,11 @@ namespace TechEquipments
         private EquipmentListViewModel EquipVm => _vm.EquipmentList;
         public int EquipmentsCount => EquipVm.Equipments.Count;
 
-        public EquipmentListController(MainViewModel vm, Dispatcher dispatcher, Func<ListBox?> getListBox)
+        public EquipmentListController(MainViewModel vm, Dispatcher dispatcher, Func<TreeListControl?> getTreeList)
         {
             _vm = vm ?? throw new ArgumentNullException(nameof(vm));
             _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
-            _getListBox = getListBox ?? throw new ArgumentNullException(nameof(getListBox));
+            _getTreeList = getTreeList ?? throw new ArgumentNullException(nameof(getTreeList));
 
             _searchTimer = new DispatcherTimer(
                 TimeSpan.FromMilliseconds(150),
@@ -180,7 +181,7 @@ namespace TechEquipments
 
                 _dispatcher.BeginInvoke(new Action(() =>
                 {
-                    _getListBox()?.ScrollIntoView(match);
+                    ScrollEquipmentIntoView(match);
                 }), DispatcherPriority.Background);
             }
             finally
@@ -359,7 +360,7 @@ namespace TechEquipments
 
                 _dispatcher.BeginInvoke(new Action(() =>
                 {
-                    _getListBox()?.ScrollIntoView(match);
+                    ScrollEquipmentIntoView(match);
                 }), DispatcherPriority.Background);
 
                 return FilterSelectionResult.Selected(selectedEquip, equipNameChanged);
@@ -388,6 +389,27 @@ namespace TechEquipments
 
             public static FilterSelectionResult Selected(string selectedEquipName, bool equipNameChanged)
                 => new(true, equipNameChanged, selectedEquipName);
+        }
+
+        /// <summary>
+        /// Прокрутка выбранного equipment в TreeListControl.
+        /// Для мягкой миграции используем поиск row по data object.
+        /// </summary>
+        private void ScrollEquipmentIntoView(EquipListBoxItem? item)
+        {
+            if (item == null)
+                return;
+
+            var tree = _getTreeList();
+            if (tree == null)
+                return;
+
+            var rowHandle = tree.FindRow(item);
+            if (rowHandle < 0)
+                return;
+
+            tree.View.FocusedRowHandle = rowHandle;
+            tree.View.ScrollIntoView(rowHandle);
         }
     }
 }

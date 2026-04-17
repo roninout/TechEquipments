@@ -779,4 +779,38 @@ DataContext = EquipTypeGroup (enum)
         </Style.Triggers>
     </Style>
 
+    <!--
+    Шаблон ячейки TreeList оборудования.
+    DataContext = EditGridCellData -> RowData.Row = EquipListBoxItem
+    -->
+    <DataTemplate x:Key="EquipmentTreeCellTemplate">
+        <Border Padding="10,4"
+            Background="Transparent">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Image Grid.Column="0"
+                   Tag="{Binding RowData.Row.TypeGroup}"
+                   Style="{StaticResource EquipTypeIconImageStyle}"/>
+
+                <TextBlock Grid.Column="1"
+                       VerticalAlignment="Center"
+                       FontSize="14"
+                       Text="{Binding RowData.Row.DisplayText}"
+                       TextTrimming="CharacterEllipsis">
+                    <TextBlock.ToolTip>
+                        <StackPanel>
+                            <TextBlock Text="{Binding RowData.Row.Equipment}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding RowData.Row.Type}"/>
+                            <TextBlock Text="{Binding RowData.Row.Description}" TextWrapping="Wrap" MaxWidth="320"/>
+                        </StackPanel>
+                    </TextBlock.ToolTip>
+            </TextBlock>
+            </Grid>
+        </Border>
+    </DataTemplate>
+
 </ResourceDictionary>

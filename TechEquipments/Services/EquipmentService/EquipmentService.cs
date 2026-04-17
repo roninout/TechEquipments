@@ -381,6 +381,7 @@ namespace TechEquipments
             progress?.Report((done, total));
 
             var result = new List<EquipListBoxItem>(sourceItems.Count);
+            int nextNodeId = 1;
 
             foreach (var item in sourceItems)
             {
@@ -400,6 +401,13 @@ namespace TechEquipments
 
                 int dot = item.Equipment.IndexOf('.');
                 item.Station = dot > 0 ? item.Equipment.Substring(0, dot) : "";
+
+                // Первый этап миграции на TreeList:
+                // пока все equipment — просто root nodes.
+                item.NodeId = nextNodeId.ToString();
+                item.ParentNodeId = "0";
+                item.IsGroup = false;
+                nextNodeId++;
 
                 result.Add(item);
 

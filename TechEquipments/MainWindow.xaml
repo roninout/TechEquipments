@@ -112,14 +112,49 @@
                     </Grid>
 
                     <!-- Список оборудования -->
-                    <ListBox x:Name="EquipmentsListBox"
-                             Grid.Row="1"
-                             ItemsSource="{Binding EquipmentsView}"
-                             ItemTemplate="{StaticResource EquipmentListItemTemplate}"
-                             ItemContainerStyle="{StaticResource AppListBoxItemStyle}"
-                             SelectedItem="{Binding Vm.EquipmentList.SelectedListBoxEquipment}"
-                             SelectionChanged="Equipments_SelectionChanged"/>
-                    
+                    <dxg:TreeListControl x:Name="EquipmentsTree"
+                                         Grid.Row="1"
+                                         ItemsSource="{Binding EquipmentsView}"
+                                         AutoGenerateColumns="None"
+                                         SelectedItem="{Binding Vm.EquipmentList.SelectedListBoxEquipment, Mode=TwoWay}"
+                                         SelectedItemChanged="EquipmentsTree_SelectedItemChanged"
+                                         BorderThickness="0">
+
+                        <dxg:TreeListControl.View>
+                            <dxg:TreeListView x:Name="EquipmentsTreeView"
+                                              TreeDerivationMode="Selfreference"
+                                              KeyFieldName="NodeId"
+                                              ParentFieldName="ParentNodeId"
+                                              RootValue="0"
+                                              AutoExpandAllNodes="True"
+                                              AutoWidth="True"
+                                              ShowColumnHeaders="False"
+                                              ShowIndicator="False"
+                                              ShowHorizontalLines="False"
+                                              ShowVerticalLines="False"
+                                              AllowPerPixelScrolling="True"
+                                              AllowSorting="False"
+                                              AllowColumnMoving="False"
+                                              AllowColumnFiltering="False"
+                                              AllowEditing="False"
+                                              NavigationStyle="Row"/>
+                        </dxg:TreeListControl.View>
+
+                        <dxg:TreeListControl.Columns>
+                            <dxg:TreeListColumn FieldName="DisplayText"
+                                                Width="*"
+                                                MinWidth="120"
+                                                AllowEditing="False"
+                                                AllowSorting="False"
+                                                AllowFocus="False">
+                                <dxg:TreeListColumn.CellTemplate>
+                                    <StaticResource ResourceKey="EquipmentTreeCellTemplate"/>
+                                </dxg:TreeListColumn.CellTemplate>
+                                
+                            </dxg:TreeListColumn>
+                        </dxg:TreeListControl.Columns>
+                    </dxg:TreeListControl>
+
                     <!-- Версия -->
                     <TextBlock Grid.Row="2"                               
                                Margin="0,6,-10,-5"

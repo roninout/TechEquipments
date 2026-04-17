@@ -1,6 +1,7 @@
 ﻿using CtApi;
 using DevExpress.Xpf.Charts;
 using DevExpress.Xpf.Core;
+using DevExpress.Xpf.Grid;
 using DevExpress.Xpf.PdfViewer;
 using Microsoft.Extensions.Configuration;
 using System;
@@ -200,7 +201,7 @@ namespace TechEquipments
             Vm.Shell.UseParamAreaOverlay = _configService.GetValue("Global:Overlay", true);
 
             // ===== controllers =====
-            _equipmentListController = new EquipmentListController(Vm, Dispatcher, () => EquipmentsListBox);
+            _equipmentListController = new EquipmentListController(Vm, Dispatcher, () => EquipmentsTree);
 
             _dbController = new DbController(dbService, Vm, Dispatcher);
 
@@ -764,7 +765,7 @@ namespace TechEquipments
         /// <summary>
         /// Клик по списку: подставляет оборудование в поле поиска (если сейчас не печатаем).
         /// </summary>
-        private void Equipments_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void EquipmentsTree_SelectedItemChanged(object sender, SelectedItemChangedEventArgs e)
         {
             // Защита от “программного” выделения при поиске/скролле
             if (_equipmentListController.SuppressEquipNameFromSelection)
