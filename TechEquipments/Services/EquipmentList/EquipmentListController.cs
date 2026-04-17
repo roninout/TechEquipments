@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Threading;
 using TechEquipments.ViewModels;
@@ -36,7 +35,7 @@ namespace TechEquipments
         public bool SuppressEquipNameFromSelection => _suppressEquipNameFromSelection;
 
         private EquipmentListViewModel EquipVm => _vm.EquipmentList;
-        public int EquipmentsCount => EquipVm.Equipments.Count;
+        public int EquipmentsCount => EquipVm.Equipments.Count(x => x.IsPlainEquipmentNode);
 
         public EquipmentListController(MainViewModel vm, Dispatcher dispatcher, Func<TreeListControl?> getTreeList)
         {
@@ -71,9 +70,8 @@ namespace TechEquipments
             });
 
             foreach (var group in items
-                .Where(x => !string.IsNullOrWhiteSpace(x.Station))
-                .GroupBy(x => x.Station.Trim(), StringComparer.OrdinalIgnoreCase)
-                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+                .Where(x => x.IsPlainEquipmentNode && !string.IsNullOrWhiteSpace(x.Station))
+                .GroupBy(x => x.Station.Trim(), StringComparer.OrdinalIgnoreCase))
             {
                 // Берём первое подходящее equipment этой станции.
                 // Предпочитаем то, у которого есть Tag.
@@ -129,7 +127,7 @@ namespace TechEquipments
 
             EquipmentsView.SortDescriptions.Clear();
             EquipmentsView.SortDescriptions.Add(
-                new SortDescription(nameof(EquipListBoxItem.Equipment), ListSortDirection.Ascending));
+                new SortDescription(nameof(EquipListBoxItem.DisplayText), ListSortDirection.Ascending));
         }
 
         public void InitSearchTimer()
@@ -196,18 +194,29 @@ namespace TechEquipments
                 return false;
 
             var st = (EquipVm.SelectedStation ?? "").Trim();
-
-            // Пустое/битое значение станции трактуем как All,
-            // чтобы offline-иконки и временные UI-состояния
-            // не могли опустошить ListBox.
             if (string.IsNullOrWhiteSpace(st))
                 st = "All";
 
-            if (!string.Equals(st, "All", StringComparison.OrdinalIgnoreCase))
+            // Режим Equipment:
+            // показываем только group nodes и child nodes.
+            if (EquipVm.SelectedTypeFilter == EquipTypeGroup.Equipment)
             {
-                if (!string.Equals((it.Station ?? "").Trim(), st, StringComparison.OrdinalIgnoreCase))
-                    return false;
+                if (it.IsGroup)
+                    return GroupHasVisibleChildren(it, st);
+
+                if (it.IsEquipmentChildNode)
+                    return StationMatches(it, st);
+
+                return false;
             }
+
+            // Для всех остальных режимов работаем как раньше,
+            // но только по обычным equipment nodes.
+            if (!it.IsPlainEquipmentNode)
+                return false;
+
+            if (!StationMatches(it, st))
+                return false;
 
             if (EquipVm.SelectedTypeFilter == EquipTypeGroup.All)
                 return true;
@@ -410,6 +419,25 @@ namespace TechEquipments
 
             tree.View.FocusedRowHandle = rowHandle;
             tree.View.ScrollIntoView(rowHandle);
+        }
+
+        private static bool StationMatches(EquipListBoxItem it, string selectedStation)
+        {
+            if (string.Equals(selectedStation, "All", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return string.Equals(
+                (it.Station ?? "").Trim(),
+                selectedStation,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool GroupHasVisibleChildren(EquipListBoxItem groupNode, string selectedStation)
+        {
+            return EquipVm.Equipments.Any(x =>
+                x.IsEquipmentChildNode &&
+                string.Equals(x.ParentNodeId, groupNode.NodeId, StringComparison.OrdinalIgnoreCase) &&
+                StationMatches(x, selectedStation));
         }
     }
 }

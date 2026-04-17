@@ -15,11 +15,11 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using TechEquipments.ViewModels;
 using TechEquipments.Views.Settings;
+using DevExpress.Xpf.Grid;
 
 namespace TechEquipments
 {
@@ -61,6 +61,9 @@ namespace TechEquipments
         #region Fields
 
         #region Left pane: search + filters + selection
+
+        private EquipListBoxItem? _lastNavigableEquipmentSelection;
+        private bool _suppressTreeSelectionRollback;
 
         public ICollectionView EquipmentsView => _equipmentListController.EquipmentsView;
 
@@ -763,29 +766,57 @@ namespace TechEquipments
         #region ListBox
 
         /// <summary>
-        /// Клик по списку: подставляет оборудование в поле поиска (если сейчас не печатаем).
+        /// Клик по дереву оборудования.
+        /// Child nodes работают как обычный equipment.
+        /// Parent group nodes пока ничего не делают и откатывают selection назад.
         /// </summary>
         private void EquipmentsTree_SelectedItemChanged(object sender, SelectedItemChangedEventArgs e)
         {
-            // Защита от “программного” выделения при поиске/скролле
+            if (_suppressTreeSelectionRollback)
+                return;
+
+            var selected = EquipVm.SelectedListBoxEquipment;
+
+            // На этом шаге parent group node ничего не делает.
+            // Возвращаем прежний navigable equipment selection.
+            if (selected?.IsGroup == true)
+            {
+                if (_lastNavigableEquipmentSelection != null &&
+                    !ReferenceEquals(selected, _lastNavigableEquipmentSelection))
+                {
+                    _suppressTreeSelectionRollback = true;
+                    try
+                    {
+                        EquipVm.SelectedListBoxEquipment = _lastNavigableEquipmentSelection;
+                    }
+                    finally
+                    {
+                        _suppressTreeSelectionRollback = false;
+                    }
+                }
+
+                return;
+            }
+
+            // Запоминаем последнее "навигационное" оборудование
+            if (selected != null)
+                _lastNavigableEquipmentSelection = selected;
+
+            // Защита от программного выделения
             if (_equipmentListController.SuppressEquipNameFromSelection)
                 return;
 
-            // Если фокус в поиске — значит печатаем, не трогаем выбор/вкладки
             if (SearchTextEdit?.IsKeyboardFocusWithin == true)
                 return;
 
-            // Во время восстановления состояния — не запускаем автодействия
             if (_uiStateController.IsRestoringState)
                 return;
 
-            // Подставляем выбранное оборудование в строку поиска (EquipName)
             if (EquipVm.SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
             {
                 EquipVm.EquipName = eq;
                 _equipmentListController.RememberEquipmentForCurrentFilters(eq);
 
-                // Param overlay нужен только если реально работаем с Param.
                 if (SelectedMainTab == MainTabKind.Param)
                     BeginParamOverlayWait(eq, Vm.Param.CurrentParamSettingsPage, needMainModel: true);
                 else
@@ -796,21 +827,18 @@ namespace TechEquipments
                 StopParamOverlayWait();
             }
 
-            // Если сейчас открыта Info — остаёмся на Info и просто перегружаем карточку.
             if (SelectedMainTab == MainTabKind.Info)
             {
                 _ = _infoController.LoadCurrentAsync();
                 return;
             }
 
-            // Старое поведение: клик по списку переводит на Param.
             if (SelectedMainTab != MainTabKind.Param)
             {
                 SelectedMainTabIndex = (int)MainTabKind.Param;
                 return;
             }
 
-            // Если Param уже открыт — делаем "мгновенное обновление"
             StartParamPolling();
         }
 

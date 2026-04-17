@@ -342,7 +342,7 @@ namespace TechEquipments
         }
 
         // Возвращает список названий всех Equipment
-        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null,CancellationToken ct = default)
+        public async Task<List<EquipListBoxItem>> GetAllEquipmentsAsync(IProgress<(int done, int total)>? progress = null, CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -354,9 +354,23 @@ namespace TechEquipments
                 "TAG",
                 "COMMENT");
 
+            var findEquipTags = await _ctApiService.FindAsync(
+                "Tag",
+                "Tag=*_EQUIP",
+                "",
+                "EQUIPMENT",
+                "TAG",
+                "COMMENT");
+
             ct.ThrowIfCancellationRequested();
 
-            var sourceItems = findHashTags
+            static string GetStationName(string equipmentName)
+            {
+                int dot = equipmentName.IndexOf('.');
+                return dot > 0 ? equipmentName.Substring(0, dot) : "";
+            }
+
+            var sourceEquipments = findHashTags
                 .Where(d =>
                     d.TryGetValue("EQUIPMENT", out var eq) &&
                     !string.IsNullOrWhiteSpace(eq) &&
@@ -368,7 +382,6 @@ namespace TechEquipments
                     Tag = (d.TryGetValue("TAG", out var tag) ? tag : "").Trim(),
                     Description = (d.TryGetValue("COMMENT", out var comment) ? comment : "").Trim()
                 })
-                // уникальность по имени оборудования: предпочитаем строку с непустым Description
                 .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g
                     .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.Description))
@@ -376,20 +389,44 @@ namespace TechEquipments
                 .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            int total = sourceItems.Count;
+            var sourceGroups = findEquipTags
+                .Where(d =>
+                    d.TryGetValue("EQUIPMENT", out var eq) &&
+                    !string.IsNullOrWhiteSpace(eq) &&
+                    d.TryGetValue("TAG", out var tag) &&
+                    !string.IsNullOrWhiteSpace(tag))
+                .Select(d => new EquipListBoxItem
+                {
+                    Equipment = (d.TryGetValue("EQUIPMENT", out var eq) ? eq : "").Trim(),
+                    Tag = (d.TryGetValue("TAG", out var tag) ? tag : "").Trim(),
+                    Description = (d.TryGetValue("COMMENT", out var comment) ? comment : "").Trim(),
+                    Type = "Equipment",
+                    TypeGroup = EquipTypeGroup.Equipment,
+                    Station = GetStationName((d.TryGetValue("EQUIPMENT", out var eq2) ? eq2 : "").Trim()),
+                    IsGroup = true,
+                    IsEquipmentChildNode = false
+                })
+                .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g
+                    .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.Description))
+                    .First())
+                .OrderBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            int total = sourceEquipments.Count + sourceGroups.Count;
             int done = 0;
             progress?.Report((done, total));
 
-            var result = new List<EquipListBoxItem>(sourceItems.Count);
-            int nextNodeId = 1;
+            // 1) Обычное оборудование (плоские root nodes, как раньше)
+            var plainEquipments = new List<EquipListBoxItem>(sourceEquipments.Count);
+            int nextPlainId = 1;
 
-            foreach (var item in sourceItems)
+            foreach (var item in sourceEquipments)
             {
                 ct.ThrowIfCancellationRequested();
 
                 item.Type = await _ctApiService.CicodeAsync($"EquipGetProperty(\"{item.Equipment}\",\"Type\", 3)");
 
-                // Отсекаем все типы, которые приложение не поддерживает.
                 if (!EquipTypeRegistry.IsSupportedType(item.Type))
                 {
                     done++;
@@ -398,18 +435,79 @@ namespace TechEquipments
                 }
 
                 item.TypeGroup = EquipTypeRegistry.GetGroup(item.Type);
+                item.Station = GetStationName(item.Equipment);
 
-                int dot = item.Equipment.IndexOf('.');
-                item.Station = dot > 0 ? item.Equipment.Substring(0, dot) : "";
-
-                // Первый этап миграции на TreeList:
-                // пока все equipment — просто root nodes.
-                item.NodeId = nextNodeId.ToString();
+                item.NodeId = $"EQ:{nextPlainId++}";
                 item.ParentNodeId = "0";
                 item.IsGroup = false;
-                nextNodeId++;
+                item.IsEquipmentChildNode = false;
 
-                result.Add(item);
+                plainEquipments.Add(item);
+
+                done++;
+                progress?.Report((done, total));
+            }
+
+            // lookup по обычному оборудованию
+            var plainLookup = plainEquipments
+                .GroupBy(x => x.Equipment, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            // 2) Финальный список: обычное оборудование + группы + child nodes
+            var result = new List<EquipListBoxItem>(plainEquipments.Count + sourceGroups.Count * 4);
+            result.AddRange(plainEquipments);
+
+            int nextGroupId = 1;
+
+            foreach (var group in sourceGroups)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                group.NodeId = $"GRP:{nextGroupId++}";
+                group.ParentNodeId = "0";
+                group.IsGroup = true;
+                group.IsEquipmentChildNode = false;
+                group.Type = "Equipment";
+                group.TypeGroup = EquipTypeGroup.Equipment;
+                group.Station = GetStationName(group.Equipment);
+
+                result.Add(group);
+
+                List<string> refs;
+                try
+                {
+                    refs = await GetEquipRef(group.Equipment, "EquipGroup", "Value") ?? new List<string>();
+                }
+                catch
+                {
+                    refs = new List<string>();
+                }
+
+                int childIndex = 1;
+
+                foreach (var equipName in refs
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!plainLookup.TryGetValue(equipName, out var src))
+                        continue;
+
+                    result.Add(new EquipListBoxItem
+                    {
+                        Equipment = src.Equipment,
+                        Tag = src.Tag,
+                        Type = src.Type,
+                        Station = src.Station,
+                        TypeGroup = src.TypeGroup,
+                        Description = src.Description,
+
+                        NodeId = $"CH:{group.NodeId}:{childIndex++}",
+                        ParentNodeId = group.NodeId,
+                        IsGroup = false,
+                        IsEquipmentChildNode = true
+                    });
+                }
 
                 done++;
                 progress?.Report((done, total));

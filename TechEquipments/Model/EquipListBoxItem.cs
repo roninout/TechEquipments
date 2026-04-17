@@ -4,25 +4,45 @@ namespace TechEquipments
 {
     public sealed class EquipListBoxItem
     {
-        /// <summary>
-        /// Service field для TreeListControl.
-        /// Строковый ключ, чтобы совпадал с XAML RootValue="0".
-        /// </summary>
-        public string NodeId { get; set; } = "";
-
-        /// <summary>
-        /// 0 = root node.
-        /// </summary>
-        public string ParentNodeId { get; set; } = "0";
-
-        public bool IsGroup { get; set; }
-
         public string Equipment { get; init; } = "";
         public string Tag { get; init; } = "";
         public string Type { get; set; } = "";
         public string Station { get; set; } = "";
 
+        /// <summary>
+        /// Реальная группа типа оборудования.
+        /// Для обычных equipment/child nodes это Motor/VGD/...
+        /// Для group nodes это Equipment.
+        /// </summary>
         public EquipTypeGroup TypeGroup { get; set; } = EquipTypeGroup.All;
+
+        /// <summary>
+        /// Service field для TreeListControl.
+        /// Строковый ключ, чтобы спокойно работать с RootValue="0".
+        /// </summary>
+        public string NodeId { get; set; } = "";
+
+        /// <summary>
+        /// 0 = root node.
+        /// Для child nodes = NodeId родительской группы.
+        /// </summary>
+        public string ParentNodeId { get; set; } = "0";
+
+        /// <summary>
+        /// Родительская группа Equipment (_EQUIP).
+        /// </summary>
+        public bool IsGroup { get; set; }
+
+        /// <summary>
+        /// Дочерний equipment под Equipment-group.
+        /// Это не "новое оборудование", а ссылка на уже существующее.
+        /// </summary>
+        public bool IsEquipmentChildNode { get; set; }
+
+        /// <summary>
+        /// Обычный equipment из плоского списка.
+        /// </summary>
+        public bool IsPlainEquipmentNode => !IsGroup && !IsEquipmentChildNode;
 
         private string _description = "";
         public string Description
@@ -31,7 +51,12 @@ namespace TechEquipments
             set => _description = CleanDescription(value);
         }
 
-        public string DisplayText => IsGroup ? (string.IsNullOrWhiteSpace(Description) ? Equipment : Description) : Equipment;
+        /// <summary>
+        /// Текст узла для дерева.
+        /// Пока и для group node, и для обычного equipment показываем Equipment.
+        /// Description остаётся только в tooltip / для будущего использования.
+        /// </summary>
+        public string DisplayText => Equipment;
 
         public override string ToString() => DisplayText;
 

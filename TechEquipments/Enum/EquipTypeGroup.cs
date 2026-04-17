@@ -10,14 +10,15 @@ namespace TechEquipments
     public enum EquipTypeGroup
     {
         All = 0,
-        VGA,    // ValveA
-        VGA_EL, // ValveA_EL
-        VGD,    // ValveD
-        Motor,  // Motor
-        AI,     // AnalogIn, AnalogInCalc
-        DI,     // DigitalIn
-        DO,     // DigitalOut
-        Atv     // Atv
+        Equipment, //  EquipGroup -> child equipment
+        VGA,       // ValveA
+        VGA_EL,    // ValveA_EL
+        VGD,       // ValveD
+        Motor,     // Motor
+        AI,        // AnalogIn, AnalogInCalc
+        DI,        // DigitalIn
+        DO,        // DigitalOut
+        Atv        // Atv
     }
 
     public static class EquipTypeRegistry
@@ -28,6 +29,8 @@ namespace TechEquipments
         // ЕДИНЫЙ СПРАВОЧНИК: Type -> (Group + как декодировать bitCode)
         private static readonly Dictionary<string, Meta> Map = new(StringComparer.OrdinalIgnoreCase)
         {
+            ["Equipment"] = new(EquipTypeGroup.Equipment, _ => ""),
+
             ["DigitalIn"] = new(EquipTypeGroup.DI, c => SoeEventMapper.GetDescriptionOrEmpty<DiSoeCode>(c)),
             ["DigitalInSiemens"] = new(EquipTypeGroup.DI, c => SoeEventMapper.GetDescriptionOrEmpty<DiSoeCode>(c)),
             
@@ -84,6 +87,7 @@ namespace TechEquipments
         #region Type
         private static readonly IReadOnlyDictionary<EquipTypeGroup, Brush> _bg = new Dictionary<EquipTypeGroup, Brush>
         {
+            { EquipTypeGroup.Equipment, MakeRgb(218, 226, 238) },
             { EquipTypeGroup.VGA,   MakeRgb(159, 223, 191) },
             { EquipTypeGroup.VGD,   MakeRgb(223, 191, 159) },
             { EquipTypeGroup.Motor, MakeRgb(229, 229, 229) },

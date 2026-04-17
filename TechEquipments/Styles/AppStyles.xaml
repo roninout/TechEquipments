@@ -72,6 +72,11 @@
         <Setter Property="Source" Value="{dx:DXImage 'Office2013/Actions/Show_16x16.png'}"/>
 
         <Style.Triggers>
+            <!-- Equipment -->
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.Equipment}">
+                <Setter Property="Source" Value="{dx:DXImage 'Office2013/Reports/GroupFieldCollection_16x16.png'}"/>
+            </DataTrigger>
+
             <!-- AI -->
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:EquipTypeGroup.AI}">
                 <Setter Property="Source" Value="{dx:DXImage 'Office2013/Chart/FullStackedLine_16x16.png'}"/>
@@ -785,7 +790,7 @@ DataContext = EquipTypeGroup (enum)
     -->
     <DataTemplate x:Key="EquipmentTreeCellTemplate">
         <Border Padding="10,4"
-            Background="Transparent">
+                Background="Transparent">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="24"/>
@@ -793,14 +798,14 @@ DataContext = EquipTypeGroup (enum)
                 </Grid.ColumnDefinitions>
 
                 <Image Grid.Column="0"
-                   Tag="{Binding RowData.Row.TypeGroup}"
-                   Style="{StaticResource EquipTypeIconImageStyle}"/>
+                       Tag="{Binding RowData.Row.TypeGroup}"
+                       Style="{StaticResource EquipTypeIconImageStyle}"/>
 
                 <TextBlock Grid.Column="1"
-                       VerticalAlignment="Center"
-                       FontSize="14"
-                       Text="{Binding RowData.Row.DisplayText}"
-                       TextTrimming="CharacterEllipsis">
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Text="{Binding RowData.Row.DisplayText}"
+                           TextTrimming="CharacterEllipsis">
                     <TextBlock.ToolTip>
                         <StackPanel>
                             <TextBlock Text="{Binding RowData.Row.Equipment}" FontWeight="SemiBold"/>
@@ -808,7 +813,7 @@ DataContext = EquipTypeGroup (enum)
                             <TextBlock Text="{Binding RowData.Row.Description}" TextWrapping="Wrap" MaxWidth="320"/>
                         </StackPanel>
                     </TextBlock.ToolTip>
-            </TextBlock>
+                </TextBlock>
             </Grid>
         </Border>
     </DataTemplate>

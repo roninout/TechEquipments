@@ -67,7 +67,7 @@
                     <!-- Верх: Station + Type в одной строке -->
                     <Grid Grid.Row="0" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="8"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
@@ -128,6 +128,7 @@
                                               RootValue="0"
                                               AutoExpandAllNodes="True"
                                               AutoWidth="True"
+                                              RowMinHeight="36"
                                               ShowColumnHeaders="False"
                                               ShowIndicator="False"
                                               ShowHorizontalLines="False"
@@ -150,7 +151,6 @@
                                 <dxg:TreeListColumn.CellTemplate>
                                     <StaticResource ResourceKey="EquipmentTreeCellTemplate"/>
                                 </dxg:TreeListColumn.CellTemplate>
-                                
                             </dxg:TreeListColumn>
                         </dxg:TreeListControl.Columns>
                     </dxg:TreeListControl>
