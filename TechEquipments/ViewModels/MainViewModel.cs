@@ -50,6 +50,10 @@ namespace TechEquipments.ViewModels
                     case nameof(EquipmentListViewModel.IsEquipListLoading):
                         RaiseBottomBarComputed();
                         break;
+
+                    case nameof(EquipmentListViewModel.SelectedListBoxEquipment):
+                        Raise(nameof(IsGroupNodeSelected), nameof(IsSoeTabVisible));
+                        break;
                 }
             };
 
@@ -128,6 +132,10 @@ namespace TechEquipments.ViewModels
         public bool ShowMainActionButton => SelectedMainTab != MainTabKind.Param && SelectedMainTab != MainTabKind.Info;
 
         // ===== bottom bar =====
+
+        public bool IsGroupNodeSelected => EquipmentList.SelectedListBoxEquipment?.IsGroup == true;
+
+        public bool IsSoeTabVisible => !IsGroupNodeSelected;
 
         public int EquipListMax => Math.Max(1, EquipmentList.EquipListTotal);
 

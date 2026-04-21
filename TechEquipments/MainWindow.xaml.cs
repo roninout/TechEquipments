@@ -753,6 +753,10 @@ namespace TechEquipments
                     break;
 
                 case MainTabKind.SOE:
+                    // Для group node SOE скрыт и не загружается
+                    if (EquipVm.SelectedListBoxEquipment?.IsGroup == true)
+                        return;
+
                     await LoadSoeFromUiAsync();
                     break;
 
@@ -768,41 +772,19 @@ namespace TechEquipments
         /// <summary>
         /// Клик по дереву оборудования.
         /// Child nodes работают как обычный equipment.
-        /// Parent group nodes пока ничего не делают и откатывают selection назад.
+        /// Group nodes тоже теперь разрешены:
+        /// - Param пока не загружаем (оставляем пустым),
+        /// - Info/DB работают по Equipment группы,
+        /// - SOE скрывается/не загружается.
         /// </summary>
         private void EquipmentsTree_SelectedItemChanged(object sender, SelectedItemChangedEventArgs e)
         {
-            if (_suppressTreeSelectionRollback)
-                return;
-
             var selected = EquipVm.SelectedListBoxEquipment;
 
-            // На этом шаге parent group node ничего не делает.
-            // Возвращаем прежний navigable equipment selection.
-            if (selected?.IsGroup == true)
-            {
-                if (_lastNavigableEquipmentSelection != null &&
-                    !ReferenceEquals(selected, _lastNavigableEquipmentSelection))
-                {
-                    _suppressTreeSelectionRollback = true;
-                    try
-                    {
-                        EquipVm.SelectedListBoxEquipment = _lastNavigableEquipmentSelection;
-                    }
-                    finally
-                    {
-                        _suppressTreeSelectionRollback = false;
-                    }
-                }
-
-                return;
-            }
-
-            // Запоминаем последнее "навигационное" оборудование
+            // Запоминаем последнее navigable equipment/group selection
             if (selected != null)
                 _lastNavigableEquipmentSelection = selected;
 
-            // Защита от программного выделения
             if (_equipmentListController.SuppressEquipNameFromSelection)
                 return;
 
@@ -812,13 +794,71 @@ namespace TechEquipments
             if (_uiStateController.IsRestoringState)
                 return;
 
-            if (EquipVm.SelectedListBoxEquipment?.Equipment is string eq && !string.IsNullOrWhiteSpace(eq))
-            {
-                EquipVm.EquipName = eq;
-                _equipmentListController.RememberEquipmentForCurrentFilters(eq);
+            var selectedEquipName = selected?.Equipment?.Trim() ?? "";
 
+            if (!string.IsNullOrWhiteSpace(selectedEquipName))
+            {
+                EquipVm.EquipName = selectedEquipName;
+                _equipmentListController.RememberEquipmentForCurrentFilters(selectedEquipName);
+            }
+
+            // ===== GROUP NODE =====
+            if (selected?.IsGroup == true)
+            {
+                StopParamPolling();
+                StopParamOverlayWait();
+
+                // Param пока оставляем пустым
+                Vm.Param.CurrentParamModel = null;
+                Vm.Param.ParamDiRows.Clear();
+                Vm.Param.ParamDoRows.Clear();
+                Vm.Param.ParamPlcRows.Clear();
+                Vm.Param.DryRunModel = null;
+                Vm.Param.LinkedAtvModel = null;
+                Vm.Param.CurrentParamSettingsPage = ParamSettingsPage.None;
+                Vm.Shell.ParamStatusText = "";
+
+                // Если сейчас открыта Info — перегружаем Info для group equipment
+                if (SelectedMainTab == MainTabKind.Info)
+                {
+                    _ = _infoController.LoadCurrentAsync();
+                    return;
+                }
+
+                // Если сейчас открыты DB tabs — оставляем пользователя на них
+                // и перегружаем по Equipment группы
+                if (SelectedMainTab == MainTabKind.OperationActions ||
+                    SelectedMainTab == MainTabKind.AlarmHistory)
+                {
+                    _ = _dbController.LoadCurrentTabAsync(force: true);
+                    return;
+                }
+
+                // Если пользователь был на SOE — уводим с неё,
+                // потому что для group node SOE сейчас недоступен
+                if (SelectedMainTab == MainTabKind.SOE)
+                {
+                    SelectedMainTabIndex = (int)MainTabKind.Param;
+                    return;
+                }
+
+                // Для остальных случаев старое поведение:
+                // остаёмся/переходим на Param, но она будет пустой.
+                if (SelectedMainTab != MainTabKind.Param)
+                {
+                    SelectedMainTabIndex = (int)MainTabKind.Param;
+                    return;
+                }
+
+                return;
+            }
+
+            // ===== NORMAL EQUIPMENT / CHILD NODE =====
+
+            if (!string.IsNullOrWhiteSpace(selectedEquipName))
+            {
                 if (SelectedMainTab == MainTabKind.Param)
-                    BeginParamOverlayWait(eq, Vm.Param.CurrentParamSettingsPage, needMainModel: true);
+                    BeginParamOverlayWait(selectedEquipName, Vm.Param.CurrentParamSettingsPage, needMainModel: true);
                 else
                     StopParamOverlayWait();
             }
@@ -830,6 +870,19 @@ namespace TechEquipments
             if (SelectedMainTab == MainTabKind.Info)
             {
                 _ = _infoController.LoadCurrentAsync();
+                return;
+            }
+
+            if (SelectedMainTab == MainTabKind.OperationActions ||
+                SelectedMainTab == MainTabKind.AlarmHistory)
+            {
+                _ = _dbController.LoadCurrentTabAsync(force: true);
+                return;
+            }
+
+            if (SelectedMainTab == MainTabKind.SOE)
+            {
+                _ = LoadSoeFromUiAsync();
                 return;
             }
 
@@ -938,6 +991,13 @@ namespace TechEquipments
         /// <summary>SOE: читаем имя из UI (выделение/поиск) и загружаем таблицу</summary>
         private async Task LoadSoeFromUiAsync()
         {
+            if (EquipVm.SelectedListBoxEquipment?.IsGroup == true)
+            {
+                equipmentSOEDtos.Clear();
+                StopParamOverlayWait();
+                return;
+            }
+
             if (Vm.Shell.IsLoading) return;
 
             var text = (EquipVm.EquipName ?? "").Trim();

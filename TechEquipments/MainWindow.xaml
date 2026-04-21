@@ -388,7 +388,7 @@
                     </dx:DXTabItem>
 
                     <!-- ============ SOE TAB ============ -->
-                    <dx:DXTabItem>
+                    <dx:DXTabItem Visibility="{Binding Vm.IsSoeTabVisible, Converter={StaticResource BoolToVis}}">
 
                         <dx:DXTabItem.Header>
                             <StackPanel Orientation="Horizontal">
