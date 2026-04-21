@@ -425,7 +425,7 @@
 
                         <dxlc:LayoutGroup Orientation="Vertical">
 
-                            <Grid MinHeight="520" Margin="6,0,0,0">
+                            <Grid Margin="6,0,0,0">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>

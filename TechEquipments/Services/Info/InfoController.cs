@@ -217,10 +217,13 @@ namespace TechEquipments
 
         public async Task SaveAsync()
         {
-            var notesChanged = !string.Equals(_notesAtEditStart ?? "", _vm.CurrentEquipInfo.Notes ?? "", StringComparison.Ordinal);
-
             if (_vm.CurrentEquipInfo == null)
                 return;
+
+            var notesChanged = !string.Equals(
+                _notesAtEditStart ?? "",
+                _vm.CurrentEquipInfo.Notes ?? "",
+                StringComparison.Ordinal);
 
             var equipName = ResolveSelectedEquipForInfo();
             if (string.IsNullOrWhiteSpace(equipName))
@@ -246,8 +249,7 @@ namespace TechEquipments
                 _vm.CurrentEquipInfo.UpdatedAt = now;
 
                 if (notesChanged)
-                    _vm.CurrentEquipInfo.NotesUpdatedAt =
-                        string.IsNullOrWhiteSpace(_vm.CurrentEquipInfo.Notes) ? null : now;
+                    _vm.CurrentEquipInfo.NotesUpdatedAt = now;
 
                 _notesAtEditStart = _vm.CurrentEquipInfo.Notes;
 

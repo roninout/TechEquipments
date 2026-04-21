@@ -270,7 +270,7 @@ namespace TechEquipments
             if (string.IsNullOrWhiteSpace(equipName))
                 throw new InvalidOperationException("EquipName is empty.");
 
-            var notesForDb = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes;
+            var notesForDb = model.Notes;
 
             NormalizeSortOrders(model.Photos, equipName);
             NormalizeSortOrders(model.Instructions, equipName);
