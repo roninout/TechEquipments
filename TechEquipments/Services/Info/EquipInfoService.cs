@@ -71,6 +71,8 @@ namespace TechEquipments
                                 equip_name      text PRIMARY KEY,
                                 install_time    timestamp NULL,
                                 revision_time   timestamp NULL,
+                                notes           text NULL,
+                                notes_updated_at timestamp NULL,
                                 updated_at      timestamp NOT NULL DEFAULT now()
                             );";
 
@@ -173,6 +175,19 @@ namespace TechEquipments
                                     );";
 
             await db.Database.ExecuteSqlRawAsync(sqlInfo, ct);
+            await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
+                               ADD COLUMN IF NOT EXISTS notes text NULL;", ct);
+
+            await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
+                               ADD COLUMN IF NOT EXISTS notes_updated_at timestamp NULL;", ct);
+
+            // Мягкий backfill для уже существующих записей: если notes уже есть, а notes_updated_at пустой — подставим updated_at.
+            await db.Database.ExecuteSqlRawAsync(
+                $@"UPDATE {_qualifiedInfoTable}
+                   SET notes_updated_at = updated_at
+                   WHERE notes_updated_at IS NULL
+                     AND NULLIF(BTRIM(notes), '') IS NOT NULL;", ct);
+
             await db.Database.ExecuteSqlRawAsync(sqlPhoto, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInstruction, ct);
             await db.Database.ExecuteSqlRawAsync(sqlScheme, ct);
@@ -214,14 +229,16 @@ namespace TechEquipments
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = $@"
-SELECT
-    equip_name,
-    install_time,
-    revision_time,
-    updated_at
-FROM {_qualifiedInfoTable}
-WHERE equip_name = @equip_name
-LIMIT 1;";
+                                    SELECT
+                                        equip_name,
+                                        install_time,
+                                        revision_time,
+                                        notes,
+                                        notes_updated_at,
+                                        updated_at
+                                    FROM {_qualifiedInfoTable}
+                                    WHERE equip_name = @equip_name
+                                    LIMIT 1;";
 
                 AddParameter(cmd, "@equip_name", equipName);
 
@@ -231,7 +248,9 @@ LIMIT 1;";
                     model.EquipName = reader.IsDBNull(0) ? equipName : reader.GetString(0);
                     model.InstallTime = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTime>(1);
                     model.RevisionTime = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTime>(2);
-                    model.UpdatedAt = reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTime>(3);
+                    model.Notes = reader.IsDBNull(3) ? null : reader.GetString(3);
+                    model.NotesUpdatedAt = reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTime>(4);
+                    model.UpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5);
                 }
             }
 
@@ -251,6 +270,8 @@ LIMIT 1;";
             if (string.IsNullOrWhiteSpace(equipName))
                 throw new InvalidOperationException("EquipName is empty.");
 
+            var notesForDb = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes;
+
             NormalizeSortOrders(model.Photos, equipName);
             NormalizeSortOrders(model.Instructions, equipName);
             NormalizeSortOrders(model.Schemes, equipName);
@@ -267,29 +288,46 @@ LIMIT 1;";
                 {
                     cmd.Transaction = tx;
                     cmd.CommandText = $@"
-INSERT INTO {_qualifiedInfoTable}
-(
-    equip_name,
-    install_time,
-    revision_time,
-    updated_at
-)
-VALUES
-(
-    @equip_name,
-    @install_time,
-    @revision_time,
-    now()
-)
-ON CONFLICT (equip_name)
-DO UPDATE SET
-    install_time  = EXCLUDED.install_time,
-    revision_time = EXCLUDED.revision_time,
-    updated_at    = now();";
+                                        INSERT INTO {_qualifiedInfoTable}
+                                        (
+                                            equip_name,
+                                            install_time,
+                                            revision_time,
+                                            notes,
+                                            notes_updated_at,
+                                            updated_at
+                                        )
+                                        VALUES
+                                        (
+                                            @equip_name,
+                                            @install_time,
+                                            @revision_time,
+                                            @notes,
+                                            CASE
+                                                WHEN NULLIF(BTRIM(@notes), '') IS NULL THEN NULL
+                                                ELSE now()
+                                            END,
+                                            now()
+                                        )
+                                        ON CONFLICT (equip_name)
+                                        DO UPDATE SET
+                                            install_time = EXCLUDED.install_time,
+                                            revision_time = EXCLUDED.revision_time,
+                                            notes = EXCLUDED.notes,
+                                            notes_updated_at = CASE
+                                                WHEN COALESCE({_qualifiedInfoTable}.notes, '') IS DISTINCT FROM COALESCE(EXCLUDED.notes, '')
+                                                    THEN CASE
+                                                        WHEN NULLIF(BTRIM(EXCLUDED.notes), '') IS NULL THEN NULL
+                                                        ELSE now()
+                                                    END
+                                                ELSE {_qualifiedInfoTable}.notes_updated_at
+                                            END,
+                                            updated_at = now();";
 
                     AddParameter(cmd, "@equip_name", equipName);
                     AddParameter(cmd, "@install_time", model.InstallTime);
                     AddParameter(cmd, "@revision_time", model.RevisionTime);
+                    AddParameter(cmd, "@notes", notesForDb);
 
                     await cmd.ExecuteNonQueryAsync(ct);
                 }

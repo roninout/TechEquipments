@@ -161,6 +161,8 @@ namespace TechEquipments.ViewModels
             }
         }
 
+        public bool IsInfoNotesPage => CurrentInfoPage == InfoPageKind.Notes;
+
         public EquipmentInfoFileDto? CurrentPhotoPreviewFile => IsInfoEditMode
             ? SelectedInfoPhotoLibraryFile
             : SelectedInfoPhotoFile;
@@ -188,6 +190,7 @@ namespace TechEquipments.ViewModels
                 Raise(
                     nameof(IsInfoGeneralPage),
                     nameof(IsInfoDocumentPage),
+                    nameof(IsInfoNotesPage),
                     nameof(CurrentInfoDocumentHeader),
                     nameof(CurrentInfoDocumentItems),
                     nameof(CurrentInfoSelectedDocumentFile),
@@ -206,7 +209,12 @@ namespace TechEquipments.ViewModels
             CurrentInfoPage == InfoPageKind.Scheme;
 
         public string CurrentInfoDocumentHeader =>
-            CurrentInfoPage == InfoPageKind.Scheme ? "Scheme" : "Instruction";
+            CurrentInfoPage switch
+            {
+                InfoPageKind.Instruction => "Instruction",
+                InfoPageKind.Scheme => "Scheme",
+                _ => ""
+            };
 
         public IEnumerable<EquipmentInfoFileDto> CurrentInfoDocumentItems =>
             CurrentInfoPage switch

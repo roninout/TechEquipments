@@ -27,6 +27,7 @@
     <PackageReference Include="devexpress.wpf.gauges" Version="21.2.3" />
     <PackageReference Include="devexpress.wpf.grid.core" Version="21.2.3" />
     <PackageReference Include="devexpress.wpf.layoutcontrol" Version="21.2.3" />
+    <PackageReference Include="devexpress.wpf.richedit" Version="21.2.3" />
     <PackageReference Include="DevExpress.Wpf.Themes.All" Version="21.2.*-*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="6.0.36" />
     <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="10.0.1" />

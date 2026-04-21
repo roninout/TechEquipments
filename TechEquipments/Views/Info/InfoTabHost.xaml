@@ -3,12 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
              xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+             xmlns:dxre="http://schemas.devexpress.com/winfx/2008/xaml/richedit"
              xmlns:dxpdf="http://schemas.devexpress.com/winfx/2008/xaml/pdf"
              xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
              xmlns:local="clr-namespace:TechEquipments">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <dxre:RtfToContentConverter x:Key="RtfToContentConverter"/>
     </UserControl.Resources>
 
     <dxlc:LayoutControl Margin="0">
@@ -414,6 +416,40 @@
                         </dxlc:LayoutGroup>
                     </dxlc:LayoutGroup>
 
+                    <!-- ===== NOTES ===== -->
+                    <dxlc:LayoutGroup View="GroupBox"
+                                      GroupBoxDisplayMode="Light"
+                                      Visibility="{Binding IsInfoNotesPage, Converter={StaticResource BoolToVis}}"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch">
+
+                        <dxlc:LayoutGroup Orientation="Vertical">
+
+                            <Grid MinHeight="520" Margin="6,0,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <dxre:RichEditControl Grid.Row="0"
+                                                      CommandBarStyle="Empty"
+                                                      ReadOnly="{Binding IsInfoReadOnly}"
+                                                      Content="{Binding CurrentEquipInfo.Notes, Mode=TwoWay, Converter={StaticResource RtfToContentConverter}}"/>
+
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0" HorizontalAlignment="Right">
+                                    <TextBlock Text="Last change:"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Bottom"/>
+
+                                    <TextBlock Margin="8,0,0,0"
+                                               VerticalAlignment="Bottom"
+                                               Text="{Binding CurrentEquipInfo.NotesUpdatedAtText}"/>
+                                </StackPanel>
+                            </Grid>
+
+                        </dxlc:LayoutGroup>
+                    </dxlc:LayoutGroup>
+
                 </dxlc:LayoutGroup>
 
                 <!-- ================= RIGHT ================= -->
@@ -429,14 +465,16 @@
                             <!-- Up -->
                             <StackPanel Grid.Row="0" Orientation="Vertical" VerticalAlignment="Top">
 
+                                <!--Images-->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60" Height="60" Padding="0"
-                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Spreadsheet/NameManager.svg'}"
+                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Reports/ImageAnnotation.svg'}"
                                                      Tag="{x:Static local:InfoPageKind.General}"
-                                                     Click="PageButton_Click" ToolTip="General"
+                                                     Click="PageButton_Click" ToolTip="Images"
                                                      Style="{StaticResource AppButtonStyle}" />
                                 </dxlc:LayoutItem>
 
+                                <!--Instruction-->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
                                                      GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/XAF/OutlookNavigation_Reading.svg'}"
@@ -445,6 +483,7 @@
                                                      Style="{StaticResource AppButtonStyle}" />
                                 </dxlc:LayoutItem>
 
+                                <!--Scheme-->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
                                                      GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Spreadsheet/ShowTabularFormPivotTable.svg'}"
@@ -452,6 +491,17 @@
                                                      Click="PageButton_Click" ToolTip="Scheme"
                                                      Style="{StaticResource AppButtonStyle}" />
                                 </dxlc:LayoutItem>
+                                
+                                <!--Notes-->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
+                                                     GlyphWidth="40" GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Comment.svg'}"
+                                                     Tag="{x:Static local:InfoPageKind.Notes}"
+                                                     Click="PageButton_Click"
+                                                     ToolTip="Notes"
+                                                     Style="{StaticResource AppButtonStyle}" />
+                                    </dxlc:LayoutItem>
 
                             </StackPanel>
 

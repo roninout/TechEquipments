@@ -40,6 +40,7 @@ namespace TechEquipments
 
         private int _loadCurrentRequestId;
         private bool _suppressLibrarySelectionSync;
+        private string? _notesAtEditStart;
 
         public InfoController(IEquipInfoService equipInfoService, InfoViewModel vm, EquipmentListViewModel equipmentVm, DatabaseViewModel databaseVm, Window ownerWindow, IQrScannerService qrScannerService)
         {
@@ -99,6 +100,8 @@ namespace TechEquipments
                 _vm.InfoDocumentMessage = "";
                 _vm.IsInfoDocumentExportVisible = false;
                 _vm.IsInfoEditMode = false;
+
+                _notesAtEditStart = null;
             }
 
             if (string.IsNullOrWhiteSpace(equipName))
@@ -135,6 +138,7 @@ namespace TechEquipments
                     return;
 
                 _vm.CurrentEquipInfo = info;
+                _notesAtEditStart = info.Notes;
 
                 SyncCheckedSelectionsFromCurrentModel();
                 SyncPhotoLibraryFlagsFromCurrentModel();
@@ -206,12 +210,15 @@ namespace TechEquipments
 
             SelectPhotoLibraryFileById(preferredPhotoId);
 
+            _notesAtEditStart = _vm.CurrentEquipInfo.Notes;
             _vm.IsInfoEditMode = true;
             _vm.InfoStatusText = $"Editing info: {equipName}";
         }
 
         public async Task SaveAsync()
         {
+            var notesChanged = !string.Equals(_notesAtEditStart ?? "", _vm.CurrentEquipInfo.Notes ?? "", StringComparison.Ordinal);
+
             if (_vm.CurrentEquipInfo == null)
                 return;
 
@@ -234,6 +241,15 @@ namespace TechEquipments
                 ValidateNoDuplicates(_vm.CurrentEquipInfo.Schemes, "scheme");
 
                 await _equipInfoService.SaveAsync(_vm.CurrentEquipInfo);
+
+                var now = DateTime.Now;
+                _vm.CurrentEquipInfo.UpdatedAt = now;
+
+                if (notesChanged)
+                    _vm.CurrentEquipInfo.NotesUpdatedAt =
+                        string.IsNullOrWhiteSpace(_vm.CurrentEquipInfo.Notes) ? null : now;
+
+                _notesAtEditStart = _vm.CurrentEquipInfo.Notes;
 
                 _vm.IsInfoEditMode = false;
                 _vm.InfoStatusText = $"Info saved: {equipName}";
@@ -570,13 +586,13 @@ namespace TechEquipments
             _vm.InfoDocumentMessage = "";
             _vm.IsInfoDocumentExportVisible = false;
 
-            if (page == InfoPageKind.General)
-                return;
+            if (_vm.IsInfoDocumentPage)
+            {
+                if (GetCurrentSelectedDocument() == null)
+                    SetCurrentSelectedDocument(GetCurrentDocumentCollection().FirstOrDefault());
 
-            if (GetCurrentSelectedDocument() == null)
-                SetCurrentSelectedDocument(GetCurrentDocumentCollection().FirstOrDefault());
-
-            await PrepareCurrentDocumentAsync();
+                await PrepareCurrentDocumentAsync();
+            }
         }
 
         public Task PrepareCurrentDocumentAsync()

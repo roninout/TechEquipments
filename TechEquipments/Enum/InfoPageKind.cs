@@ -7,6 +7,7 @@
     {
         General = 0,
         Instruction = 1,
-        Scheme = 2
+        Scheme = 2,
+        Notes = 3
     }
 }
