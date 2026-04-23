@@ -128,7 +128,7 @@ namespace TechEquipments
                 {
                     while (!ct.IsCancellationRequested)
                     {
-                        await RefreshWindowTitleFromSecurityAsync(ct);
+                        //await RefreshWindowTitleFromSecurityAsync(ct);
 
                         if (_vm.SelectedMainTab != MainTabKind.Param)
                         {

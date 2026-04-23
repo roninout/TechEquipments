@@ -182,6 +182,7 @@ namespace TechEquipments
 
             Vm.Shell.IsCtApiConnected = _ctApiService.IsConnectionAvailable;
             Vm.Shell.UseParamAreaOverlay = _configService.GetValue("Global:Overlay", true);
+            Vm.Shell.CurrentCtUserName = _appRuntime.DeviceName;
 
             // ===== controllers =====
             _equipmentListController = new EquipmentListController(Vm, Dispatcher, () => EquipmentsTree);

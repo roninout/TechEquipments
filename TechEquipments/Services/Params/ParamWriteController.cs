@@ -1,4 +1,5 @@
 ﻿using CtApi;
+using DevExpress.Xpf.Core;
 using DevExpress.Xpf.Editors;
 using DevExpress.XtraRichEdit.Import.Html;
 using System;
@@ -509,6 +510,19 @@ namespace TechEquipments
 
         #region Security
 
+        private async Task<bool> EnsureWritePrivilegeAsync()
+        {
+            await Task.CompletedTask;
+
+            if (_appRuntime.DevicePrivilege > 0)
+                return true;
+
+            DXMessageBox.Show("You do not have sufficient rights to modify parameters.","Access denied",
+                MessageBoxButton.OK,MessageBoxImage.Warning);
+
+            return false;
+        }
+
         /// <summary>
         /// Checks whether the current SCADA operator is allowed to write:
         /// 1) the operator name must contain the configured token (for example "Tab")
@@ -516,7 +530,7 @@ namespace TechEquipments
         /// 
         /// If access is denied, shows an English DX message and returns false.
         /// </summary>
-        private async Task<bool> EnsureWritePrivilegeAsync()
+        private async Task<bool> EnsureWriteCitectPrivilegeAsync()
         {
             try
             {

@@ -9,5 +9,6 @@
         string DeviceName { get; }
         bool IsTablet { get; }
         string AppVersion { get; }
+        int DevicePrivilege { get; }
     }
 }

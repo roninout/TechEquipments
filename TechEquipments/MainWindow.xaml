@@ -276,7 +276,7 @@
                                      Style="{StaticResource AppButtonStyle}"/>
                     <!--Visibility="{Binding ShowToolbarScanQrButton, Converter={StaticResource BoolToVis}}"/>-->
 
-                    <Image Height="40" Width="152" Margin="10,0,0,0" Stretch="Uniform" SnapsToDevicePixels="True" Source="/TIS_logo_intellegence_g.png" Cursor="Hand" MouseLeftButtonUp="Logo_MouseLeftButtonUp"/>
+                    <Image Height="40" Width="152" Margin="10,0,0,0" Stretch="Uniform" SnapsToDevicePixels="True" Source="/TIS_logo_intellegence_g.png" Cursor="Hand"/> <!--MouseLeftButtonUp="Logo_MouseLeftButtonUp"-->
                 </StackPanel>
 
                 <!-- TABS -->

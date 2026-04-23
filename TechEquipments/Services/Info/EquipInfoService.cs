@@ -990,7 +990,6 @@ VALUES
 
         private static string QuoteIdentifier(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
 
-
         public async Task EnsureDatabaseAndTablesAsync(CancellationToken ct = default)
         {
             await EnsureDatabaseExistsAsync(ct);

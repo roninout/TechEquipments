@@ -12,12 +12,14 @@ namespace TechEquipments
         public string DeviceName { get; }
         public bool IsTablet { get; }
         public string AppVersion { get; }
+        public int DevicePrivilege { get; }
 
         public AppRuntimeContext(IConfiguration config)
         {
             DeviceName = ResolveDeviceName(config);
             IsTablet = ResolveIsTablet(config);
             AppVersion = ResolveAppVersion();
+            DevicePrivilege = ResolveDevicePrivilege(config);
         }
 
         private static string ResolveDeviceName(IConfiguration config)
@@ -51,6 +53,15 @@ namespace TechEquipments
 
             var plusIndex = version.IndexOf('+');
             return plusIndex >= 0 ? version[..plusIndex] : version;
+        }
+
+        private static int ResolveDevicePrivilege(IConfiguration config)
+        {
+            if (!int.TryParse(config["Global:DevicePrivilege"], out var value))
+                value = 1;
+
+            // Пока поддерживаем только 0 и 1.
+            return value <= 0 ? 0 : 1;
         }
     }
 }
