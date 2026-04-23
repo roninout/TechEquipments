@@ -19,7 +19,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using TechEquipments.ViewModels;
 using TechEquipments.Views.Settings;
-using DevExpress.Xpf.Grid;
 
 namespace TechEquipments
 {
@@ -64,6 +63,7 @@ namespace TechEquipments
 
         private EquipListBoxItem? _lastNavigableEquipmentSelection;
         private bool _suppressTreeSelectionRollback;
+        private bool _suppressStartupTreeSelectionSideEffects;
 
         public ICollectionView EquipmentsView => _equipmentListController.EquipmentsView;
 
@@ -353,24 +353,33 @@ namespace TechEquipments
                 });
 
                 var items = await _equipmentService.GetAllEquipmentsAsync(progress, ct);
+                await ApplyFavoriteFlagsAsync(items, ct);
 
-                _equipmentListController.ReplaceLoadedEquipments(items);
-                RestartStationHealthMonitor();
-
-                // Если на старте использовали ExternalTag —
-                // сначала выставляем Station/TypeGroup,
-                // а уже потом один раз нормализуем selection.
-                if (_uiStateController.StartupUsedExternalTag &&
-                    !string.IsNullOrWhiteSpace(_uiStateController.StartupExternalTag))
+                _suppressStartupTreeSelectionSideEffects = true;
+                try
                 {
-                    _qrController.TryApplyStationTypeFiltersFromQr(_uiStateController.StartupExternalTag);
-                }
+                    _equipmentListController.ReplaceLoadedEquipments(items);
+                    RestartStationHealthMonitor();
 
-                // ВАЖНО:
-                // на этапе startup-load только нормализуем selection,
-                // но не запускаем Param polling / Info load.
-                // Это будет сделано один раз позже в OnTabActivatedLikeSearchAsync(force: true).
-                RestoreOrSelectEquipmentAfterFilterChanged(suppressAutoActivation: true);
+                    // Если на старте использовали ExternalTag —
+                    // сначала выставляем Station/TypeGroup,
+                    // а уже потом один раз нормализуем selection.
+                    if (_uiStateController.StartupUsedExternalTag && !string.IsNullOrWhiteSpace(_uiStateController.StartupExternalTag))
+                    {
+                        _qrController.TryApplyStationTypeFiltersFromQr(_uiStateController.StartupExternalTag);
+                    }
+
+                    // На startup-load только нормализуем selection,
+                    // без автозагрузки Param/Info.
+                    RestoreOrSelectEquipmentAfterFilterChanged(suppressAutoActivation: true);
+
+                    // Даём TreeList завершить собственную внутреннюю инициализацию selection.
+                    await Dispatcher.Yield(DispatcherPriority.Background);
+                }
+                finally
+                {
+                    _suppressStartupTreeSelectionSideEffects = false;
+                }
 
                 Vm.Shell.BottomText = $"Equipments: {_equipmentListController.EquipmentsCount}";
             }
@@ -534,14 +543,13 @@ namespace TechEquipments
                 if (!usedExt)
                     await _uiStateController.RestoreStateAsync();
 
-                // Загружаем equipment list, но без лишних startup side-effects.
-                await LoadEquipmentsListAsync();
-
-                // DB — мягкая деградация: если недоступна, просто отключаем DB/Info сценарии.
+                // Сначала проверяем DB и готовим storage для Info/Favorites.
                 await _dbController.CheckDbAsync();
                 await EnsureInfoStorageReadyAsync();
 
-                // Один финальный startup-activation по фактически выбранной вкладке.
+                // Потом грузим equipment list, чтобы favorites уже могли подтянуться из БД.
+                await LoadEquipmentsListAsync();
+
                 await OnTabActivatedLikeSearchAsync(force: true);
             };
         }
@@ -709,6 +717,30 @@ namespace TechEquipments
                 return;
             }
 
+            //if (!result.HasVisibleItems)
+            //{
+            //    StopParamOverlayWait();
+
+            //    if (SelectedMainTab == MainTabKind.Param)
+            //    {
+            //        StopParamPolling();
+
+            //        Vm.Param.CurrentParamModel = null;
+            //        Vm.Param.ParamDiRows.Clear();
+            //        Vm.Param.ParamDoRows.Clear();
+            //        Vm.Param.ParamPlcRows.Clear();
+            //        Vm.Param.DryRunModel = null;
+            //        Vm.Param.LinkedAtvModel = null;
+            //        Vm.Param.CurrentParamSettingsPage = ParamSettingsPage.None;
+            //        Vm.Shell.ParamStatusText = "";
+            //    }
+
+            //    if (!suppressAutoActivation && !_uiStateController.IsRestoringState && SelectedMainTab == MainTabKind.Info)
+            //        _ = _infoController.LoadCurrentAsync();
+
+            //    return;
+            //}
+
             if (_uiStateController.IsRestoringState || suppressAutoActivation)
                 return;
 
@@ -786,6 +818,9 @@ namespace TechEquipments
                 _lastNavigableEquipmentSelection = selected;
 
             if (_equipmentListController.SuppressEquipNameFromSelection)
+                return;
+
+            if (_suppressStartupTreeSelectionSideEffects)
                 return;
 
             if (SearchTextEdit?.IsKeyboardFocusWithin == true)
@@ -1317,6 +1352,58 @@ namespace TechEquipments
             return (selected.Equipment ?? "", selected.Type ?? "", selected.Description ?? "");
         }
 
+        public async Task Param_SetFavoriteAsync(bool isFavorite)
+        {
+            var selected = EquipVm.SelectedListBoxEquipment;
+            if (selected == null || selected.IsGroup)
+                return;
+
+            var equipName = (selected.Equipment ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            var oldValue = !isFavorite;
+
+            try
+            {
+                if (!Vm.Database.IsDbConnected)
+                    throw new InvalidOperationException("DB is disconnected.");
+
+                await _equipInfoService.SetFavoriteAsync(equipName, isFavorite);
+
+                SetFavoriteFlagInLoadedEquipments(equipName, isFavorite);
+
+                if (Vm.Info.CurrentEquipInfo != null &&
+                    string.Equals((Vm.Info.CurrentEquipInfo.EquipName ?? "").Trim(), equipName, StringComparison.OrdinalIgnoreCase))
+                {
+                    Vm.Info.CurrentEquipInfo.IsFavorite = isFavorite;
+                }
+
+                if (EquipVm.SelectedTypeFilter == EquipTypeGroup.Favorites)
+                    RestoreOrSelectEquipmentAfterFilterChanged();
+
+                Vm.Shell.ParamStatusText = isFavorite
+                    ? $"Added to favorites: {equipName}"
+                    : $"Removed from favorites: {equipName}";
+            }
+            catch (Exception ex)
+            {
+                SetFavoriteFlagInLoadedEquipments(equipName, oldValue);
+
+                if (Vm.Info.CurrentEquipInfo != null &&
+                    string.Equals((Vm.Info.CurrentEquipInfo.EquipName ?? "").Trim(), equipName, StringComparison.OrdinalIgnoreCase))
+                {
+                    Vm.Info.CurrentEquipInfo.IsFavorite = oldValue;
+                }
+
+                if (EquipVm.SelectedTypeFilter == EquipTypeGroup.Favorites)
+                    _equipmentListController.ApplyFilters();
+
+                Vm.Shell.ParamStatusText = $"Favorite save error: {ex.Message}";
+                DXMessageBox.Show(this, ex.Message, "Favorite", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         #endregion
 
         #region Param polling
@@ -1605,6 +1692,54 @@ namespace TechEquipments
                 _equipListCts?.Cancel();
             }
             catch { }
+        }
+
+        private async Task ApplyFavoriteFlagsAsync(IReadOnlyCollection<EquipListBoxItem> items, CancellationToken ct)
+        {
+            if (items == null || items.Count == 0)
+                return;
+
+            IReadOnlyCollection<string> favoriteNames = Array.Empty<string>();
+
+            if (Vm.Database.IsDbConnected)
+            {
+                try
+                {
+                    favoriteNames = await _equipInfoService.GetFavoriteEquipNamesAsync(ct);
+                }
+                catch
+                {
+                    favoriteNames = Array.Empty<string>();
+                }
+            }
+
+            var favoriteSet = new HashSet<string>(favoriteNames, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in items)
+            {
+                var equipName = (item.Equipment ?? "").Trim();
+
+                item.IsFavorite =
+                    !item.IsGroup &&
+                    !string.IsNullOrWhiteSpace(equipName) &&
+                    favoriteSet.Contains(equipName);
+            }
+        }
+
+        private void SetFavoriteFlagInLoadedEquipments(string equipName, bool isFavorite)
+        {
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            foreach (var item in EquipVm.Equipments)
+            {
+                if (item.IsGroup)
+                    continue;
+
+                if (string.Equals((item.Equipment ?? "").Trim(), equipName, StringComparison.OrdinalIgnoreCase))
+                    item.IsFavorite = isFavorite;
+            }
         }
 
         #endregion

@@ -6,6 +6,7 @@
                     xmlns:local="clr-namespace:TechEquipments.Views.Param"
                     xmlns:models="clr-namespace:TechEquipments"
                     xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+                    xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
                     mc:Ignorable="d"
                     d:DesignHeight="400" d:DesignWidth="700">
 
@@ -97,13 +98,55 @@
                 <TextBlock Grid.Row="0" Grid.Column="1" Padding="0, 4"
                            Text="{Binding Vm.EquipmentList.SelectedListBoxEquipment.Equipment, RelativeSource={RelativeSource AncestorType=Window}, TargetNullValue='-'}" />
 
-                <dx:SimpleButton Grid.Row="0" Grid.Column="1" Margin="10,0,0,0" Width="20" Height="20"
+                <!--<dx:SimpleButton Grid.Row="0" Grid.Column="1" Margin="10,0,0,0" Width="20" Height="20"
                                  Padding="0" GlyphWidth="15" GlyphHeight="15"
                                  Click="GenerateQr_Click"
                                  ToolTip="Generate QR"
                                  Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"
                                  Style="{StaticResource AppButtonStyle}"
-                                 Visibility="{Binding DataContext.Param_ShowGenerateQrButton, RelativeSource={RelativeSource AncestorType=Window},Converter={StaticResource BoolToVis}}"/>
+                                 Visibility="{Binding DataContext.Param_ShowGenerateQrButton, RelativeSource={RelativeSource AncestorType=Window},Converter={StaticResource BoolToVis}}"/>-->
+
+                <!-- Favorite -->
+                <ToggleButton Margin="12,0,0,0"
+                              Width="24"
+                              Height="24"
+                              Padding="0"
+                              Cursor="Hand"
+                              ToolTip="Favorite"
+                              IsChecked="{Binding Vm.EquipmentList.SelectedListBoxEquipment.IsFavorite,
+                                                  RelativeSource={RelativeSource AncestorType=Window},
+                                                  Mode=TwoWay,
+                                                  TargetNullValue=False}"
+                              Click="FavoriteToggle_Click">
+                    <ToggleButton.Template>
+                        <ControlTemplate TargetType="{x:Type ToggleButton}">
+                            <Border Background="Transparent">
+                                <TextBlock x:Name="StarGlyph"
+                                            Text="☆"
+                                            FontSize="18"
+                                            Foreground="#7F7F7F"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"/>
+                            </Border>
+
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="StarGlyph" Property="Text" Value="★"/>
+                                    <Setter TargetName="StarGlyph" Property="Foreground" Value="#C79A00"/>
+                                </Trigger>
+
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="StarGlyph" Property="FontSize" Value="19"/>
+                                </Trigger>
+
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="StarGlyph" Property="Opacity" Value="0.45"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </ToggleButton.Template>
+                </ToggleButton>
+
             </StackPanel>
 
             <!-- Type -->

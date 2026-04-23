@@ -45,6 +45,14 @@ namespace TechEquipments
             set => SetField(ref _notes, value);
         }
 
+        private bool _isFavorite;
+
+        public bool IsFavorite
+        {
+            get => _isFavorite;
+            set => SetField(ref _isFavorite, value);
+        }
+
         public DateTime? NotesUpdatedAt
         {
             get => _notesUpdatedAt;

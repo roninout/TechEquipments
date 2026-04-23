@@ -68,12 +68,13 @@ namespace TechEquipments
             var sqlInfo = $@"
                             CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
                             (
-                                equip_name      text PRIMARY KEY,
-                                install_time    timestamp NULL,
-                                revision_time   timestamp NULL,
-                                notes           text NULL,
+                                equip_name       text PRIMARY KEY,
+                                install_time     timestamp NULL,
+                                revision_time    timestamp NULL,
+                                notes            text NULL,
                                 notes_updated_at timestamp NULL,
-                                updated_at      timestamp NOT NULL DEFAULT now()
+                                is_favorite      boolean NOT NULL DEFAULT false,
+                                updated_at       timestamp NOT NULL DEFAULT now()
                             );";
 
             // Общая библиотека фото
@@ -181,6 +182,13 @@ namespace TechEquipments
             await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
                                ADD COLUMN IF NOT EXISTS notes_updated_at timestamp NULL;", ct);
 
+            await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
+                               ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false;", ct);
+
+            await db.Database.ExecuteSqlRawAsync($@"UPDATE {_qualifiedInfoTable}
+                               SET is_favorite = false
+                               WHERE is_favorite IS NULL;", ct);
+
             // Мягкий backfill для уже существующих записей: если notes уже есть, а notes_updated_at пустой — подставим updated_at.
             await db.Database.ExecuteSqlRawAsync(
                 $@"UPDATE {_qualifiedInfoTable}
@@ -235,6 +243,7 @@ namespace TechEquipments
                                         revision_time,
                                         notes,
                                         notes_updated_at,
+                                        is_favorite,
                                         updated_at
                                     FROM {_qualifiedInfoTable}
                                     WHERE equip_name = @equip_name
@@ -250,7 +259,8 @@ namespace TechEquipments
                     model.RevisionTime = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTime>(2);
                     model.Notes = reader.IsDBNull(3) ? null : reader.GetString(3);
                     model.NotesUpdatedAt = reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTime>(4);
-                    model.UpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5);
+                    model.IsFavorite = !reader.IsDBNull(5) && reader.GetBoolean(5);
+                    model.UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6);
                 }
             }
 
@@ -935,6 +945,68 @@ VALUES
 
             var affected = await cmd.ExecuteNonQueryAsync(ct);
             return affected > 0;
+        }
+
+        public async Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(CancellationToken ct = default)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                                SELECT equip_name
+                                FROM {_qualifiedInfoTable}
+                                WHERE is_favorite = TRUE;";
+
+            var result = new List<string>();
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var name = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                name = (name ?? "").Trim();
+
+                if (!string.IsNullOrWhiteSpace(name))
+                    result.Add(name);
+            }
+
+            return result;
+        }
+
+        public async Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default)
+        {
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                throw new InvalidOperationException("EquipName is empty.");
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                                INSERT INTO {_qualifiedInfoTable}
+                                (
+                                    equip_name,
+                                    is_favorite,
+                                    updated_at
+                                )
+                                VALUES
+                                (
+                                    @equip_name,
+                                    @is_favorite,
+                                    now()
+                                )
+                                ON CONFLICT (equip_name)
+                                DO UPDATE SET
+                                    is_favorite = EXCLUDED.is_favorite,
+                                    updated_at = now();";
+
+            AddParameter(cmd, "@equip_name", equipName);
+            AddParameter(cmd, "@is_favorite", isFavorite);
+
+            await cmd.ExecuteNonQueryAsync(ct);
         }
     }
 }

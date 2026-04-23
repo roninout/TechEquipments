@@ -1,8 +1,10 @@
 ﻿using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace TechEquipments
 {
-    public sealed class EquipListBoxItem
+    public sealed class EquipListBoxItem : INotifyPropertyChanged
     {
         public string Equipment { get; init; } = "";
         public string Tag { get; init; } = "";
@@ -44,21 +46,41 @@ namespace TechEquipments
         /// </summary>
         public bool IsPlainEquipmentNode => !IsGroup && !IsEquipmentChildNode;
 
+        private bool _isFavorite;
+        public bool IsFavorite
+        {
+            get => _isFavorite;
+            set => SetField(ref _isFavorite, value);
+        }
+
         private string _description = "";
         public string Description
         {
             get => _description;
-            set => _description = CleanDescription(value);
+            set => SetField(ref _description, CleanDescription(value));
         }
 
         /// <summary>
         /// Текст узла для дерева.
         /// Пока и для group node, и для обычного equipment показываем Equipment.
-        /// Description остаётся только в tooltip / для будущего использования.
         /// </summary>
         public string DisplayText => Equipment;
 
         public override string ToString() => DisplayText;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+        private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        {
+            if (Equals(field, value))
+                return;
+
+            field = value;
+            OnPropertyChanged(propertyName);
+        }
 
         private static string CleanDescription(string? s)
         {

@@ -18,7 +18,8 @@ namespace TechEquipments
         AI,        // AnalogIn, AnalogInCalc
         DI,        // DigitalIn
         DO,        // DigitalOut
-        Atv        // Atv
+        Atv,        // Atv
+        Favorites  // только фильтр UI
     }
 
     public static class EquipTypeRegistry
@@ -96,6 +97,7 @@ namespace TechEquipments
             { EquipTypeGroup.DO,    MakeRgb(191, 211, 234) },
             { EquipTypeGroup.Atv,   MakeRgb(255, 213, 170) },
             { EquipTypeGroup.All,   Brushes.Transparent },
+            { EquipTypeGroup.Favorites, Brushes.Transparent }
         };
 
         public static Brush GetGroupCellBrush(EquipTypeGroup group) =>

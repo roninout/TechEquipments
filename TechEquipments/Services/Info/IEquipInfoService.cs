@@ -36,5 +36,9 @@ namespace TechEquipments
         /// ВАЖНО: из-за ON DELETE CASCADE файл автоматически отвяжется от всех equipment.
         /// </summary>
         Task<bool> DeleteLibraryFileAsync(InfoFileKind kind, long id, CancellationToken ct = default);
+
+        Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(CancellationToken ct = default);
+
+        Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default);
     }
 }

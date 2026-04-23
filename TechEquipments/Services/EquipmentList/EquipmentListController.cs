@@ -210,6 +210,19 @@ namespace TechEquipments
                 return false;
             }
 
+            // Режим Favorites:
+            // показываем только обычное оборудование, отмеченное как favorite.
+            if (EquipVm.SelectedTypeFilter == EquipTypeGroup.Favorites)
+            {
+                if (!it.IsPlainEquipmentNode)
+                    return false;
+
+                if (!StationMatches(it, st))
+                    return false;
+
+                return it.IsFavorite;
+            }
+
             // Для всех остальных режимов работаем как раньше,
             // но только по обычным equipment nodes.
             if (!it.IsPlainEquipmentNode)

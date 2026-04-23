@@ -1,5 +1,7 @@
-﻿using System.Windows;
+﻿using DevExpress.Xpf.Editors;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 
 namespace TechEquipments.Views.Param
 {
@@ -40,6 +42,17 @@ namespace TechEquipments.Views.Param
         {
             if (Host != null)
                 await Host.Param_ScanQrToExternalTagAndSearchAsync();
+        }
+
+        private async void FavoriteToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ToggleButton tb)
+                return;
+
+            if (Host == null)
+                return;
+
+            await Host.Param_SetFavoriteAsync(tb.IsChecked == true);
         }
     }
 }
