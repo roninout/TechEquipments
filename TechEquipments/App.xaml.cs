@@ -43,9 +43,16 @@ namespace TechEquipments
                 .ConfigureLogging(logging => logging.ClearProviders())
                 .ConfigureServices((context, services) =>
                 {
-                    // EF Core DbContextFactory
-                    string connStr = context.Configuration.GetConnectionString("Postgres");
+                    // EventPicker DB
+                    var connStr = context.Configuration.GetConnectionString("Postgres");
                     services.AddDbContextFactory<PgDbContext>(options => options.UseNpgsql(connStr));
+
+                    // Separate Info/Favorites DB (srd_db)
+                    var infoConnStr = context.Configuration.GetConnectionString("PostgresInfo");
+                    services.AddDbContextFactory<PgInfoDbContext>(options => options.UseNpgsql(infoConnStr));
+
+                    services.AddSingleton<IAppRuntimeContext, AppRuntimeContext>();
+
                     services.AddSingleton<IDbService, PgDbService>();
                     services.AddSingleton<IEquipInfoService, EquipInfoService>();
 

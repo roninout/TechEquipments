@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using TechEquipments.ViewModels;
 using TechEquipments.Views.Info;
-
 using DevExpress.Pdf;
 using DevExpress.Xpf.DocumentViewer;
 using DevExpress.Xpf.PdfViewer;
@@ -34,7 +33,6 @@ namespace TechEquipments
 
         private readonly InfoViewModel _vm;
         private readonly EquipmentListViewModel _equipmentVm;
-        private readonly DatabaseViewModel _databaseVm;
         private readonly Window _ownerWindow;
         private readonly Dictionary<long, byte[]> _photoBytesCache = new();
 
@@ -42,12 +40,11 @@ namespace TechEquipments
         private bool _suppressLibrarySelectionSync;
         private string? _notesAtEditStart;
 
-        public InfoController(IEquipInfoService equipInfoService, InfoViewModel vm, EquipmentListViewModel equipmentVm, DatabaseViewModel databaseVm, Window ownerWindow, IQrScannerService qrScannerService)
+        public InfoController(IEquipInfoService equipInfoService, InfoViewModel vm, EquipmentListViewModel equipmentVm, Window ownerWindow, IQrScannerService qrScannerService)
         {
             _equipInfoService = equipInfoService ?? throw new ArgumentNullException(nameof(equipInfoService));
             _vm = vm ?? throw new ArgumentNullException(nameof(vm));
             _equipmentVm = equipmentVm ?? throw new ArgumentNullException(nameof(equipmentVm));
-            _databaseVm = databaseVm ?? throw new ArgumentNullException(nameof(databaseVm));
             _ownerWindow = ownerWindow ?? throw new ArgumentNullException(nameof(ownerWindow));
             _qrScannerService = qrScannerService ?? throw new ArgumentNullException(nameof(qrScannerService));
         }
@@ -112,11 +109,11 @@ namespace TechEquipments
                 return;
             }
 
-            if (!_databaseVm.IsDbConnected)
+            if (!_vm.IsInfoDbConnected)
             {
                 _vm.CurrentEquipInfo = EquipmentInfoDto.CreateEmpty(equipName);
                 ClearInfoUiState();
-                _vm.InfoStatusText = "Info: DB is disconnected.";
+                _vm.InfoStatusText = "Info DB is disconnected.";
                 return;
             }
 
@@ -139,6 +136,12 @@ namespace TechEquipments
 
                 _vm.CurrentEquipInfo = info;
                 _notesAtEditStart = info.Notes;
+
+                var selectedEquip = _equipmentVm.SelectedListBoxEquipment;
+                if (selectedEquip != null && string.Equals((selectedEquip.Equipment ?? "").Trim(), (info.EquipName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    info.IsFavorite = selectedEquip.IsFavorite;
+                }
 
                 SyncCheckedSelectionsFromCurrentModel();
                 SyncPhotoLibraryFlagsFromCurrentModel();

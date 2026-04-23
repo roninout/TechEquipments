@@ -327,5 +327,12 @@ namespace TechEquipments.ViewModels
 
         public bool IsInfoDocumentMessageVisible =>
             IsInfoDocumentPage && !IsInfoDocumentViewerVisible;
+
+        private bool _isInfoDbConnected;
+        public bool IsInfoDbConnected
+        {
+            get => _isInfoDbConnected;
+            set => SetProperty(ref _isInfoDbConnected, value);
+        }
     }
 }

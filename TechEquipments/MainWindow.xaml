@@ -301,7 +301,7 @@
                     </dx:DXTabItem>
 
                     <!-- ============ INFO TAB ============ -->
-                    <dx:DXTabItem IsEnabled="{Binding Vm.Database.IsDbConnected}">
+                    <dx:DXTabItem IsEnabled="{Binding Vm.Info.IsInfoDbConnected}">
 
                         <dx:DXTabItem.Header>
                             <StackPanel Orientation="Horizontal">

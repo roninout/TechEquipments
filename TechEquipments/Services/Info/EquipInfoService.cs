@@ -11,191 +11,169 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Npgsql;
 
 namespace TechEquipments
 {
     /// <summary>
-    /// Raw SQL сервис для Info.
-    /// *_equip_photo / *_equip_instruction / *_equip_scheme — библиотеки файлов
-    /// *_equip_info_photo / *_equip_info_instruction / *_equip_info_scheme — связи equipment -> file
+    /// Raw SQL сервис для Info/Favorites.
+    /// Работает с отдельной БД srd_db.
     /// </summary>
     public sealed class EquipInfoService : IEquipInfoService
     {
-        private readonly IDbContextFactory<PgDbContext> _dbFactory;
+        private readonly IDbContextFactory<PgInfoDbContext> _dbFactory;
+        private readonly IConfiguration _config;
+        private readonly IAppRuntimeContext _appRuntime;
+        private readonly string _deviceName;
 
-        private readonly string _schemaName;
-        private readonly string _tablePrefix;
+        private const string SchemaName = "public";
 
         private readonly string _qualifiedInfoTable;
         private readonly string _qualifiedPhotoTable;
         private readonly string _qualifiedInstructionTable;
         private readonly string _qualifiedSchemeTable;
-
         private readonly string _qualifiedInfoPhotoLinkTable;
         private readonly string _qualifiedInfoInstructionLinkTable;
         private readonly string _qualifiedInfoSchemeLinkTable;
-
         private readonly string _qualifiedInfoDocumentViewTable;
+        private readonly string _qualifiedFavoriteTable;
 
-        public EquipInfoService(IDbContextFactory<PgDbContext> dbFactory, IConfiguration config)
+        public EquipInfoService(IDbContextFactory<PgInfoDbContext> dbFactory, IConfiguration config, IAppRuntimeContext appRuntime)
         {
             _dbFactory = dbFactory;
+            _config = config;
+            _appRuntime = appRuntime;
 
-            var configuredPrefix = (config["EquipInfo:TableName"] ?? "srd").Trim();
-            (_schemaName, _tablePrefix) = ParseQualifiedPrefix(configuredPrefix);
+            _qualifiedInfoTable = Qualify("equip_info");
+            _qualifiedPhotoTable = Qualify("equip_photo");
+            _qualifiedInstructionTable = Qualify("equip_instruction");
+            _qualifiedSchemeTable = Qualify("equip_scheme");
 
-            _qualifiedInfoTable = Qualify($"{_tablePrefix}_equip_info");
-            _qualifiedPhotoTable = Qualify($"{_tablePrefix}_equip_photo");
-            _qualifiedInstructionTable = Qualify($"{_tablePrefix}_equip_instruction");
-            _qualifiedSchemeTable = Qualify($"{_tablePrefix}_equip_scheme");
+            _qualifiedInfoPhotoLinkTable = Qualify("equip_info_photo");
+            _qualifiedInfoInstructionLinkTable = Qualify("equip_info_instruction");
+            _qualifiedInfoSchemeLinkTable = Qualify("equip_info_scheme");
 
-            _qualifiedInfoPhotoLinkTable = Qualify($"{_tablePrefix}_equip_info_photo");
-            _qualifiedInfoInstructionLinkTable = Qualify($"{_tablePrefix}_equip_info_instruction");
-            _qualifiedInfoSchemeLinkTable = Qualify($"{_tablePrefix}_equip_info_scheme");
-
-            _qualifiedInfoDocumentViewTable = Qualify($"{_tablePrefix}_equip_info_pdf_view");
+            _qualifiedInfoDocumentViewTable = Qualify("equip_info_pdf_view");
+            _qualifiedFavoriteTable = Qualify("equip_favorite");
         }
 
         public async Task EnsureTableAsync(CancellationToken ct = default)
         {
             await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
-            // Схема
-            await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE SCHEMA IF NOT EXISTS {QuoteIdentifier(_schemaName)};", ct);
-
-            // Главная карточка оборудования
             var sqlInfo = $@"
-                            CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
-                            (
-                                equip_name       text PRIMARY KEY,
-                                install_time     timestamp NULL,
-                                revision_time    timestamp NULL,
-                                notes            text NULL,
-                                notes_updated_at timestamp NULL,
-                                is_favorite      boolean NOT NULL DEFAULT false,
-                                updated_at       timestamp NOT NULL DEFAULT now()
-                            );";
+        CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
+        (
+            equip_name        text PRIMARY KEY,
+            install_time      timestamp NULL,
+            revision_time     timestamp NULL,
+            notes             text NULL,
+            notes_updated_at  timestamp NULL,
+            updated_at        timestamp NOT NULL DEFAULT now()
+        );";
 
-            // Общая библиотека фото
             var sqlPhoto = $@"
-                            CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
-                            (
-                                id                  bigserial PRIMARY KEY,
-                                equip_type_group    text NOT NULL,
-                                file_name           text NOT NULL,
-                                display_name        text NOT NULL,
-                                file_hash           text NOT NULL,
-                                file_data           bytea NOT NULL,
-                                updated_at          timestamp NOT NULL DEFAULT now(),
+        CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
+        (
+            id                bigserial PRIMARY KEY,
+            equip_type_group  text NOT NULL,
+            file_name         text NOT NULL,
+            display_name      text NOT NULL,
+            file_hash         text NOT NULL,
+            file_data         bytea NOT NULL,
+            updated_at        timestamp NOT NULL DEFAULT now(),
 
-                                CONSTRAINT uq_{_tablePrefix}_equip_photo_type_hash
-                                    UNIQUE (equip_type_group, file_hash)
-                            );";
+            CONSTRAINT uq_equip_photo_type_hash
+                UNIQUE (equip_type_group, file_hash)
+        );";
 
-            // Общая библиотека инструкций
             var sqlInstruction = $@"
-                                    CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
-                                    (
-                                        id                  bigserial PRIMARY KEY,
-                                        equip_type_group    text NOT NULL,
-                                        file_name           text NOT NULL,
-                                        display_name        text NOT NULL,
-                                        file_hash           text NOT NULL,
-                                        file_data           bytea NOT NULL,
-                                        updated_at          timestamp NOT NULL DEFAULT now(),
+        CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
+        (
+            id                bigserial PRIMARY KEY,
+            equip_type_group  text NOT NULL,
+            file_name         text NOT NULL,
+            display_name      text NOT NULL,
+            file_hash         text NOT NULL,
+            file_data         bytea NOT NULL,
+            updated_at        timestamp NOT NULL DEFAULT now(),
 
-                                        CONSTRAINT uq_{_tablePrefix}_equip_instruction_type_hash
-                                            UNIQUE (equip_type_group, file_hash)
-                                    );";
+            CONSTRAINT uq_equip_instruction_type_hash
+                UNIQUE (equip_type_group, file_hash)
+        );";
 
-            // Общая библиотека схем
             var sqlScheme = $@"
-                            CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
-                            (
-                                id                  bigserial PRIMARY KEY,
-                                equip_type_group    text NOT NULL,
-                                file_name           text NOT NULL,
-                                display_name        text NOT NULL,
-                                file_hash           text NOT NULL,
-                                file_data           bytea NOT NULL,
-                                updated_at          timestamp NOT NULL DEFAULT now(),
+        CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
+        (
+            id                bigserial PRIMARY KEY,
+            equip_type_group  text NOT NULL,
+            file_name         text NOT NULL,
+            display_name      text NOT NULL,
+            file_hash         text NOT NULL,
+            file_data         bytea NOT NULL,
+            updated_at        timestamp NOT NULL DEFAULT now(),
 
-                                CONSTRAINT uq_{_tablePrefix}_equip_scheme_type_hash
-                                    UNIQUE (equip_type_group, file_hash)
-                            );";
+            CONSTRAINT uq_equip_scheme_type_hash
+                UNIQUE (equip_type_group, file_hash)
+        );";
 
-            // Связь equipment -> photo
             var sqlInfoPhotoLink = $@"
-                                    CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
-                                    (
-                                        equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-                                        photo_id        bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
-                                        sort_order      integer NOT NULL DEFAULT 0,
+        CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
+        (
+            equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+            photo_id     bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
+            sort_order   integer NOT NULL DEFAULT 0,
 
-                                        PRIMARY KEY (equip_name, photo_id)
-                                    );";
+            PRIMARY KEY (equip_name, photo_id)
+        );";
 
-            // Связь equipment -> instruction
             var sqlInfoInstructionLink = $@"
-                                            CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
-                                            (
-                                                equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-                                                instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
-                                                sort_order      integer NOT NULL DEFAULT 0,
+        CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
+        (
+            equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+            instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
+            sort_order      integer NOT NULL DEFAULT 0,
 
-                                                PRIMARY KEY (equip_name, instruction_id)
-                                            );";
+            PRIMARY KEY (equip_name, instruction_id)
+        );";
 
-            // Связь equipment -> scheme
             var sqlInfoSchemeLink = $@"
-                                    CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
-                                    (
-                                        equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-                                        scheme_id       bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
-                                        sort_order      integer NOT NULL DEFAULT 0,
+        CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
+        (
+            equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+            scheme_id    bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
+            sort_order   integer NOT NULL DEFAULT 0,
 
-                                        PRIMARY KEY (equip_name, scheme_id)
-                                    );";
+            PRIMARY KEY (equip_name, scheme_id)
+        );";
 
-            // Сохранённая позиция просмотра PDF: одна запись на equipment + page kind + file id
             var sqlInfoPdfView = $@"
-                                    CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
-                                    (
-                                        equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-                                        info_page_kind   text NOT NULL,
-                                        file_id          bigint NOT NULL,
-                                        file_name        text NOT NULL,
-                                        page_number      integer NOT NULL,
-                                        zoom_factor      double precision NOT NULL,
-                                        anchor_x         double precision NOT NULL,
-                                        anchor_y         double precision NOT NULL,
-                                        updated_at       timestamp NOT NULL DEFAULT now(),
+        CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
+        (
+            equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+            info_page_kind   text NOT NULL,
+            file_id          bigint NOT NULL,
+            file_name        text NOT NULL,
+            page_number      integer NOT NULL,
+            zoom_factor      double precision NOT NULL,
+            anchor_x         double precision NOT NULL,
+            anchor_y         double precision NOT NULL,
+            updated_at       timestamp NOT NULL DEFAULT now(),
 
-                                        PRIMARY KEY (equip_name, info_page_kind, file_id)
-                                    );";
+            PRIMARY KEY (equip_name, info_page_kind, file_id)
+        );";
+
+            var sqlFavorite = $@"
+        CREATE TABLE IF NOT EXISTS {_qualifiedFavoriteTable}
+        (
+            device_name   text NOT NULL,
+            equip_name    text NOT NULL,
+            updated_at    timestamp NOT NULL DEFAULT now(),
+
+            PRIMARY KEY (device_name, equip_name)
+        );";
 
             await db.Database.ExecuteSqlRawAsync(sqlInfo, ct);
-            await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
-                               ADD COLUMN IF NOT EXISTS notes text NULL;", ct);
-
-            await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
-                               ADD COLUMN IF NOT EXISTS notes_updated_at timestamp NULL;", ct);
-
-            await db.Database.ExecuteSqlRawAsync($@"ALTER TABLE {_qualifiedInfoTable}
-                               ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false;", ct);
-
-            await db.Database.ExecuteSqlRawAsync($@"UPDATE {_qualifiedInfoTable}
-                               SET is_favorite = false
-                               WHERE is_favorite IS NULL;", ct);
-
-            // Мягкий backfill для уже существующих записей: если notes уже есть, а notes_updated_at пустой — подставим updated_at.
-            await db.Database.ExecuteSqlRawAsync(
-                $@"UPDATE {_qualifiedInfoTable}
-                   SET notes_updated_at = updated_at
-                   WHERE notes_updated_at IS NULL
-                     AND NULLIF(BTRIM(notes), '') IS NOT NULL;", ct);
-
             await db.Database.ExecuteSqlRawAsync(sqlPhoto, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInstruction, ct);
             await db.Database.ExecuteSqlRawAsync(sqlScheme, ct);
@@ -203,23 +181,31 @@ namespace TechEquipments
             await db.Database.ExecuteSqlRawAsync(sqlInfoInstructionLink, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInfoSchemeLink, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInfoPdfView, ct);
-
-            // Индексы для library-комбобоксов по группе типа
-            await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_{_tablePrefix}_equip_photo_type
-           ON {_qualifiedPhotoTable} (equip_type_group, display_name);", ct);
+            await db.Database.ExecuteSqlRawAsync(sqlFavorite, ct);
 
             await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_{_tablePrefix}_equip_instruction_type
-           ON {_qualifiedInstructionTable} (equip_type_group, display_name);", ct);
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_photo_type
+                    ON {_qualifiedPhotoTable} (equip_type_group, display_name);", ct);
 
             await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_{_tablePrefix}_equip_scheme_type
-           ON {_qualifiedSchemeTable} (equip_type_group, display_name);", ct);
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_instruction_type
+                    ON {_qualifiedInstructionTable} (equip_type_group, display_name);", ct);
 
             await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_{_tablePrefix}_equip_pdf_view_lookup
-           ON {_qualifiedInfoDocumentViewTable} (equip_name, info_page_kind, file_id);", ct);
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_scheme_type
+                    ON {_qualifiedSchemeTable} (equip_type_group, display_name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_pdf_view_lookup
+                    ON {_qualifiedInfoDocumentViewTable} (equip_name, info_page_kind, file_id);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_equip
+                    ON {_qualifiedFavoriteTable} (equip_name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_device
+                   ON {_qualifiedFavoriteTable} (device_name);", ct);
         }
 
         public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
@@ -243,7 +229,6 @@ namespace TechEquipments
                                         revision_time,
                                         notes,
                                         notes_updated_at,
-                                        is_favorite,
                                         updated_at
                                     FROM {_qualifiedInfoTable}
                                     WHERE equip_name = @equip_name
@@ -259,8 +244,11 @@ namespace TechEquipments
                     model.RevisionTime = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTime>(2);
                     model.Notes = reader.IsDBNull(3) ? null : reader.GetString(3);
                     model.NotesUpdatedAt = reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTime>(4);
-                    model.IsFavorite = !reader.IsDBNull(5) && reader.GetBoolean(5);
-                    model.UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6);
+                    model.UpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5);
+
+                    // Favorite теперь живёт в отдельной таблице equip_favorite.
+                    // Здесь не читаем его из equip_info.
+                    model.IsFavorite = false;
                 }
             }
 
@@ -669,35 +657,6 @@ VALUES
             cmd.Parameters.Add(p);
         }
 
-        /// <summary> Поддерживаем: - srd, - public.srd </summary>
-        private static (string schema, string prefix) ParseQualifiedPrefix(string raw)
-        {
-            var parts = (raw ?? "").Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            return parts.Length switch
-            {
-                1 => ("public", ValidateIdentifier(parts[0])),
-                2 => (ValidateIdentifier(parts[0]), ValidateIdentifier(parts[1])),
-                _ => throw new InvalidOperationException($"Invalid EquipInfo:TableName '{raw}'. Use 'prefix' or 'schema.prefix'.")
-            };
-        }
-
-        private static string ValidateIdentifier(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                throw new InvalidOperationException("SQL identifier is empty.");
-
-            if (!Regex.IsMatch(value, @"^[A-Za-z_][A-Za-z0-9_]*$"))
-                throw new InvalidOperationException(
-                    $"Invalid SQL identifier '{value}'. Allowed: letters, digits and underscore.");
-
-            return value;
-        }
-
-        private string Qualify(string tableName) => $"{QuoteIdentifier(_schemaName)}.{QuoteIdentifier(tableName)}";
-
-        private static string QuoteIdentifier(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
-
         private static async Task<EquipmentInfoFileDto?> FindLibraryItemByTypeAndHashAsync(DbConnection conn, DbTransaction tx, string qualifiedTable, string equipTypeGroupKey, string hash, CancellationToken ct)
         {
             using var cmd = conn.CreateCommand();
@@ -955,20 +914,23 @@ VALUES
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                                SELECT equip_name
-                                FROM {_qualifiedInfoTable}
-                                WHERE is_favorite = TRUE;";
+                    SELECT equip_name
+                    FROM {_qualifiedFavoriteTable}
+                    WHERE device_name = @device_name
+                    ORDER BY equip_name;";
+
+            AddParameter(cmd, "@device_name", _appRuntime.DeviceName);
 
             var result = new List<string>();
 
             using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                var name = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                name = (name ?? "").Trim();
+                var equipName = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                equipName = (equipName ?? "").Trim();
 
-                if (!string.IsNullOrWhiteSpace(name))
-                    result.Add(name);
+                if (!string.IsNullOrWhiteSpace(equipName))
+                    result.Add(equipName);
             }
 
             return result;
@@ -984,29 +946,97 @@ VALUES
             var conn = db.Database.GetDbConnection();
             await EnsureConnectionOpenAsync(conn, ct);
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $@"
-                                INSERT INTO {_qualifiedInfoTable}
-                                (
-                                    equip_name,
-                                    is_favorite,
-                                    updated_at
-                                )
-                                VALUES
-                                (
-                                    @equip_name,
-                                    @is_favorite,
-                                    now()
-                                )
-                                ON CONFLICT (equip_name)
-                                DO UPDATE SET
-                                    is_favorite = EXCLUDED.is_favorite,
-                                    updated_at = now();";
+            if (isFavorite)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"
+            INSERT INTO {_qualifiedFavoriteTable}
+            (
+                device_name,
+                equip_name,
+                updated_at
+            )
+            VALUES
+            (
+                @device_name,
+                @equip_name,
+                now()
+            )
+            ON CONFLICT (device_name, equip_name)
+            DO UPDATE SET
+                updated_at = now();";
 
-            AddParameter(cmd, "@equip_name", equipName);
-            AddParameter(cmd, "@is_favorite", isFavorite);
+                AddParameter(cmd, "@device_name", _appRuntime.DeviceName);
+                AddParameter(cmd, "@equip_name", equipName);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+            else
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"
+            DELETE FROM {_qualifiedFavoriteTable}
+            WHERE device_name = @device_name
+              AND equip_name = @equip_name;";
+
+                AddParameter(cmd, "@device_name", _appRuntime.DeviceName);
+                AddParameter(cmd, "@equip_name", equipName);
+
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+        }
+
+        private string Qualify(string tableName) => $"{QuoteIdentifier(SchemaName)}.{QuoteIdentifier(tableName)}";
+
+        private static string QuoteIdentifier(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+
+
+        public async Task EnsureDatabaseAndTablesAsync(CancellationToken ct = default)
+        {
+            await EnsureDatabaseExistsAsync(ct);
+            await EnsureTableAsync(ct);
+        }
+
+        private async Task EnsureDatabaseExistsAsync(CancellationToken ct)
+        {
+            var cs = _config.GetConnectionString("PostgresInfo");
+            if (string.IsNullOrWhiteSpace(cs))
+                throw new InvalidOperationException("ConnectionStrings:PostgresInfo is not configured.");
+
+            var builder = new NpgsqlConnectionStringBuilder(cs);
+            var targetDb = (builder.Database ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(targetDb))
+                throw new InvalidOperationException("PostgresInfo database name is empty.");
+
+            // Подключаемся к служебной БД postgres
+            builder.Database = "postgres";
+
+            await using var conn = new NpgsqlConnection(builder.ConnectionString);
+            await conn.OpenAsync(ct);
+
+            await using (var checkCmd = conn.CreateCommand())
+            {
+                checkCmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @db;";
+                checkCmd.Parameters.AddWithValue("@db", targetDb);
+
+                var exists = await checkCmd.ExecuteScalarAsync(ct);
+                if (exists != null)
+                    return;
+            }
+
+            // CREATE DATABASE нельзя выполнять внутри транзакции
+            try
+            {
+                await using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = $"CREATE DATABASE {QuoteIdentifier(targetDb)};";
+                await createCmd.ExecuteNonQueryAsync(ct);
+            }
+            catch (PostgresException ex) when (ex.SqlState == "42P04") // duplicate_database
+            {
+                // Кто-то успел создать БД параллельно.
+            }
+
         }
     }
 }

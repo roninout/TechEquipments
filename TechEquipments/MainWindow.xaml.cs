@@ -10,7 +10,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +34,7 @@ namespace TechEquipments
         private readonly ICtApiService _ctApiService;
         private readonly IConfiguration _configService;
         private readonly IEquipInfoService _equipInfoService;
+        private readonly IAppRuntimeContext _appRuntime;
 
         private readonly ParamController _paramController;
         private readonly ParamWriteController _paramWriteController;
@@ -61,8 +61,6 @@ namespace TechEquipments
 
         #region Left pane: search + filters + selection
 
-        private EquipListBoxItem? _lastNavigableEquipmentSelection;
-        private bool _suppressTreeSelectionRollback;
         private bool _suppressStartupTreeSelectionSideEffects;
 
         public ICollectionView EquipmentsView => _equipmentListController.EquipmentsView;
@@ -160,31 +158,12 @@ namespace TechEquipments
         #endregion
 
         #region Version
-        public string AppVersionText
-        {
-            get
-            {
-                var asm = Assembly.GetExecutingAssembly();
-
-                var info =
-                    asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-                       .InformationalVersion;
-
-                if (!string.IsNullOrWhiteSpace(info))
-                {
-                    var clean = info.Split('+')[0].Trim();
-                    return $"v{clean}";
-                }
-
-                var ver = asm.GetName().Version;
-                return ver == null ? "" : $"v{ver.Major}.{ver.Minor}.{ver.Build}";
-            }
-        }
+        public string AppVersionText => string.IsNullOrWhiteSpace(_appRuntime.AppVersion) ? "" : $"v{_appRuntime.AppVersion}";
         #endregion
 
         #endregion
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService, MainViewModel vm)
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService, MainViewModel vm, IAppRuntimeContext appRuntime)
         {
             InitializeComponent();
 
@@ -195,6 +174,7 @@ namespace TechEquipments
             _equipInfoService = equipInfoService;
             _ctApiService = ctApiService;
             _configService = config;
+            _appRuntime = appRuntime;
 
             // ===== core VM/state =====
             Trend = new ParamTrendVm();
@@ -212,7 +192,6 @@ namespace TechEquipments
                 _equipInfoService,
                 Vm.Info,
                 Vm.EquipmentList,
-                Vm.Database,
                 this,
                 qrScannerService);
 
@@ -262,6 +241,7 @@ namespace TechEquipments
             _paramWriteController = new ParamWriteController(
                 equipmentService: _equipmentService,
                 ctApiService: _ctApiService,
+                appRuntime: appRuntime,
                 requiredWritePrivilege: _configService.GetValue("CtApiSecurity:WritePrivilege", 1),
                 requiredWriteArea: _configService.GetValue("CtApiSecurity:WriteArea", 0),
                 requiredUserNameContains: _configService["CtApiSecurity:RequiredUserNameContains"] ?? "Tab",
@@ -478,19 +458,14 @@ namespace TechEquipments
 
         private async Task EnsureInfoStorageReadyAsync()
         {
-            if (!Vm.Database.IsDbConnected)
-                return;
-
             try
             {
-                await _equipInfoService.EnsureTableAsync();
+                await _equipInfoService.EnsureDatabaseAndTablesAsync();
+                Vm.Info.IsInfoDbConnected = true;
             }
             catch (Exception ex)
             {
-                // Для текущего мини-пакета делаем мягкую деградацию:
-                // если не смогли подготовить DB storage для Info,
-                // считаем DB-функционал недоступным и отключаем соответствующие вкладки.
-                Vm.Database.IsDbConnected = false;
+                Vm.Info.IsInfoDbConnected = false;
                 Vm.Shell.BottomText = $"Info storage init error: {ex.Message}";
             }
         }
@@ -812,10 +787,6 @@ namespace TechEquipments
         private void EquipmentsTree_SelectedItemChanged(object sender, SelectedItemChangedEventArgs e)
         {
             var selected = EquipVm.SelectedListBoxEquipment;
-
-            // Запоминаем последнее navigable equipment/group selection
-            if (selected != null)
-                _lastNavigableEquipmentSelection = selected;
 
             if (_equipmentListController.SuppressEquipNameFromSelection)
                 return;
@@ -1366,8 +1337,8 @@ namespace TechEquipments
 
             try
             {
-                if (!Vm.Database.IsDbConnected)
-                    throw new InvalidOperationException("DB is disconnected.");
+                if (!Vm.Info.IsInfoDbConnected)
+                    throw new InvalidOperationException("Info DB is disconnected.");
 
                 await _equipInfoService.SetFavoriteAsync(equipName, isFavorite);
 
@@ -1701,7 +1672,7 @@ namespace TechEquipments
 
             IReadOnlyCollection<string> favoriteNames = Array.Empty<string>();
 
-            if (Vm.Database.IsDbConnected)
+            if (Vm.Info.IsInfoDbConnected)
             {
                 try
                 {

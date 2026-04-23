@@ -37,8 +37,16 @@ namespace TechEquipments
         /// </summary>
         Task<bool> DeleteLibraryFileAsync(InfoFileKind kind, long id, CancellationToken ct = default);
 
+        /// <summary>
+        /// Получить список equipment, отмеченных как favorite для текущего устройства.
+        /// </summary>
         Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(CancellationToken ct = default);
 
+        /// <summary>
+        /// Установить/снять favorite для текущего устройства.
+        /// </summary>
         Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default);
+
+        Task EnsureDatabaseAndTablesAsync(CancellationToken ct = default);
     }
 }

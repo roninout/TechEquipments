@@ -17,6 +17,9 @@ namespace TechEquipments
     public sealed class ParamWriteController
     {
         private readonly IEquipmentService _equipmentService;
+        private readonly ICtApiService _ctApiService;
+        private readonly IAppRuntimeContext _appRuntime;
+
         private readonly Func<MainTabKind> _getSelectedTab;
         private readonly Func<(string equipName, string equipType, string equipDescription)> _resolveSelectedEquip;
         private readonly Func<object, string> _resolveEquipNameForWrite;
@@ -28,7 +31,6 @@ namespace TechEquipments
         private readonly Action<string> _setBottomText;
         private readonly Func<Window> _getOwnerWindow;
         private readonly Action _endParamFieldEdit;
-        private readonly ICtApiService _ctApiService;
         private readonly int _requiredWritePrivilege;
         private readonly int _requiredWriteArea;
         private readonly string _requiredUserNameContains;
@@ -36,6 +38,7 @@ namespace TechEquipments
         public ParamWriteController(
             IEquipmentService equipmentService,
             ICtApiService ctApiService,
+            IAppRuntimeContext appRuntime,
             int requiredWritePrivilege,
             int requiredWriteArea,
             string requiredUserNameContains,
@@ -53,6 +56,7 @@ namespace TechEquipments
         {
             _equipmentService = equipmentService;
             _ctApiService = ctApiService;
+            _appRuntime = appRuntime;
             _requiredWritePrivilege = requiredWritePrivilege;
             _requiredWriteArea = requiredWriteArea;
             _requiredUserNameContains = (requiredUserNameContains ?? "").Trim();
@@ -415,11 +419,13 @@ namespace TechEquipments
                 var safeName = ToCicodeStringArg(name);
                 var safeCurrent = ToCicodeValueArg(currentValue);
                 var safeNew = ToCicodeValueArg(newValue);
-                var safeDescription = ToCicodeStringArg((description ?? ""));
+                var safeDescription = ToCicodeStringArg(description ?? "");
+                var safeDeviceName = ToCicodeStringArg(_appRuntime.DeviceName);
+
                 var (_, _, equipDescription) = _resolveSelectedEquip();
 
                 await _ctApiService.TagWriteAsync("sWndTitle", $"\"{equipDescription}\"");
-                await _ctApiService.CicodeAsync($"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription})");
+                await _ctApiService.CicodeAsync($"SaveActionOperators({safeName}, {safeCurrent}, {safeNew}, {safeDescription}, {safeDeviceName})");
             }
             catch
             {
