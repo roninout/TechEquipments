@@ -936,6 +936,101 @@ VALUES
             return result;
         }
 
+        //public async Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedPhotosAsync(CancellationToken ct = default)
+        //{
+        //    var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        //    await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        //    var conn = db.Database.GetDbConnection();
+        //    await EnsureConnectionOpenAsync(conn, ct);
+
+        //    using var cmd = conn.CreateCommand();
+        //    cmd.CommandText = $@"
+        //SELECT DISTINCT equip_name
+        //FROM {_qualifiedInfoPhotoLinkTable};";
+
+        //    using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        //    while (await reader.ReadAsync(ct))
+        //    {
+        //        var equipName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+
+        //        if (!string.IsNullOrWhiteSpace(equipName))
+        //            result.Add(equipName);
+        //    }
+
+        //    return result;
+        //}
+
+        public Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedPhotosAsync(CancellationToken ct = default)
+        {
+            return GetDistinctEquipNamesFromLinkTableAsync(_qualifiedInfoPhotoLinkTable, ct);
+        }
+
+        public Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedInstructionsAsync(CancellationToken ct = default)
+        {
+            return GetDistinctEquipNamesFromLinkTableAsync(_qualifiedInfoInstructionLinkTable, ct);
+        }
+
+        public Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedSchemesAsync(CancellationToken ct = default)
+        {
+            return GetDistinctEquipNamesFromLinkTableAsync(_qualifiedInfoSchemeLinkTable, ct);
+        }
+
+        public async Task<IReadOnlyCollection<string>> GetEquipNamesWithNotesAsync(CancellationToken ct = default)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+        SELECT equip_name
+        FROM {_qualifiedInfoTable}
+        WHERE notes IS NOT NULL
+          AND btrim(notes) <> '';";
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var equipName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+
+                if (!string.IsNullOrWhiteSpace(equipName))
+                    result.Add(equipName);
+            }
+
+            return result;
+        }
+
+        private async Task<IReadOnlyCollection<string>> GetDistinctEquipNamesFromLinkTableAsync(string qualifiedLinkTable, CancellationToken ct = default)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+        SELECT DISTINCT equip_name
+        FROM {qualifiedLinkTable};";
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var equipName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+
+                if (!string.IsNullOrWhiteSpace(equipName))
+                    result.Add(equipName);
+            }
+
+            return result;
+        }
+
         public async Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default)
         {
             equipName = (equipName ?? "").Trim();

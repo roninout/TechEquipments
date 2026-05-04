@@ -43,6 +43,26 @@ namespace TechEquipments
         Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(CancellationToken ct = default);
 
         /// <summary>
+        /// Получить список equipment, у которых есть хотя бы одно залинкованное фото.
+        /// </summary>
+        Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedPhotosAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Получить список equipment, у которых есть хотя бы одна залинкованная инструкция.
+        /// </summary>
+        Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedInstructionsAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Получить список equipment, у которых есть хотя бы одна залинкованная схема.
+        /// </summary>
+        Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedSchemesAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Получить список equipment, у которых есть непустые Notes.
+        /// </summary>
+        Task<IReadOnlyCollection<string>> GetEquipNamesWithNotesAsync(CancellationToken ct = default);
+
+        /// <summary>
         /// Установить/снять favorite для текущего устройства.
         /// </summary>
         Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default);

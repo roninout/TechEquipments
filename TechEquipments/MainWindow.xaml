@@ -48,7 +48,7 @@
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <!-- LEFT -->
-                <ColumnDefinition x:Name="LeftCol" Width="260" MinWidth="0"/>
+                <ColumnDefinition x:Name="LeftCol" Width="350" MinWidth="0"/>
                 <!-- SEPARATOR -->
                 <ColumnDefinition x:Name="SepCol" Width="1"/>
                 <!-- RIGHT -->

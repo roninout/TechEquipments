@@ -53,6 +53,34 @@ namespace TechEquipments
             set => SetField(ref _isFavorite, value);
         }
 
+        private bool _hasLinkedImage;
+        public bool HasLinkedImage
+        {
+            get => _hasLinkedImage;
+            set => SetField(ref _hasLinkedImage, value);
+        }
+
+        private bool _hasLinkedInstruction;
+        public bool HasLinkedInstruction
+        {
+            get => _hasLinkedInstruction;
+            set => SetField(ref _hasLinkedInstruction, value);
+        }
+
+        private bool _hasLinkedScheme;
+        public bool HasLinkedScheme
+        {
+            get => _hasLinkedScheme;
+            set => SetField(ref _hasLinkedScheme, value);
+        }
+
+        private bool _hasNotes;
+        public bool HasNotes
+        {
+            get => _hasNotes;
+            set => SetField(ref _hasNotes, value);
+        }
+
         private string _description = "";
         public string Description
         {

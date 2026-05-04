@@ -335,6 +335,7 @@ namespace TechEquipments
 
                 var items = await _equipmentService.GetAllEquipmentsAsync(progress, ct);
                 await ApplyFavoriteFlagsAsync(items, ct);
+                await ApplyInfoIndicatorFlagsAsync(items, ct);
 
                 _suppressStartupTreeSelectionSideEffects = true;
                 try
@@ -951,7 +952,7 @@ namespace TechEquipments
             if (show)
             {
                 if (_leftSavedWidth.Value <= 0)
-                    _leftSavedWidth = new GridLength(260);
+                    _leftSavedWidth = new GridLength(350);
 
                 LeftCol.Width = _leftSavedWidth;
                 SepCol.Width = new GridLength(1);
@@ -1714,6 +1715,120 @@ namespace TechEquipments
             }
         }
 
+        private async Task ApplyInfoIndicatorFlagsAsync(IReadOnlyCollection<EquipListBoxItem> items, CancellationToken ct)
+        {
+            if (items == null || items.Count == 0)
+                return;
+
+            IReadOnlyCollection<string> photoNames = Array.Empty<string>();
+            IReadOnlyCollection<string> instructionNames = Array.Empty<string>();
+            IReadOnlyCollection<string> schemeNames = Array.Empty<string>();
+            IReadOnlyCollection<string> notesNames = Array.Empty<string>();
+
+            if (Vm.Info.IsInfoDbConnected)
+            {
+                try
+                {
+                    photoNames = await _equipInfoService.GetEquipNamesWithLinkedPhotosAsync(ct);
+                    instructionNames = await _equipInfoService.GetEquipNamesWithLinkedInstructionsAsync(ct);
+                    schemeNames = await _equipInfoService.GetEquipNamesWithLinkedSchemesAsync(ct);
+                    notesNames = await _equipInfoService.GetEquipNamesWithNotesAsync(ct);
+                }
+                catch
+                {
+                    photoNames = Array.Empty<string>();
+                    instructionNames = Array.Empty<string>();
+                    schemeNames = Array.Empty<string>();
+                    notesNames = Array.Empty<string>();
+                }
+            }
+
+            var photoSet = new HashSet<string>(photoNames, StringComparer.OrdinalIgnoreCase);
+            var instructionSet = new HashSet<string>(instructionNames, StringComparer.OrdinalIgnoreCase);
+            var schemeSet = new HashSet<string>(schemeNames, StringComparer.OrdinalIgnoreCase);
+            var notesSet = new HashSet<string>(notesNames, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in items)
+            {
+                var equipName = (item.Equipment ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(equipName))
+                {
+                    item.HasLinkedImage = false;
+                    item.HasLinkedInstruction = false;
+                    item.HasLinkedScheme = false;
+                    item.HasNotes = false;
+                    continue;
+                }
+
+                item.HasLinkedImage = photoSet.Contains(equipName);
+                item.HasLinkedInstruction = instructionSet.Contains(equipName);
+                item.HasLinkedScheme = schemeSet.Contains(equipName);
+                item.HasNotes = notesSet.Contains(equipName);
+            }
+        }
+
+        private void SetLinkedImageFlagInLoadedEquipments(string equipName, bool hasLinkedImage)
+        {
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            foreach (var item in EquipVm.Equipments)
+            {
+                if (string.Equals((item.Equipment ?? "").Trim(), equipName, StringComparison.OrdinalIgnoreCase))
+                    item.HasLinkedImage = hasLinkedImage;
+            }
+        }
+
+        private void SetLinkedImageFlagsInLoadedEquipments(IEnumerable<string> equipNames, bool hasLinkedImage)
+        {
+            if (equipNames == null)
+                return;
+
+            var set = new HashSet<string>(
+                equipNames
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim()),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (set.Count == 0)
+                return;
+
+            foreach (var item in EquipVm.Equipments)
+            {
+                var equipName = (item.Equipment ?? "").Trim();
+
+                if (set.Contains(equipName))
+                    item.HasLinkedImage = hasLinkedImage;
+            }
+        }
+
+        private void SetInfoIndicatorFlagsInLoadedEquipments(string equipName, bool? hasLinkedImage = null, bool? hasLinkedInstruction = null, bool? hasLinkedScheme = null, bool? hasNotes = null)
+        {
+            equipName = (equipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            foreach (var item in EquipVm.Equipments)
+            {
+                if (!string.Equals((item.Equipment ?? "").Trim(), equipName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (hasLinkedImage.HasValue)
+                    item.HasLinkedImage = hasLinkedImage.Value;
+
+                if (hasLinkedInstruction.HasValue)
+                    item.HasLinkedInstruction = hasLinkedInstruction.Value;
+
+                if (hasLinkedScheme.HasValue)
+                    item.HasLinkedScheme = hasLinkedScheme.Value;
+
+                if (hasNotes.HasValue)
+                    item.HasNotes = hasNotes.Value;
+            }
+        }
+
         #endregion
 
         #region Settings
@@ -1786,8 +1901,23 @@ namespace TechEquipments
         /// <summary>
         /// Тонкий прокси для InfoTabHost.xaml.cs
         /// </summary>
-        public Task Info_SaveAsync()
-            => _infoController.SaveAsync();
+        public async Task Info_SaveAsync()
+        {
+            await _infoController.SaveAsync();
+
+            var equipName = (Vm.Info.CurrentEquipInfo?.EquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            var info = Vm.Info.CurrentEquipInfo;
+
+            SetInfoIndicatorFlagsInLoadedEquipments(
+                equipName,
+                hasLinkedImage: info?.Photos?.Count > 0,
+                hasLinkedInstruction: info?.Instructions?.Count > 0,
+                hasLinkedScheme: info?.Schemes?.Count > 0,
+                hasNotes: !string.IsNullOrWhiteSpace(info?.Notes));
+        }
 
         /// <summary>
         /// Добавить фото с диска.
@@ -1932,13 +2062,10 @@ namespace TechEquipments
 
                 UpdateProgress(0, 1, "Preparing image import...");
 
-                importResult = await _infoController.ImportImagesFromFolderAsync(
-                    folderPath,
-                    equipments,
-                    UpdateProgress);
+                importResult = await _infoController.ImportImagesFromFolderAsync(folderPath, equipments, UpdateProgress);
+                SetLinkedImageFlagsInLoadedEquipments(importResult.AffectedEquipNames, true);
 
-                Vm.Shell.BottomText =
-                    $"Image import finished. Added: {importResult.AddedToDb}, linked existing: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
+                Vm.Shell.BottomText = $"Image import finished. Added: {importResult.AddedToDb}, linked existing: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
 
                 // Важно:
                 // импорт уже напрямую записал фото/link в БД,
@@ -1989,86 +2116,6 @@ namespace TechEquipments
                     MessageBoxImage.Information);
             }
         }
-
-
-        //public async Task Info_ImportImagesFromFolderAsync()
-        //{
-        //    using var dialog = new System.Windows.Forms.FolderBrowserDialog
-        //    {
-        //        Description = "Select image import folder",
-        //        UseDescriptionForTitle = true,
-        //        ShowNewFolderButton = false
-        //    };
-
-        //    var dialogResult = dialog.ShowDialog();
-
-        //    if (dialogResult != System.Windows.Forms.DialogResult.OK)
-        //        return;
-
-        //    var folderPath = dialog.SelectedPath;
-
-        //    if (string.IsNullOrWhiteSpace(folderPath))
-        //        return;
-
-        //    try
-        //    {
-        //        Mouse.OverrideCursor = Cursors.Wait;
-
-        //        var equipments = Vm.EquipmentList.Equipments
-        //            .Where(x => x != null)
-        //            .Where(x => !x.IsGroup)
-        //            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
-        //            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
-        //            .Select(g => g.First())
-        //            .ToList();
-
-        //        void UpdateProgress(int done, int total, string text)
-        //        {
-        //            Dispatcher.Invoke(() =>
-        //            {
-        //                Vm.Shell.IsGlobalProgressActive = true;
-        //                Vm.Shell.GlobalProgressDone = done;
-        //                Vm.Shell.GlobalProgressTotal = Math.Max(1, total);
-        //                Vm.Shell.GlobalProgressText = text;
-        //            });
-        //        }
-
-        //        UpdateProgress(0, 1, "Preparing image import...");
-
-        //        var importResult = await _infoController.ImportImagesFromFolderAsync(
-        //            folderPath,
-        //            equipments,
-        //            UpdateProgress);
-
-        //        Vm.Shell.BottomText =
-        //            $"Image import finished. Added: {importResult.AddedToDb}, linked existing: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
-
-        //        DXMessageBox.Show(
-        //            this,
-        //            importResult.ToMessage(),
-        //            "Image import",
-        //            MessageBoxButton.OK,
-        //            MessageBoxImage.Information);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        DXMessageBox.Show(
-        //            this,
-        //            $"Image import failed.\n\n{ex.Message}",
-        //            "Image import",
-        //            MessageBoxButton.OK,
-        //            MessageBoxImage.Error);
-        //    }
-        //    finally
-        //    {
-        //        Vm.Shell.IsGlobalProgressActive = false;
-        //        Vm.Shell.GlobalProgressText = "";
-        //        Vm.Shell.GlobalProgressDone = 0;
-        //        Vm.Shell.GlobalProgressTotal = 0;
-
-        //        Mouse.OverrideCursor = null;
-        //    }
-        //}
 
         #endregion
     }
