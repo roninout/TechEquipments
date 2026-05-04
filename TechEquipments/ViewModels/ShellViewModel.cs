@@ -153,7 +153,15 @@
         public bool IsParamCenterLoading
         {
             get => _isParamCenterLoading;
-            set => SetProperty(ref _isParamCenterLoading, value);
+            //set => SetProperty(ref _isParamCenterLoading, value);
+            set
+            {
+                if (!SetProperty(ref _isParamCenterLoading, value))
+                    return;
+
+                // ShouldShowParamOverlay зависит от IsParamCenterLoading, поэтому при изменении loading-состояния нужно обновить binding overlay.
+                Raise(nameof(ShouldShowParamOverlay));
+            }
         }
 
         private bool _useParamAreaOverlay = true;
@@ -165,6 +173,7 @@
                 if (!SetProperty(ref _useParamAreaOverlay, value))
                     return;
 
+                // ShouldShowParamOverlay также зависит от настройки Global:Overlay.
                 Raise(nameof(ShouldShowParamOverlay));
             }
         }

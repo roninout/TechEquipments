@@ -162,5 +162,11 @@ namespace TechEquipments.Views.Info
             if (Host != null)
                 await Host.Info_OnDocumentLibraryEditValueChangedAsync();
         }
+
+        private async void ImportImages_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_ImportImagesFromFolderAsync();
+        }
     }
 }

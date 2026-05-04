@@ -416,7 +416,7 @@
                         </dxlc:LayoutGroup>
                     </dxlc:LayoutGroup>
 
-                    <!-- ===== NOTES ===== -->
+                     <!--===== NOTES =====--> 
                     <dxlc:LayoutGroup View="GroupBox"
                                       GroupBoxDisplayMode="Light"
                                       Visibility="{Binding IsInfoNotesPage, Converter={StaticResource BoolToVis}}"
@@ -432,7 +432,7 @@
                                 </Grid.RowDefinitions>
 
                                 <dxre:RichEditControl Grid.Row="0"
-                                                      CommandBarStyle="Empty"
+                                                      CommandBarStyle="Empty"                                                     
                                                       ReadOnly="{Binding IsInfoReadOnly}"
                                                       Content="{Binding CurrentEquipInfo.Notes, Mode=TwoWay, Converter={StaticResource RtfToContentConverter}}"/>
 
@@ -462,46 +462,80 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Up -->
+                            <!-- Up: навигационные кнопки Info. В обычном режиме видны. В режиме редактирования скрываются, чтобы остались только кнопки редактирования/Save. -->
                             <StackPanel Grid.Row="0" Orientation="Vertical" VerticalAlignment="Top">
 
-                                <!--Images-->
+                                <StackPanel.Style>
+                                    <Style TargetType="{x:Type StackPanel}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+
+                                        <Style.Triggers>
+                                            <!-- Когда включили Edit mode — прячем верхние кнопки Images / Instruction / Scheme / Notes -->
+                                            <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+
+                                <!-- Images -->
                                 <dxlc:LayoutItem Label="">
-                                    <dx:SimpleButton Width="60" Height="60" Padding="0"
-                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Reports/ImageAnnotation.svg'}"
-                                                     Tag="{x:Static local:InfoPageKind.General}"
-                                                     Click="PageButton_Click" ToolTip="Images"
-                                                     Style="{StaticResource AppButtonStyle}" />
+                                    <dx:SimpleButton Width="60"
+                                         Height="60"
+                                         Padding="0"
+                                         GlyphWidth="40"
+                                         GlyphHeight="40"
+                                         Glyph="{dx:DXImage 'SvgImages/Reports/ImageAnnotation.svg'}"
+                                         Tag="{x:Static local:InfoPageKind.General}"
+                                         Click="PageButton_Click"
+                                         ToolTip="Images"
+                                         Style="{StaticResource AppButtonStyle}" />
                                 </dxlc:LayoutItem>
 
-                                <!--Instruction-->
+                                <!-- Instruction -->
                                 <dxlc:LayoutItem Label="">
-                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
-                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/XAF/OutlookNavigation_Reading.svg'}"
-                                                     Tag="{x:Static local:InfoPageKind.Instruction}"
-                                                     Click="PageButton_Click" ToolTip="Instruction"
-                                                     Style="{StaticResource AppButtonStyle}" />
+                                    <dx:SimpleButton Width="60"
+                                         Height="60"
+                                         Padding="0"
+                                         Margin="0,8,0,0"
+                                         GlyphWidth="40"
+                                         GlyphHeight="40"
+                                         Glyph="{dx:DXImage 'SvgImages/XAF/Action_AboutInfo.svg'}"
+                                         Tag="{x:Static local:InfoPageKind.Instruction}"
+                                         Click="PageButton_Click"
+                                         ToolTip="Instruction"
+                                         Style="{StaticResource AppButtonStyle}" />
                                 </dxlc:LayoutItem>
 
-                                <!--Scheme-->
+                                <!-- Scheme -->
                                 <dxlc:LayoutItem Label="">
-                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
-                                                     GlyphWidth="40" GlyphHeight="40" Glyph="{dx:DXImage 'SvgImages/Spreadsheet/ShowTabularFormPivotTable.svg'}"
-                                                     Tag="{x:Static local:InfoPageKind.Scheme}"
-                                                     Click="PageButton_Click" ToolTip="Scheme"
-                                                     Style="{StaticResource AppButtonStyle}" />
+                                    <dx:SimpleButton Width="60"
+                                         Height="60"
+                                         Padding="0"
+                                         Margin="0,8,0,0"
+                                         GlyphWidth="40"
+                                         GlyphHeight="40"
+                                         Glyph="{dx:DXImage 'SvgImages/XAF/Action_Show_PivotGrid_Designer.svg'}"
+                                         Tag="{x:Static local:InfoPageKind.Scheme}"
+                                         Click="PageButton_Click"
+                                         ToolTip="Scheme"
+                                         Style="{StaticResource AppButtonStyle}" />
                                 </dxlc:LayoutItem>
-                                
-                                <!--Notes-->
+
+                                <!-- Notes -->
                                 <dxlc:LayoutItem Label="">
-                                    <dx:SimpleButton Width="60" Height="60" Padding="0" Margin="0,8,0,0"
-                                                     GlyphWidth="40" GlyphHeight="40"
-                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Comment.svg'}"
-                                                     Tag="{x:Static local:InfoPageKind.Notes}"
-                                                     Click="PageButton_Click"
-                                                     ToolTip="Notes"
-                                                     Style="{StaticResource AppButtonStyle}" />
-                                    </dxlc:LayoutItem>
+                                    <dx:SimpleButton Width="60"
+                                         Height="60"
+                                         Padding="0"
+                                         Margin="0,8,0,0"
+                                         GlyphWidth="40"
+                                         GlyphHeight="40"
+                                         Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Comment.svg'}"
+                                         Tag="{x:Static local:InfoPageKind.Notes}"
+                                         Click="PageButton_Click"
+                                         ToolTip="Notes"
+                                         Style="{StaticResource AppButtonStyle}" />
+                                </dxlc:LayoutItem>
 
                             </StackPanel>
 
@@ -541,7 +575,7 @@
                                     <dx:SimpleButton Width="60"
                                                      Height="60"
                                                      Padding="0"
-                                                     Margin="0,8,0,0"
+                                                     Margin="0,40,0,0"
                                                      GlyphWidth="40"
                                                      GlyphHeight="40"
                                                      Glyph="{dx:DXImage 'SvgImages/Dashboards/ImageImport.svg'}"
@@ -565,12 +599,41 @@
                                     </dx:SimpleButton>
                                 </dxlc:LayoutItem>
 
-                                <!-- Unlink image: только для фото и только в Edit mode -->
+                                <!-- Import images from folder: только для фото и только в Edit mode -->
                                 <dxlc:LayoutItem Label="">
                                     <dx:SimpleButton Width="60"
                                                      Height="60"
                                                      Padding="0"
                                                      Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Spreadsheet/AddDataSource.svg'}"
+                                                     Click="ImportImages_Click"
+                                                     ToolTip="Import images from folder"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoGeneralPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Unlink image: только для фото и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,40,0,0"
                                                      GlyphWidth="40"
                                                      GlyphHeight="40"
                                                      Glyph="{dx:DXImage 'SvgImages/XAF/Action_LinkUnlink_Unlink.svg'}"
@@ -656,7 +719,7 @@
                                     <dx:SimpleButton Width="60"
                                                      Height="60"
                                                      Padding="0"
-                                                     Margin="0,8,0,0"
+                                                     Margin="0,40,0,0"
                                                      GlyphWidth="40"
                                                      GlyphHeight="40"
                                                      Glyph="{dx:DXImage 'SvgImages/XAF/Action_LinkUnlink_Unlink.svg'}"
@@ -769,7 +832,7 @@
                                     <dx:SimpleButton Width="60"
                                                      Height="60"
                                                      Padding="0"
-                                                     Margin="0,8,0,0"
+                                                     Margin="0,40,0,0"
                                                      GlyphWidth="40"
                                                      GlyphHeight="40"
                                                      Glyph="{dx:DXImage 'SvgImages/DiagramIcons/save.svg'}"

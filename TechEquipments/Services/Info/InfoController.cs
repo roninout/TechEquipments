@@ -346,6 +346,407 @@ namespace TechEquipments
             _vm.InfoStatusText = $"Images linked: {_vm.CurrentEquipInfo.Photos.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
         }
 
+        public async Task<InfoImageImportResult> ImportImagesFromFolderAsync(string folderPath, IEnumerable<EquipListBoxItem> equipmentItems, Action<int, int, string>? progress = null, CancellationToken cancellationToken = default)
+        {
+            var result = new InfoImageImportResult();
+
+            folderPath = (folderPath ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
+                return result;
+
+            var allEquipments = (equipmentItems ?? Enumerable.Empty<EquipListBoxItem>())
+                .Where(x => x != null)
+                .Where(x => !x.IsGroup)
+                .Where(x => x.TypeGroup != EquipTypeGroup.All)
+                .Where(x => x.TypeGroup != EquipTypeGroup.Favorites)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+                .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            if (allEquipments.Count == 0)
+                return result;
+
+            var knownTypeNames = allEquipments
+                .Select(x => x.TypeGroup.ToString())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var root = new DirectoryInfo(folderPath);
+
+            var importFolders = new List<(string TypeName, string FolderPath)>();
+
+            if (knownTypeNames.Contains(root.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                // Выбрали сразу папку типа:
+                // Motor\*.jpg
+                importFolders.Add((root.Name, root.FullName));
+            }
+            else
+            {
+                // Выбрали общую папку:
+                // Images\Motor\*.jpg
+                // Images\VGA\*.jpg
+                foreach (var dir in root.GetDirectories())
+                {
+                    if (knownTypeNames.Contains(dir.Name, StringComparer.OrdinalIgnoreCase))
+                        importFolders.Add((dir.Name, dir.FullName));
+                    else
+                        result.SkippedUnsupportedTypeFolder++;
+                }
+
+                if (importFolders.Count == 0)
+                    result.SkippedUnsupportedTypeFolder++;
+            }
+
+            var jobs = new List<(string TypeName, string FilePath)>();
+
+            foreach (var folder in importFolders)
+            {
+                var files = Directory
+                    .EnumerateFiles(folder.FolderPath, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(IsSupportedImageFile)
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (var file in files)
+                    jobs.Add((folder.TypeName, file));
+            }
+
+            progress?.Invoke(0, jobs.Count, "Importing images...");
+
+            for (var i = 0; i < jobs.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var job = jobs[i];
+                var fileName = Path.GetFileName(job.FilePath);
+
+                result.ScannedFiles++;
+
+                try
+                {
+                    var equipmentsOfType = allEquipments
+                        .Where(x => string.Equals(x.TypeGroup.ToString(), job.TypeName, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    var match = FindEquipmentForImageFile(job.FilePath, equipmentsOfType);
+
+                    if (match.Status == ImageFileEquipmentMatchStatus.NoMatch)
+                    {
+                        result.SkippedNoEquipmentMatch++;
+                        progress?.Invoke(i + 1, jobs.Count, $"No equipment match: {fileName}");
+                        continue;
+                    }
+
+                    if (match.Status == ImageFileEquipmentMatchStatus.Ambiguous)
+                    {
+                        result.SkippedAmbiguousMatch++;
+                        progress?.Invoke(i + 1, jobs.Count, $"Ambiguous match: {fileName}");
+                        continue;
+                    }
+
+                    if (match.Equipment == null)
+                    {
+                        result.SkippedNoEquipmentMatch++;
+                        progress?.Invoke(i + 1, jobs.Count, $"No equipment match: {fileName}");
+                        continue;
+                    }
+
+                    var dbResult = await _equipInfoService.ImportPhotoForEquipmentAsync(
+                        match.Equipment.Equipment,
+                        job.TypeName,
+                        job.FilePath,
+                        cancellationToken);
+
+                    switch (dbResult.Status)
+                    {
+                        case InfoPhotoImportDbStatus.AddedToDbAndLinked:
+                            result.AddedToDb++;
+                            result.AffectedEquipNames.Add(match.Equipment.Equipment);
+                            break;
+
+                        case InfoPhotoImportDbStatus.LinkedExisting:
+                            result.LinkedExisting++;
+                            result.AffectedEquipNames.Add(match.Equipment.Equipment);
+                            break;
+
+                        case InfoPhotoImportDbStatus.AlreadyLinked:
+                            result.AlreadyLinked++;
+                            break;
+                    }
+
+                    progress?.Invoke(i + 1, jobs.Count, $"Imported: {fileName}");
+                }
+                catch (Exception ex)
+                {
+                    result.Errors++;
+
+                    if (result.ErrorMessages.Count < 10)
+                        result.ErrorMessages.Add($"{fileName}: {ex.Message}");
+
+                    progress?.Invoke(i + 1, jobs.Count, $"Error: {fileName}");
+                }
+            }
+
+            await LoadLibrariesAsync();
+
+            var currentEquipName = ResolveSelectedEquipForInfo();
+
+            if (!string.IsNullOrWhiteSpace(currentEquipName) &&
+                result.AffectedEquipNames.Contains(currentEquipName))
+            {
+                await RefreshCurrentPhotosAfterImageImportAsync(currentEquipName);
+            }
+            else
+            {
+                SyncPhotoLibraryFlagsFromCurrentModel();
+                WarmupLinkedPhotoLibraryThumbnails();
+            }
+
+            _vm.InfoStatusText =
+                $"Image import finished. Added: {result.AddedToDb}, linked existing: {result.LinkedExisting}, skipped: {result.AlreadyLinked + result.SkippedNoEquipmentMatch + result.SkippedAmbiguousMatch}.";
+
+            return result;
+        }
+
+        private async Task RefreshCurrentPhotosAfterImageImportAsync(string currentEquipName)
+        {
+            currentEquipName = (currentEquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(currentEquipName))
+                return;
+
+            var fresh = await _equipInfoService.GetAsync(currentEquipName);
+
+            _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(currentEquipName);
+            _vm.CurrentEquipInfo.EquipName = currentEquipName;
+
+            ReplaceCollection(
+                _vm.CurrentEquipInfo.Photos,
+                fresh.Photos.Select(x => CloneFile(x, currentEquipName)));
+
+            NormalizeSortOrder(_vm.CurrentEquipInfo.Photos, currentEquipName);
+
+            foreach (var photo in _vm.CurrentEquipInfo.Photos)
+                PutPhotoToCache(photo);
+
+            SyncCheckedSelectionsFromCurrentModel();
+            SyncPhotoLibraryFlagsFromCurrentModel();
+            WarmupLinkedPhotoLibraryThumbnails();
+
+            var selectedId = _vm.SelectedInfoPhotoFile?.Id ?? 0;
+
+            _vm.SelectedInfoPhotoFile =
+                selectedId > 0
+                    ? _vm.CurrentEquipInfo.Photos.FirstOrDefault(x => x.Id == selectedId)
+                    : null;
+
+            _vm.SelectedInfoPhotoFile ??= _vm.CurrentEquipInfo.Photos.FirstOrDefault();
+
+            SelectPhotoLibraryFileById(_vm.SelectedInfoPhotoFile?.Id ?? 0);
+        }
+
+        private static bool IsSupportedImageFile(string filePath)
+        {
+            var ext = Path.GetExtension(filePath);
+
+            return ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private enum ImageFileEquipmentMatchStatus
+        {
+            Found,
+            NoMatch,
+            Ambiguous
+        }
+
+        private sealed class ImageFileEquipmentMatch
+        {
+            public ImageFileEquipmentMatchStatus Status { get; init; }
+            public EquipListBoxItem? Equipment { get; init; }
+        }
+
+        private static ImageFileEquipmentMatch FindEquipmentForImageFile(string filePath, IReadOnlyList<EquipListBoxItem> equipmentsOfType)
+        {
+            var fileStem = Path.GetFileNameWithoutExtension(filePath);
+
+            if (string.IsNullOrWhiteSpace(fileStem))
+            {
+                return new ImageFileEquipmentMatch
+                {
+                    Status = ImageFileEquipmentMatchStatus.NoMatch
+                };
+            }
+
+            // 1. Сначала ищем точное совпадение:
+            // File:  S01.H01.M01.jpg
+            // Equip: S01.H01.M01
+            var exact = equipmentsOfType
+                .Where(x => string.Equals(x.Equipment, fileStem, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (exact.Count == 1)
+            {
+                return new ImageFileEquipmentMatch
+                {
+                    Status = ImageFileEquipmentMatchStatus.Found,
+                    Equipment = exact[0]
+                };
+            }
+
+            if (exact.Count > 1)
+            {
+                return new ImageFileEquipmentMatch
+                {
+                    Status = ImageFileEquipmentMatchStatus.Ambiguous
+                };
+            }
+
+            // 2. Потом ищем вариант "полное имя equipment + суффикс":
+            // File:  S01.H01.M01_Pump.jpg
+            // Equip: S01.H01.M01
+            var byEquipmentPrefix = equipmentsOfType
+                .Where(x => FileStemStartsWithEquipmentName(fileStem, x.Equipment))
+                .ToList();
+
+            if (byEquipmentPrefix.Count == 1)
+            {
+                return new ImageFileEquipmentMatch
+                {
+                    Status = ImageFileEquipmentMatchStatus.Found,
+                    Equipment = byEquipmentPrefix[0]
+                };
+            }
+
+            if (byEquipmentPrefix.Count > 1)
+            {
+                return new ImageFileEquipmentMatch
+                {
+                    Status = ImageFileEquipmentMatchStatus.Ambiguous
+                };
+            }
+
+            // 3. Потом ищем по корню файла:
+            // File:  S01.H01.jpg
+            // File:  S01.H01_Pump.jpg
+            // File:  S01.H01.Pump.jpg
+            // Equip: S01.H01.M01
+            var candidates = BuildImageNameCandidates(fileStem);
+
+            foreach (var candidate in candidates)
+            {
+                var prefix = equipmentsOfType
+                    .Where(x => EquipmentStartsWithRoot(x.Equipment, candidate))
+                    .ToList();
+
+                if (prefix.Count == 1)
+                {
+                    return new ImageFileEquipmentMatch
+                    {
+                        Status = ImageFileEquipmentMatchStatus.Found,
+                        Equipment = prefix[0]
+                    };
+                }
+
+                if (prefix.Count > 1)
+                {
+                    return new ImageFileEquipmentMatch
+                    {
+                        Status = ImageFileEquipmentMatchStatus.Ambiguous
+                    };
+                }
+            }
+
+            return new ImageFileEquipmentMatch
+            {
+                Status = ImageFileEquipmentMatchStatus.NoMatch
+            };
+        }
+
+        private static List<string> BuildImageNameCandidates(string fileStem)
+        {
+            var result = new List<string>();
+
+            void Add(string? value)
+            {
+                value = (value ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(value))
+                    return;
+
+                if (!result.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    result.Add(value);
+            }
+
+            Add(fileStem);
+
+            // S01.H01_Pump -> S01.H01
+            var underscoreIndex = fileStem.IndexOf('_');
+            if (underscoreIndex > 0)
+                Add(fileStem[..underscoreIndex]);
+
+            // S01.H01-Pump -> S01.H01
+            var dashIndex = fileStem.IndexOf('-');
+            if (dashIndex > 0)
+                Add(fileStem[..dashIndex]);
+
+            // S01.H01 Pump -> S01.H01
+            var spaceIndex = fileStem.IndexOf(' ');
+            if (spaceIndex > 0)
+                Add(fileStem[..spaceIndex]);
+
+            // S01.H01.Pump -> S01.H01
+            var parts = fileStem.Split('.', StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length >= 2)
+                Add(parts[0] + "." + parts[1]);
+
+            return result;
+        }
+
+        private static bool FileStemStartsWithEquipmentName(string fileStem, string equipmentName)
+        {
+            fileStem = (fileStem ?? "").Trim();
+            equipmentName = (equipmentName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(fileStem) || string.IsNullOrWhiteSpace(equipmentName))
+                return false;
+
+            if (!fileStem.StartsWith(equipmentName, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (fileStem.Length == equipmentName.Length)
+                return true;
+
+            var next = fileStem[equipmentName.Length];
+
+            return next == '_' || next == '-' || next == ' ' || next == '.';
+        }
+
+        private static bool EquipmentStartsWithRoot(string equipmentName, string root)
+        {
+            equipmentName = (equipmentName ?? "").Trim();
+            root = (root ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equipmentName) || string.IsNullOrWhiteSpace(root))
+                return false;
+
+            if (equipmentName.Equals(root, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // S01.H01 должен матчить S01.H01.M01,
+            // но не должен матчить S01.H010.M01.
+            return equipmentName.StartsWith(root + ".", StringComparison.OrdinalIgnoreCase);
+        }
+
         public async Task CapturePhotoFromCameraAsync()
         {
             if (!_vm.IsInfoEditMode)

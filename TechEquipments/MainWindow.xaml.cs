@@ -1873,6 +1873,203 @@ namespace TechEquipments
         public Task Info_DeleteCurrentDocumentFromDbAsync()
             => _infoController.DeleteCurrentDocumentFromDbAsync();
 
+        /// <summary>
+        /// Умный импорт изображений из папки.
+        /// Папка может быть:
+        /// - сразу папкой типа: Motor\*.jpg
+        /// - общей папкой с подпапками типов: Images\Motor\*.jpg
+        /// </summary>
+        /// <summary>
+        /// Умный импорт изображений из папки.
+        /// Папка может быть:
+        /// - сразу папкой типа: Motor\*.jpg
+        /// - общей папкой с подпапками типов: Images\Motor\*.jpg
+        /// </summary>
+        public async Task Info_ImportImagesFromFolderAsync()
+        {
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Select image import folder",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = false
+            };
+
+            var dialogResult = dialog.ShowDialog();
+
+            if (dialogResult != System.Windows.Forms.DialogResult.OK)
+                return;
+
+            var folderPath = dialog.SelectedPath;
+
+            if (string.IsNullOrWhiteSpace(folderPath))
+                return;
+
+            InfoImageImportResult? importResult = null;
+            Exception? importError = null;
+
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+
+                var equipments = Vm.EquipmentList.Equipments
+                    .Where(x => x != null)
+                    .Where(x => !x.IsGroup)
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+                    .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+
+                void UpdateProgress(int done, int total, string text)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        Vm.Shell.IsGlobalProgressActive = true;
+                        Vm.Shell.GlobalProgressDone = done;
+                        Vm.Shell.GlobalProgressTotal = Math.Max(1, total);
+                        Vm.Shell.GlobalProgressText = text;
+                    });
+                }
+
+                UpdateProgress(0, 1, "Preparing image import...");
+
+                importResult = await _infoController.ImportImagesFromFolderAsync(
+                    folderPath,
+                    equipments,
+                    UpdateProgress);
+
+                Vm.Shell.BottomText =
+                    $"Image import finished. Added: {importResult.AddedToDb}, linked existing: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
+
+                // Важно:
+                // импорт уже напрямую записал фото/link в БД,
+                // поэтому после завершения выходим из edit mode до показа окна результата.
+                Vm.Info.IsInfoEditMode = false;
+            }
+            catch (Exception ex)
+            {
+                importError = ex;
+            }
+            finally
+            {
+                // Важно:
+                // сбрасываем progress/cursor ДО модального DXMessageBox,
+                // иначе busy cursor останется поверх окна результата.
+                Vm.Shell.IsGlobalProgressActive = false;
+                Vm.Shell.GlobalProgressText = "";
+                Vm.Shell.GlobalProgressDone = 0;
+                Vm.Shell.GlobalProgressTotal = 0;
+
+                Mouse.OverrideCursor = null;
+            }
+
+            // Даём WPF один проход на перерисовку:
+            // кнопки edit-mode спрячутся, верхние кнопки вернутся,
+            // bottom progress исчезнет, cursor станет обычным.
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            if (importError != null)
+            {
+                DXMessageBox.Show(
+                    this,
+                    $"Image import failed.\n\n{importError.Message}",
+                    "Image import",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
+                return;
+            }
+
+            if (importResult != null)
+            {
+                DXMessageBox.Show(
+                    this,
+                    importResult.ToMessage(),
+                    "Image import",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
+
+
+        //public async Task Info_ImportImagesFromFolderAsync()
+        //{
+        //    using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        //    {
+        //        Description = "Select image import folder",
+        //        UseDescriptionForTitle = true,
+        //        ShowNewFolderButton = false
+        //    };
+
+        //    var dialogResult = dialog.ShowDialog();
+
+        //    if (dialogResult != System.Windows.Forms.DialogResult.OK)
+        //        return;
+
+        //    var folderPath = dialog.SelectedPath;
+
+        //    if (string.IsNullOrWhiteSpace(folderPath))
+        //        return;
+
+        //    try
+        //    {
+        //        Mouse.OverrideCursor = Cursors.Wait;
+
+        //        var equipments = Vm.EquipmentList.Equipments
+        //            .Where(x => x != null)
+        //            .Where(x => !x.IsGroup)
+        //            .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+        //            .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+        //            .Select(g => g.First())
+        //            .ToList();
+
+        //        void UpdateProgress(int done, int total, string text)
+        //        {
+        //            Dispatcher.Invoke(() =>
+        //            {
+        //                Vm.Shell.IsGlobalProgressActive = true;
+        //                Vm.Shell.GlobalProgressDone = done;
+        //                Vm.Shell.GlobalProgressTotal = Math.Max(1, total);
+        //                Vm.Shell.GlobalProgressText = text;
+        //            });
+        //        }
+
+        //        UpdateProgress(0, 1, "Preparing image import...");
+
+        //        var importResult = await _infoController.ImportImagesFromFolderAsync(
+        //            folderPath,
+        //            equipments,
+        //            UpdateProgress);
+
+        //        Vm.Shell.BottomText =
+        //            $"Image import finished. Added: {importResult.AddedToDb}, linked existing: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
+
+        //        DXMessageBox.Show(
+        //            this,
+        //            importResult.ToMessage(),
+        //            "Image import",
+        //            MessageBoxButton.OK,
+        //            MessageBoxImage.Information);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        DXMessageBox.Show(
+        //            this,
+        //            $"Image import failed.\n\n{ex.Message}",
+        //            "Image import",
+        //            MessageBoxButton.OK,
+        //            MessageBoxImage.Error);
+        //    }
+        //    finally
+        //    {
+        //        Vm.Shell.IsGlobalProgressActive = false;
+        //        Vm.Shell.GlobalProgressText = "";
+        //        Vm.Shell.GlobalProgressDone = 0;
+        //        Vm.Shell.GlobalProgressTotal = 0;
+
+        //        Mouse.OverrideCursor = null;
+        //    }
+        //}
+
         #endregion
     }
 }

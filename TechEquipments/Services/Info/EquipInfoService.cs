@@ -1037,5 +1037,198 @@ VALUES
             }
 
         }
+
+        public async Task<InfoPhotoImportDbResult> ImportPhotoForEquipmentAsync(string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default)
+        {
+            equipName = (equipName ?? "").Trim();
+            equipTypeGroup = (equipTypeGroup ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equipName))
+                throw new InvalidOperationException("EquipName is empty.");
+
+            if (string.IsNullOrWhiteSpace(equipTypeGroup))
+                throw new InvalidOperationException("Equipment type group is empty.");
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                throw new FileNotFoundException("Image file not found.", filePath);
+
+            var fileName = Path.GetFileName(filePath);
+            var displayName = Path.GetFileName(filePath);
+
+            var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
+            if (fileData.Length == 0)
+                throw new InvalidOperationException($"Image file is empty: {fileName}");
+
+            var fileHash = ComputeFileHash(fileData);
+
+            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, cancellationToken);
+
+            await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                // 1. Гарантируем строку в equip_info, иначе link table по FK не примет equip_name.
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+                INSERT INTO {_qualifiedInfoTable}
+                (
+                    equip_name,
+                    install_time,
+                    revision_time,
+                    updated_at
+                )
+                VALUES
+                (
+                    @equip_name,
+                    NULL,
+                    NULL,
+                    now()
+                )
+                ON CONFLICT (equip_name)
+                DO NOTHING;";
+
+                    AddParameter(cmd, "@equip_name", equipName);
+
+                    await cmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                long photoId;
+                var photoAlreadyExisted = false;
+
+                // 2. Ищем дубль именно по file_data.
+                // file_hash используем как быстрый фильтр, file_data — как точную проверку.
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+                SELECT id
+                FROM {_qualifiedPhotoTable}
+                WHERE file_hash = @file_hash
+                  AND file_data = @file_data
+                LIMIT 1;";
+
+                    AddParameter(cmd, "@file_hash", fileHash);
+                    AddParameter(cmd, "@file_data", fileData);
+
+                    var existingId = await cmd.ExecuteScalarAsync(cancellationToken);
+
+                    if (existingId != null && existingId != DBNull.Value)
+                    {
+                        photoId = Convert.ToInt64(existingId);
+                        photoAlreadyExisted = true;
+                    }
+                    else
+                    {
+                        using var insertCmd = conn.CreateCommand();
+                        insertCmd.Transaction = tx;
+                        insertCmd.CommandText = $@"
+                    INSERT INTO {_qualifiedPhotoTable}
+                    (
+                        equip_type_group,
+                        file_name,
+                        display_name,
+                        file_hash,
+                        file_data,
+                        updated_at
+                    )
+                    VALUES
+                    (
+                        @equip_type_group,
+                        @file_name,
+                        @display_name,
+                        @file_hash,
+                        @file_data,
+                        now()
+                    )
+                    RETURNING id;";
+
+                        AddParameter(insertCmd, "@equip_type_group", equipTypeGroup);
+                        AddParameter(insertCmd, "@file_name", fileName);
+                        AddParameter(insertCmd, "@display_name", displayName);
+                        AddParameter(insertCmd, "@file_hash", fileHash);
+                        AddParameter(insertCmd, "@file_data", fileData);
+
+                        var newId = await insertCmd.ExecuteScalarAsync(cancellationToken);
+                        photoId = Convert.ToInt64(newId);
+                    }
+                }
+
+                // 3. Проверяем, привязано ли уже это фото к этому equipment.
+                var linkAlreadyExists = false;
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+                SELECT 1
+                FROM {_qualifiedInfoPhotoLinkTable}
+                WHERE equip_name = @equip_name
+                  AND photo_id = @photo_id
+                LIMIT 1;";
+
+                    AddParameter(cmd, "@equip_name", equipName);
+                    AddParameter(cmd, "@photo_id", photoId);
+
+                    var exists = await cmd.ExecuteScalarAsync(cancellationToken);
+                    linkAlreadyExists = exists != null && exists != DBNull.Value;
+                }
+
+                if (linkAlreadyExists)
+                {
+                    await tx.CommitAsync(cancellationToken);
+
+                    return new InfoPhotoImportDbResult
+                    {
+                        PhotoId = photoId,
+                        Status = InfoPhotoImportDbStatus.AlreadyLinked
+                    };
+                }
+
+                // 4. Добавляем link с sort_order в конец списка фото этого equipment.
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+                INSERT INTO {_qualifiedInfoPhotoLinkTable}
+                (
+                    equip_name,
+                    photo_id,
+                    sort_order
+                )
+                SELECT
+                    @equip_name,
+                    @photo_id,
+                    COALESCE(MAX(sort_order), -1) + 1
+                FROM {_qualifiedInfoPhotoLinkTable}
+                WHERE equip_name = @equip_name
+                ON CONFLICT (equip_name, photo_id)
+                DO NOTHING;";
+
+                    AddParameter(cmd, "@equip_name", equipName);
+                    AddParameter(cmd, "@photo_id", photoId);
+
+                    await cmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                await tx.CommitAsync(cancellationToken);
+
+                return new InfoPhotoImportDbResult
+                {
+                    PhotoId = photoId,
+                    Status = photoAlreadyExisted
+                        ? InfoPhotoImportDbStatus.LinkedExisting
+                        : InfoPhotoImportDbStatus.AddedToDbAndLinked
+                };
+            }
+            catch
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
     }
 }

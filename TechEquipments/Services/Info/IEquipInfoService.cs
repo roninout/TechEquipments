@@ -48,5 +48,12 @@ namespace TechEquipments
         Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default);
 
         Task EnsureDatabaseAndTablesAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Импортирует одно фото в библиотеку equip_photo и привязывает его к equipment.
+        /// Если такой file_data/file_hash уже есть в БД, новую запись не создаёт,
+        /// а только добавляет link к equipment.
+        /// </summary>
+        Task<InfoPhotoImportDbResult> ImportPhotoForEquipmentAsync(string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default);
     }
 }
