@@ -936,32 +936,6 @@ VALUES
             return result;
         }
 
-        //public async Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedPhotosAsync(CancellationToken ct = default)
-        //{
-        //    var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        //    await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        //    var conn = db.Database.GetDbConnection();
-        //    await EnsureConnectionOpenAsync(conn, ct);
-
-        //    using var cmd = conn.CreateCommand();
-        //    cmd.CommandText = $@"
-        //SELECT DISTINCT equip_name
-        //FROM {_qualifiedInfoPhotoLinkTable};";
-
-        //    using var reader = await cmd.ExecuteReaderAsync(ct);
-
-        //    while (await reader.ReadAsync(ct))
-        //    {
-        //        var equipName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
-
-        //        if (!string.IsNullOrWhiteSpace(equipName))
-        //            result.Add(equipName);
-        //    }
-
-        //    return result;
-        //}
-
         public Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedPhotosAsync(CancellationToken ct = default)
         {
             return GetDistinctEquipNamesFromLinkTableAsync(_qualifiedInfoPhotoLinkTable, ct);
@@ -1325,5 +1299,501 @@ VALUES
                 throw;
             }
         }
+
+        public async Task<InfoDocumentImportDbResult> ImportDocumentForEquipmentAsync(InfoFileKind kind, string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default)
+        {
+            var bulk = await ImportDocumentForEquipmentsAsync(
+                kind,
+                equipTypeGroup,
+                filePath,
+                new[] { equipName },
+                cancellationToken);
+
+            InfoDocumentImportDbStatus status;
+
+            if (bulk.AddedToDb)
+            {
+                status = InfoDocumentImportDbStatus.AddedToDbAndLinked;
+            }
+            else if (bulk.UpdatedInDb)
+            {
+                status = InfoDocumentImportDbStatus.UpdatedExistingAndLinked;
+            }
+            else if (bulk.LinksCreated > 0)
+            {
+                status = InfoDocumentImportDbStatus.LinkedExisting;
+            }
+            else
+            {
+                status = InfoDocumentImportDbStatus.AlreadyLinked;
+            }
+
+            return new InfoDocumentImportDbResult
+            {
+                DocumentId = bulk.DocumentId,
+                Status = status
+            };
+        }
+
+        public async Task<InfoDocumentBulkImportDbResult> ImportDocumentForEquipmentsAsync(InfoFileKind kind, string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken = default)
+        {
+            equipTypeGroup = (equipTypeGroup ?? "").Trim();
+
+            var cleanEquipNames = (equipNames ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (kind != InfoFileKind.Instruction && kind != InfoFileKind.Scheme)
+                throw new InvalidOperationException("Only Instruction and Scheme documents can be imported with this method.");
+
+            if (string.IsNullOrWhiteSpace(equipTypeGroup))
+                throw new InvalidOperationException("Equipment type group is empty.");
+
+            if (cleanEquipNames.Length == 0)
+                throw new InvalidOperationException("Equipment list is empty.");
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                throw new FileNotFoundException("PDF file not found.", filePath);
+
+            var fileName = Path.GetFileName(filePath);
+            var displayName = Path.GetFileName(filePath);
+            var sourceUpdatedAt = File.GetLastWriteTime(filePath);
+
+            // Главная оптимизация:
+            // читаем файл и считаем hash один раз на PDF + TypeGroup.
+            var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
+            if (fileData.Length == 0)
+                throw new InvalidOperationException($"PDF file is empty: {fileName}");
+
+            var fileHash = ComputeFileHash(fileData);
+
+            var table = GetLibraryTable(kind);
+            var linkInfo = GetDocumentLinkInfo(kind);
+
+            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, cancellationToken);
+
+            await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                await EnsureInfoRowsAsync(conn, tx, cleanEquipNames, cancellationToken);
+
+                long documentId;
+                var addedToDb = false;
+                var updatedInDb = false;
+
+                // 1. Сначала ищем по hash в рамках equip_type_group.
+                var existingByHash = await FindLibraryItemByTypeAndHashAsync(
+                    conn,
+                    tx,
+                    table,
+                    equipTypeGroup,
+                    fileHash,
+                    cancellationToken);
+
+                if (existingByHash != null)
+                {
+                    documentId = existingByHash.Id;
+                }
+                else
+                {
+                    // 2. Hash другой. Проверяем, есть ли файл с таким же именем.
+                    var existingByName = await FindLibraryItemByTypeAndFileNameAsync(
+                        conn,
+                        tx,
+                        table,
+                        equipTypeGroup,
+                        fileName,
+                        cancellationToken);
+
+                    if (existingByName != null)
+                    {
+                        documentId = existingByName.Id;
+
+                        var dbUpdatedAt = existingByName.UpdatedAt;
+
+                        // Если файл на диске новее версии в БД — заменяем данные в существующей строке.
+                        var shouldUpdate =
+                            !dbUpdatedAt.HasValue ||
+                            sourceUpdatedAt > dbUpdatedAt.Value;
+
+                        if (shouldUpdate)
+                        {
+                            await UpdateLibraryItemDataAsync(
+                                conn,
+                                tx,
+                                table,
+                                documentId,
+                                fileName,
+                                displayName,
+                                fileHash,
+                                fileData,
+                                sourceUpdatedAt,
+                                cancellationToken);
+
+                            updatedInDb = true;
+                        }
+                    }
+                    else
+                    {
+                        var inserted = await InsertLibraryItemWithUpdatedAtAsync(
+                            conn,
+                            tx,
+                            table,
+                            equipTypeGroup,
+                            fileName,
+                            displayName,
+                            fileHash,
+                            fileData,
+                            sourceUpdatedAt,
+                            cancellationToken);
+
+                        documentId = inserted.Id;
+                        addedToDb = true;
+                    }
+                }
+
+                var linkResult = await EnsureDocumentLinksAsync(
+                    conn,
+                    tx,
+                    linkInfo.LinkTable,
+                    linkInfo.LinkIdColumn,
+                    cleanEquipNames,
+                    documentId,
+                    cancellationToken);
+
+                await tx.CommitAsync(cancellationToken);
+
+                return new InfoDocumentBulkImportDbResult
+                {
+                    DocumentId = documentId,
+                    AddedToDb = addedToDb,
+                    UpdatedInDb = updatedInDb,
+                    LinksCreated = linkResult.CreatedEquipNames.Count,
+                    AlreadyLinked = Math.Max(0, cleanEquipNames.Length - linkResult.CreatedEquipNames.Count),
+                    AffectedEquipNames = cleanEquipNames
+                };
+            }
+            catch
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        private (string LinkTable, string LinkIdColumn) GetDocumentLinkInfo(InfoFileKind kind)
+        {
+            return kind switch
+            {
+                InfoFileKind.Instruction => (_qualifiedInfoInstructionLinkTable, "instruction_id"),
+                InfoFileKind.Scheme => (_qualifiedInfoSchemeLinkTable, "scheme_id"),
+                _ => throw new InvalidOperationException($"Unsupported document kind: {kind}")
+            };
+        }
+
+        private async Task EnsureInfoRowAsync(DbConnection conn, DbTransaction tx, string equipName, CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+        INSERT INTO {_qualifiedInfoTable}
+        (
+            equip_name,
+            install_time,
+            revision_time,
+            updated_at
+        )
+        VALUES
+        (
+            @equip_name,
+            NULL,
+            NULL,
+            now()
+        )
+        ON CONFLICT (equip_name)
+        DO NOTHING;";
+
+            AddParameter(cmd, "@equip_name", equipName);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        private async Task EnsureInfoRowsAsync(DbConnection conn, DbTransaction tx, IReadOnlyCollection<string> equipNames, CancellationToken ct)
+        {
+            var cleanEquipNames = (equipNames ?? Array.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (cleanEquipNames.Length == 0)
+                return;
+
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+        INSERT INTO {_qualifiedInfoTable}
+        (
+            equip_name,
+            install_time,
+            revision_time,
+            updated_at
+        )
+        SELECT
+            e.equip_name,
+            NULL,
+            NULL,
+            now()
+        FROM unnest(@equip_names::text[]) AS e(equip_name)
+        ON CONFLICT (equip_name)
+        DO NOTHING;";
+
+            AddParameter(cmd, "@equip_names", cleanEquipNames);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        private static async Task<EquipmentInfoFileDto?> FindLibraryItemByTypeAndFileNameAsync(DbConnection conn, DbTransaction tx, string qualifiedTable, string equipTypeGroupKey, string fileName, CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+        SELECT
+            id,
+            equip_type_group,
+            file_name,
+            display_name,
+            file_hash,
+            NULL::bytea AS file_data,
+            updated_at
+        FROM {qualifiedTable}
+        WHERE equip_type_group = @equip_type_group
+          AND lower(file_name) = lower(@file_name)
+        ORDER BY updated_at DESC NULLS LAST, id DESC
+        LIMIT 1;";
+
+            AddParameter(cmd, "@equip_type_group", equipTypeGroupKey);
+            AddParameter(cmd, "@file_name", fileName);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            return ReadLibraryFile(reader, includeData: false);
+        }
+
+        private static async Task<EquipmentInfoFileDto> InsertLibraryItemWithUpdatedAtAsync(DbConnection conn, DbTransaction tx, string qualifiedTable, string equipTypeGroupKey, string fileName, string displayName, string fileHash, byte[] fileData, DateTime updatedAt, CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+        INSERT INTO {qualifiedTable}
+        (
+            equip_type_group,
+            file_name,
+            display_name,
+            file_hash,
+            file_data,
+            updated_at
+        )
+        VALUES
+        (
+            @equip_type_group,
+            @file_name,
+            @display_name,
+            @file_hash,
+            @file_data,
+            @updated_at
+        )
+        RETURNING
+            id,
+            equip_type_group,
+            file_name,
+            display_name,
+            file_hash,
+            NULL::bytea AS file_data,
+            updated_at;";
+
+            AddParameter(cmd, "@equip_type_group", equipTypeGroupKey);
+            AddParameter(cmd, "@file_name", fileName);
+            AddParameter(cmd, "@display_name", displayName);
+            AddParameter(cmd, "@file_hash", fileHash);
+            AddParameter(cmd, "@file_data", fileData);
+            AddParameter(cmd, "@updated_at", updatedAt);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                throw new InvalidOperationException("Inserted document was not returned by DB.");
+
+            return ReadLibraryFile(reader, includeData: false);
+        }
+
+        private static async Task UpdateLibraryItemDataAsync(DbConnection conn, DbTransaction tx, string qualifiedTable, long id, string fileName, string displayName, string fileHash, byte[] fileData, DateTime updatedAt, CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $@"
+        UPDATE {qualifiedTable}
+        SET
+            file_name = @file_name,
+            display_name = @display_name,
+            file_hash = @file_hash,
+            file_data = @file_data,
+            updated_at = @updated_at
+        WHERE id = @id;";
+
+            AddParameter(cmd, "@id", id);
+            AddParameter(cmd, "@file_name", fileName);
+            AddParameter(cmd, "@display_name", displayName);
+            AddParameter(cmd, "@file_hash", fileHash);
+            AddParameter(cmd, "@file_data", fileData);
+            AddParameter(cmd, "@updated_at", updatedAt);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        private static async Task<bool> EnsureDocumentLinkAsync(DbConnection conn, DbTransaction tx, string qualifiedLinkTable, string linkIdColumn, string equipName, long documentId, CancellationToken ct)
+        {
+            using var existsCmd = conn.CreateCommand();
+            existsCmd.Transaction = tx;
+            existsCmd.CommandText = $@"
+        SELECT 1
+        FROM {qualifiedLinkTable}
+        WHERE equip_name = @equip_name
+          AND {linkIdColumn} = @document_id
+        LIMIT 1;";
+
+            AddParameter(existsCmd, "@equip_name", equipName);
+            AddParameter(existsCmd, "@document_id", documentId);
+
+            var exists = await existsCmd.ExecuteScalarAsync(ct);
+            if (exists != null && exists != DBNull.Value)
+                return false;
+
+            using var insertCmd = conn.CreateCommand();
+            insertCmd.Transaction = tx;
+            insertCmd.CommandText = $@"
+        INSERT INTO {qualifiedLinkTable}
+        (
+            equip_name,
+            {linkIdColumn},
+            sort_order
+        )
+        SELECT
+            @equip_name,
+            @document_id,
+            COALESCE(MAX(sort_order), -1) + 1
+        FROM {qualifiedLinkTable}
+        WHERE equip_name = @equip_name
+        ON CONFLICT DO NOTHING;";
+
+            AddParameter(insertCmd, "@equip_name", equipName);
+            AddParameter(insertCmd, "@document_id", documentId);
+
+            var affected = await insertCmd.ExecuteNonQueryAsync(ct);
+            return affected > 0;
+        }
+
+        private sealed class BulkDocumentLinkResult
+        {
+            public List<string> CreatedEquipNames { get; } = new();
+        }
+
+        private static async Task<BulkDocumentLinkResult> EnsureDocumentLinksAsync(DbConnection conn, DbTransaction tx, string qualifiedLinkTable, string linkIdColumn, IReadOnlyCollection<string> equipNames, long documentId, CancellationToken ct)
+        {
+            var result = new BulkDocumentLinkResult();
+
+            var cleanEquipNames = (equipNames ?? Array.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (cleanEquipNames.Length == 0)
+                return result;
+
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+
+            cmd.CommandText = $@"
+        WITH input AS
+        (
+            SELECT DISTINCT btrim(e.equip_name) AS equip_name
+            FROM unnest(@equip_names::text[]) AS e(equip_name)
+            WHERE btrim(e.equip_name) <> ''
+        ),
+        to_insert AS
+        (
+            SELECT
+                input.equip_name,
+                COALESCE(
+                    (
+                        SELECT MAX(link.sort_order)
+                        FROM {qualifiedLinkTable} link
+                        WHERE link.equip_name = input.equip_name
+                    ),
+                    -1
+                ) + 1 AS next_sort_order
+            FROM input
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM {qualifiedLinkTable} existing_link
+                WHERE existing_link.equip_name = input.equip_name
+                  AND existing_link.{linkIdColumn} = @document_id
+            )
+        )
+        INSERT INTO {qualifiedLinkTable}
+        (
+            equip_name,
+            {linkIdColumn},
+            sort_order
+        )
+        SELECT
+            equip_name,
+            @document_id,
+            next_sort_order
+        FROM to_insert
+        ON CONFLICT DO NOTHING
+        RETURNING equip_name;";
+
+            AddParameter(cmd, "@equip_names", cleanEquipNames);
+            AddParameter(cmd, "@document_id", documentId);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var equipName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+
+                if (!string.IsNullOrWhiteSpace(equipName))
+                    result.CreatedEquipNames.Add(equipName);
+            }
+
+            return result;
+        }
+
+        private static EquipmentInfoFileDto ReadLibraryFile(DbDataReader reader, bool includeData)
+        {
+            return new EquipmentInfoFileDto
+            {
+                Id = reader.IsDBNull(0) ? 0 : reader.GetInt64(0),
+                EquipTypeGroupKey = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                FileName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                DisplayName = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                FileHash = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                FileData = includeData && !reader.IsDBNull(5)
+                    ? (byte[])reader.GetValue(5)
+                    : null,
+                UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6)
+            };
+        }
+
     }
 }

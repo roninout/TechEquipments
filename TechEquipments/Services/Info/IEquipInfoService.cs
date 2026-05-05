@@ -75,5 +75,19 @@ namespace TechEquipments
         /// а только добавляет link к equipment.
         /// </summary>
         Task<InfoPhotoImportDbResult> ImportPhotoForEquipmentAsync(string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Импортирует PDF-документ в библиотеку instruction/scheme и сразу линкует к equipment.
+        /// Если такой hash уже есть — новую запись не создаёт.
+        /// Если найден файл с тем же именем, но другим hash — более новый файл заменяет старый.
+        /// </summary>
+        Task<InfoDocumentImportDbResult> ImportDocumentForEquipmentAsync(InfoFileKind kind, string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Оптимизированный импорт PDF-документа:
+        /// 1 раз читает файл, 1 раз считает hash, 1 раз добавляет/обновляет library,
+        /// затем bulk-линкует документ сразу к нескольким equipment.
+        /// </summary>
+        Task<InfoDocumentBulkImportDbResult> ImportDocumentForEquipmentsAsync(InfoFileKind kind, string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken = default);
     }
 }

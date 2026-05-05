@@ -888,14 +888,265 @@ namespace TechEquipments
             _vm.InfoStatusText = "Photo removed from current card.";
         }
 
-        public async Task LoadCurrentDocumentFilesAsync()
+        private sealed class DocumentImportJob
+        {
+            public InfoFileKind Kind { get; init; }
+            public string TypeGroupKey { get; init; } = "";
+            public string FilePath { get; init; } = "";
+
+            public HashSet<string> EquipNames { get; } =
+                new(StringComparer.OrdinalIgnoreCase);
+
+            public HashSet<int> SourceRows { get; } = new();
+        }
+
+        private async Task<InfoDocumentImportResult> ImportDocumentsFromExcelAsync(string excelPath, Action<int, int, string>? progress = null, CancellationToken cancellationToken = default)
+        {
+            const string sheetName = "SCHEME";
+            var kind = InfoFileKind.Scheme;
+
+            progress?.Invoke(0, 1, "Reading Excel import file...");
+
+            var result = new InfoDocumentImportResult
+            {
+                Kind = kind,
+                SheetName = sheetName
+            };
+
+            var plan = ExcelInfoDocumentImportReader.Read(excelPath, sheetName);
+
+            result.BaseFolder = plan.BaseFolder;
+
+            var equipmentsByStation = _equipmentVm.Equipments
+                .Where(x => x != null)
+                .Where(x => !x.IsGroup)
+                .Where(x => !x.IsEquipmentChildNode)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+                .Where(x => !string.IsNullOrWhiteSpace(x.Station))
+                .Where(x => x.TypeGroup != EquipTypeGroup.All)
+                .Where(x => x.TypeGroup != EquipTypeGroup.Favorites)
+                .GroupBy(x => x.Station.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+                        .Select(x => x.First())
+                        .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var jobs = new Dictionary<string, DocumentImportJob>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in plan.Rows)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                result.RowsScanned++;
+
+                var station = (row.Station ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(station) || row.FileNames.Count == 0)
+                {
+                    result.EmptyRowsSkipped++;
+                    continue;
+                }
+
+                if (!equipmentsByStation.TryGetValue(station, out var equipments) ||
+                    equipments.Count == 0)
+                {
+                    result.RowsWithoutEquipment++;
+
+                    if (result.ErrorMessages.Count < 15)
+                        result.ErrorMessages.Add($"Row {row.RowNumber}: no equipment found for station '{station}'.");
+
+                    continue;
+                }
+
+                foreach (var fileName in row.FileNames)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    result.FileReferencesScanned++;
+
+                    var pdfPath = Path.IsPathRooted(fileName)
+                        ? fileName
+                        : Path.Combine(plan.BaseFolder, fileName);
+
+                    pdfPath = Path.GetFullPath(pdfPath);
+
+                    if (!File.Exists(pdfPath))
+                    {
+                        result.MissingFiles++;
+
+                        if (result.ErrorMessages.Count < 15)
+                            result.ErrorMessages.Add($"Row {row.RowNumber}: file not found: {pdfPath}");
+
+                        continue;
+                    }
+
+                    // ВАЖНО:
+                    // library у нас scoped by equip_type_group.
+                    // Поэтому один и тот же PDF импортируем один раз на каждый TypeGroup,
+                    // а потом bulk-link на все equipment этого TypeGroup.
+                    foreach (var typeGroup in equipments
+                        .GroupBy(x => x.TypeGroup.ToString(), StringComparer.OrdinalIgnoreCase))
+                    {
+                        var typeGroupKey = typeGroup.Key;
+
+                        if (string.IsNullOrWhiteSpace(typeGroupKey))
+                            continue;
+
+                        var jobKey =
+                            $"{kind}|{typeGroupKey}|{pdfPath}".ToLowerInvariant();
+
+                        if (!jobs.TryGetValue(jobKey, out var job))
+                        {
+                            job = new DocumentImportJob
+                            {
+                                Kind = kind,
+                                TypeGroupKey = typeGroupKey,
+                                FilePath = pdfPath
+                            };
+
+                            jobs[jobKey] = job;
+                        }
+
+                        job.SourceRows.Add(row.RowNumber);
+
+                        foreach (var equipment in typeGroup)
+                        {
+                            if (!string.IsNullOrWhiteSpace(equipment.Equipment))
+                                job.EquipNames.Add(equipment.Equipment.Trim());
+                        }
+                    }
+                }
+            }
+
+            result.ImportJobs = jobs.Count;
+
+            if (jobs.Count == 0)
+            {
+                _vm.InfoStatusText =
+                    $"Scheme import finished. No import jobs. Missing files: {result.MissingFiles}, rows without equipment: {result.RowsWithoutEquipment}.";
+
+                progress?.Invoke(1, 1, "Scheme import completed.");
+                return result;
+            }
+
+            var totalSteps = jobs.Count;
+            var done = 0;
+
+            progress?.Invoke(0, totalSteps, $"Importing scheme documents: 0/{totalSteps}");
+
+            foreach (var job in jobs.Values
+                .OrderBy(x => x.TypeGroupKey, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => Path.GetFileName(x.FilePath), StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var fileName = Path.GetFileName(job.FilePath);
+
+                try
+                {
+                    var dbResult = await _equipInfoService.ImportDocumentForEquipmentsAsync(
+                        job.Kind,
+                        job.TypeGroupKey,
+                        job.FilePath,
+                        job.EquipNames,
+                        cancellationToken);
+
+                    if (dbResult.AddedToDb)
+                        result.AddedToDb++;
+
+                    if (dbResult.UpdatedInDb)
+                        result.UpdatedInDb++;
+
+                    result.LinkedExisting += dbResult.LinksCreated;
+                    result.AlreadyLinked += dbResult.AlreadyLinked;
+
+                    foreach (var equipName in dbResult.AffectedEquipNames)
+                        result.AffectedEquipNames.Add(equipName);
+                }
+                catch (Exception ex)
+                {
+                    result.Errors++;
+
+                    if (result.ErrorMessages.Count < 15)
+                    {
+                        result.ErrorMessages.Add(
+                            $"{job.TypeGroupKey}, {fileName}: {ex.Message}");
+                    }
+                }
+
+                done++;
+
+                progress?.Invoke(
+                    done,
+                    totalSteps,
+                    $"Importing scheme documents: {done}/{totalSteps} | {job.TypeGroupKey} | {fileName}");
+            }
+
+            progress?.Invoke(totalSteps, totalSteps, "Refreshing document libraries...");
+
+            await LoadLibrariesAsync();
+
+            var currentEquipName = ResolveSelectedEquipForInfo();
+
+            if (!string.IsNullOrWhiteSpace(currentEquipName) &&
+                result.AffectedEquipNames.Contains(currentEquipName))
+            {
+                await RefreshCurrentDocumentLinksAfterImportAsync(kind, currentEquipName);
+            }
+
+            _vm.InfoStatusText =
+                $"Scheme import finished. Jobs: {result.ImportJobs}, added: {result.AddedToDb}, updated: {result.UpdatedInDb}, links: {result.LinkedExisting}, errors: {result.Errors}.";
+
+            progress?.Invoke(totalSteps, totalSteps, "Scheme import completed.");
+
+            return result;
+        }
+
+        private async Task RefreshCurrentDocumentLinksAfterImportAsync(InfoFileKind kind, string currentEquipName)
+        {
+            currentEquipName = (currentEquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(currentEquipName))
+                return;
+
+            var fresh = await _equipInfoService.GetAsync(currentEquipName);
+
+            _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(currentEquipName);
+            _vm.CurrentEquipInfo.EquipName = currentEquipName;
+
+            if (kind == InfoFileKind.Scheme)
+            {
+                ReplaceCollection(
+                    _vm.CurrentEquipInfo.Schemes,
+                    fresh.Schemes.Select(x => CloneFile(x, currentEquipName)));
+
+                _vm.SelectedInfoSchemeFile = _vm.CurrentEquipInfo.Schemes.FirstOrDefault();
+            }
+            else if (kind == InfoFileKind.Instruction)
+            {
+                ReplaceCollection(
+                    _vm.CurrentEquipInfo.Instructions,
+                    fresh.Instructions.Select(x => CloneFile(x, currentEquipName)));
+
+                _vm.SelectedInfoInstructionFile = _vm.CurrentEquipInfo.Instructions.FirstOrDefault();
+            }
+
+            SyncCheckedSelectionsFromCurrentModel();
+
+            _vm.CurrentInfoDocumentPreviewPath = null;
+            await PrepareCurrentDocumentAsync();
+        }
+
+        public async Task<InfoDocumentImportResult?> LoadCurrentDocumentFilesAsync(Action<int, int, string>? progress = null)
         {
             if (!_vm.IsInfoEditMode || !_vm.IsInfoDocumentPage)
-                return;
+                return null;
 
             var equipName = ResolveSelectedEquipForInfo();
             if (string.IsNullOrWhiteSpace(equipName))
-                return;
+                return null;
 
             _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(equipName);
             _vm.CurrentEquipInfo.EquipName = equipName;
@@ -907,24 +1158,52 @@ namespace TechEquipments
             var dlg = new OpenFileDialog
             {
                 Title = kind == InfoFileKind.Scheme
-                    ? "Select scheme PDF files"
-                    : "Select instruction PDF files",
-                Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*",
+                    ? "Select scheme PDF or Excel import file"
+                    : "Select instruction PDF or Excel import file",
+                Filter =
+                    "PDF files (*.pdf)|*.pdf|" +
+                    "Excel files (*.xlsx)|*.xlsx|" +
+                    "All files (*.*)|*.*",
                 CheckFileExists = true,
                 Multiselect = true
             };
 
             if (dlg.ShowDialog(_ownerWindow) != true)
-                return;
+                return null;
+
+            var excelFiles = dlg.FileNames
+                .Where(x => string.Equals(Path.GetExtension(x), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var pdfFiles = dlg.FileNames
+                .Where(x => string.Equals(Path.GetExtension(x), ".pdf", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Если выбрали Excel — запускаем единый импорт.
+            // Сейчас внутри импортируется только лист SCHEME.
+            if (excelFiles.Count > 0)
+            {
+                _vm.InfoStatusText = "Importing scheme documents from Excel...";
+
+                // Финальное окно и progress-bar теперь обрабатывает MainWindow,
+                // потому что только MainWindow имеет доступ к Vm.Shell.
+                return await ImportDocumentsFromExcelAsync(
+                    excelFiles[0],
+                    progress);
+            }
+
+            // Обычный старый режим: ручное добавление PDF к текущему equipment.
+            if (pdfFiles.Count == 0)
+                return null;
 
             var equipTypeGroupKey = ResolveSelectedEquipTypeGroupKey();
             if (string.IsNullOrWhiteSpace(equipTypeGroupKey))
-                return;
+                return null;
 
             var addResult = await _equipInfoService.AddFilesToLibraryAsync(
                 kind,
                 equipTypeGroupKey,
-                dlg.FileNames);
+                pdfFiles);
 
             await LoadLibrariesAsync();
 
@@ -951,8 +1230,8 @@ namespace TechEquipments
                     MessageBoxImage.Information);
             }
 
-            _vm.InfoStatusText =
-                $"Documents linked: {target.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
+            _vm.InfoStatusText = $"Documents linked: {target.Count}. New in library: {addResult.AddedToLibraryFileNames.Count}.";
+            return null;
         }
 
         public async Task RemoveCurrentDocumentAsync()

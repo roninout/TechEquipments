@@ -1946,8 +1946,97 @@ namespace TechEquipments
         /// <summary>
         /// Добавить PDF-файлы для текущей документной страницы.
         /// </summary>
-        public Task Info_LoadCurrentDocumentFilesAsync()
-            => _infoController.LoadCurrentDocumentFilesAsync();
+        public async Task Info_LoadCurrentDocumentFilesAsync()
+        {
+            InfoDocumentImportResult? importResult = null;
+            Exception? importError = null;
+            var progressWasStarted = false;
+
+            try
+            {
+                void UpdateProgress(int done, int total, string text)
+                {
+                    progressWasStarted = true;
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        Mouse.OverrideCursor = Cursors.Wait;
+
+                        Vm.Shell.IsGlobalProgressActive = true;
+                        Vm.Shell.GlobalProgressDone = done;
+                        Vm.Shell.GlobalProgressTotal = Math.Max(1, total);
+                        Vm.Shell.GlobalProgressText = text;
+                    });
+                }
+
+                importResult = await _infoController.LoadCurrentDocumentFilesAsync(UpdateProgress);
+
+                if (importResult != null)
+                {
+                    foreach (var equipName in importResult.AffectedEquipNames)
+                    {
+                        if (importResult.Kind == InfoFileKind.Scheme)
+                        {
+                            SetInfoIndicatorFlagsInLoadedEquipments(
+                                equipName,
+                                hasLinkedScheme: true);
+                        }
+                        else if (importResult.Kind == InfoFileKind.Instruction)
+                        {
+                            SetInfoIndicatorFlagsInLoadedEquipments(
+                                equipName,
+                                hasLinkedInstruction: true);
+                        }
+                    }
+
+                    Vm.Shell.BottomText = $"Scheme import finished. Jobs: {importResult.ImportJobs}, added: {importResult.AddedToDb}, updated: {importResult.UpdatedInDb}, links: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
+
+                    // Как с импортом фото: после bulk import выходим из edit mode.
+                    Vm.Info.IsInfoEditMode = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                importError = ex;
+            }
+            finally
+            {
+                if (progressWasStarted)
+                {
+                    Vm.Shell.IsGlobalProgressActive = false;
+                    Vm.Shell.GlobalProgressText = "";
+                    Vm.Shell.GlobalProgressDone = 0;
+                    Vm.Shell.GlobalProgressTotal = 0;
+
+                    Mouse.OverrideCursor = null;
+                }
+            }
+
+            if (progressWasStarted)
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            if (importError != null)
+            {
+                DXMessageBox.Show(
+                    this,
+                    $"Scheme import failed.\n\n{importError.Message}",
+                    "Scheme import",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
+                return;
+            }
+
+            if (importResult != null)
+            {
+                DXMessageBox.Show(
+                    this,
+                    importResult.ToMessage("Scheme import"),
+                    "Scheme import",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
 
         /// <summary>
         /// Удалить выбранный PDF с текущей документной страницы.
