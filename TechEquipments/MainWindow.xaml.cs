@@ -1615,6 +1615,12 @@ namespace TechEquipments
                 switch (e.PropertyName)
                 {
                     case nameof(EquipmentListViewModel.EquipName):
+                        if (_uiStateController.IsRestoringState)
+                        {
+                            NotifyParamQrUiChanged();
+                            break;
+                        }
+
                         _equipmentListController.ScheduleSearch(EquipVm.EquipName);
                         _uiStateController.ScheduleSave();
                         NotifyParamQrUiChanged();
@@ -1626,6 +1632,12 @@ namespace TechEquipments
 
                     case nameof(EquipmentListViewModel.SelectedTypeFilter):
                     case nameof(EquipmentListViewModel.SelectedStation):
+                        if (_uiStateController.IsRestoringState || _suppressStartupTreeSelectionSideEffects)
+                        {
+                            NotifyParamQrUiChanged();
+                            break;
+                        }
+
                         RestoreOrSelectEquipmentAfterFilterChanged();
                         _uiStateController.ScheduleSave();
                         NotifyParamQrUiChanged();

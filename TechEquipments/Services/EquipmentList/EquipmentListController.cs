@@ -116,8 +116,21 @@ namespace TechEquipments
         /// </summary>
         public FilterSelectionResult ApplyFiltersAndRestoreSelectionCore()
         {
-            ApplyFilters();
-            return RestoreOrSelectEquipmentAfterFilterChangedCore();
+            // ВАЖНО:
+            // TreeListControl при Refresh фильтра может сам выбрать первую видимую строку.
+            // Если в этот момент не подавить SelectedItemChanged, первый элемент
+            // будет записан в EquipName/LastEquipByFilterKey раньше нашего restore.
+            _suppressEquipNameFromSelection = true;
+
+            try
+            {
+                ApplyFilters();
+                return RestoreOrSelectEquipmentAfterFilterChangedCore();
+            }
+            finally
+            {
+                _suppressEquipNameFromSelection = false;
+            }
         }
 
         public void InitEquipmentsView()
@@ -320,22 +333,13 @@ namespace TechEquipments
 
             if (visibleItems.Count == 0)
             {
-                _suppressEquipNameFromSelection = true;
+                EquipVm.SelectedListBoxEquipment = null;
 
-                try
-                {
-                    EquipVm.SelectedListBoxEquipment = null;
+                var hadEquipName = !string.IsNullOrWhiteSpace(EquipVm.EquipName);
+                if (hadEquipName)
+                    EquipVm.EquipName = "";
 
-                    var hadEquipName = !string.IsNullOrWhiteSpace(EquipVm.EquipName);
-                    if (hadEquipName)
-                        EquipVm.EquipName = "";
-
-                    return FilterSelectionResult.NoVisible(hadEquipName);
-                }
-                finally
-                {
-                    _suppressEquipNameFromSelection = false;
-                }
+                return FilterSelectionResult.NoVisible(hadEquipName);
             }
 
             var key = BuildFilterSelectionKey(EquipVm.SelectedStation, EquipVm.SelectedTypeFilter);
@@ -365,32 +369,23 @@ namespace TechEquipments
             var match = rememberedMatch ?? currentMatch ?? visibleItems[0];
             var selectedEquip = (match.Equipment ?? "").Trim();
 
-            _suppressEquipNameFromSelection = true;
+            EquipVm.SelectedListBoxEquipment = match;
+            EquipmentsView.MoveCurrentTo(match);
 
-            try
+            var equipNameChanged =
+                !string.Equals((EquipVm.EquipName ?? "").Trim(), selectedEquip, StringComparison.OrdinalIgnoreCase);
+
+            if (equipNameChanged)
+                EquipVm.EquipName = selectedEquip;
+
+            RememberEquipmentForCurrentFilters(selectedEquip);
+
+            _dispatcher.BeginInvoke(new Action(() =>
             {
-                EquipVm.SelectedListBoxEquipment = match;
-                EquipmentsView.MoveCurrentTo(match);
+                ScrollEquipmentIntoView(match);
+            }), DispatcherPriority.Background);
 
-                var equipNameChanged =
-                    !string.Equals((EquipVm.EquipName ?? "").Trim(), selectedEquip, StringComparison.OrdinalIgnoreCase);
-
-                if (equipNameChanged)
-                    EquipVm.EquipName = selectedEquip;
-
-                RememberEquipmentForCurrentFilters(selectedEquip);
-
-                _dispatcher.BeginInvoke(new Action(() =>
-                {
-                    ScrollEquipmentIntoView(match);
-                }), DispatcherPriority.Background);
-
-                return FilterSelectionResult.Selected(selectedEquip, equipNameChanged);
-            }
-            finally
-            {
-                _suppressEquipNameFromSelection = false;
-            }
+            return FilterSelectionResult.Selected(selectedEquip, equipNameChanged);
         }
 
         public sealed class FilterSelectionResult
