@@ -14,7 +14,12 @@ namespace TechEquipments
         private static readonly XNamespace RelNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
         private static readonly XNamespace PackageRelNs = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-        public static InfoDocumentExcelImportPlan Read(string excelPath, string sheetName)
+        public static InfoDocumentExcelImportPlan ReadSchemePlan(string excelPath)
+        {
+            return ReadPlan(excelPath, "SCHEME");
+        }
+
+        private static InfoDocumentExcelImportPlan ReadPlan(string excelPath, string sheetName)
         {
             if (string.IsNullOrWhiteSpace(excelPath) || !File.Exists(excelPath))
                 throw new FileNotFoundException("Excel file not found.", excelPath);
@@ -36,54 +41,147 @@ namespace TechEquipments
 
             var plan = new InfoDocumentExcelImportPlan
             {
-                SheetName = sheetName,
-                BaseFolder = GetCell(cells, "A1").Trim()
+                SheetName = sheetName
             };
 
-            if (string.IsNullOrWhiteSpace(plan.BaseFolder))
-                throw new InvalidOperationException($"{sheetName}!A1 does not contain base PDF folder.");
+            ParseStationTable(cells, plan);
+            ParseGroupTable(cells, plan);
+            ParseEquipmentTable(cells, plan);
 
-            // Header ожидаем в строке 3:
-            // A3 = Station
-            // B3 = Scheme
-            var stationHeader = GetCell(cells, "A3").Trim();
-            var schemeHeader = GetCell(cells, "B3").Trim();
+            return plan;
+        }
 
-            if (!stationHeader.Equals("Station", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"{sheetName}!A3 must be 'Station'.");
+        private static void ParseStationTable(Dictionary<string, string> cells, InfoDocumentExcelImportPlan plan)
+        {
+            var baseFolder = GetCell(cells, "A1").Trim();
 
-            if (!schemeHeader.Equals("Scheme", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"{sheetName}!B3 must be 'Scheme'.");
+            EnsureHeader(cells, "A3", "Station");
+            EnsureHeader(cells, "B3", "Source");
 
-            var maxRow = cells.Keys
-                .Select(x => TryGetRowIndex(x))
-                .DefaultIfEmpty(0)
-                .Max();
+            var maxRow = GetMaxRow(cells);
 
             for (var row = 4; row <= maxRow; row++)
             {
                 var station = GetCell(cells, $"A{row}").Trim();
-                var schemeList = GetCell(cells, $"B{row}").Trim();
+                var sourceText = GetCell(cells, $"B{row}").Trim();
 
                 if (string.IsNullOrWhiteSpace(station) &&
-                    string.IsNullOrWhiteSpace(schemeList))
-                {
+                    string.IsNullOrWhiteSpace(sourceText))
                     continue;
-                }
 
-                var importRow = new InfoDocumentExcelImportRow
+                var item = new StationSourceRow
                 {
                     RowNumber = row,
+                    BaseFolder = baseFolder,
                     Station = station
                 };
 
-                foreach (var fileName in SplitFileList(schemeList))
-                    importRow.FileNames.Add(fileName);
+                foreach (var source in SplitCsv(sourceText))
+                    item.Sources.Add(source);
 
-                plan.Rows.Add(importRow);
+                plan.StationRows.Add(item);
             }
+        }
 
-            return plan;
+        private static void ParseGroupTable(Dictionary<string, string> cells, InfoDocumentExcelImportPlan plan)
+        {
+            var baseFolder = GetCell(cells, "D1").Trim();
+
+            EnsureHeader(cells, "D3", "Group");
+            EnsureHeader(cells, "E3", "Source");
+
+            var maxRow = GetMaxRow(cells);
+
+            for (var row = 4; row <= maxRow; row++)
+            {
+                var groupText = GetCell(cells, $"D{row}").Trim();
+                var sourceText = GetCell(cells, $"E{row}").Trim();
+
+                if (string.IsNullOrWhiteSpace(groupText) &&
+                    string.IsNullOrWhiteSpace(sourceText))
+                    continue;
+
+                var item = new GroupSourceRow
+                {
+                    RowNumber = row,
+                    BaseFolder = baseFolder
+                };
+
+                foreach (var group in SplitCsv(groupText))
+                    item.Groups.Add(group);
+
+                foreach (var source in SplitCsv(sourceText))
+                    item.Sources.Add(source);
+
+                plan.GroupRows.Add(item);
+            }
+        }
+
+        private static void ParseEquipmentTable(Dictionary<string, string> cells, InfoDocumentExcelImportPlan plan)
+        {
+            var baseFolder = GetCell(cells, "G1").Trim();
+
+            EnsureHeader(cells, "G3", "Equipment");
+            EnsureHeader(cells, "H3", "Source");
+
+            var maxRow = GetMaxRow(cells);
+
+            for (var row = 4; row <= maxRow; row++)
+            {
+                var equipmentText = GetCell(cells, $"G{row}").Trim();
+                var sourceText = GetCell(cells, $"H{row}").Trim();
+
+                if (string.IsNullOrWhiteSpace(equipmentText) &&
+                    string.IsNullOrWhiteSpace(sourceText))
+                    continue;
+
+                var item = new EquipmentSourceRow
+                {
+                    RowNumber = row,
+                    BaseFolder = baseFolder
+                };
+
+                foreach (var equipment in SplitCsv(equipmentText))
+                    item.Equipments.Add(equipment);
+
+                foreach (var source in SplitCsv(sourceText))
+                    item.Sources.Add(source);
+
+                plan.EquipmentRows.Add(item);
+            }
+        }
+
+        private static void EnsureHeader(Dictionary<string, string> cells, string address, string expected)
+        {
+            var actual = GetCell(cells, address).Trim();
+
+            if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Invalid Excel header at {address}. Expected '{expected}', actual '{actual}'.");
+            }
+        }
+
+        private static int GetMaxRow(Dictionary<string, string> cells)
+        {
+            return cells.Keys
+                .Select(TryGetRowIndex)
+                .DefaultIfEmpty(0)
+                .Max();
+        }
+
+        private static IEnumerable<string> SplitCsv(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                yield break;
+
+            foreach (var part in text.Split(','))
+            {
+                var value = part.Trim().Trim('"', '\'');
+
+                if (!string.IsNullOrWhiteSpace(value))
+                    yield return value;
+            }
         }
 
         private static Dictionary<string, string> ReadSharedStrings(ZipArchive archive)
@@ -103,7 +201,6 @@ namespace TechEquipments
 
             foreach (var si in doc.Descendants(MainNs + "si"))
             {
-                // Может быть несколько <t> внутри rich text.
                 var text = string.Concat(si.Descendants(MainNs + "t").Select(t => t.Value));
                 result[index.ToString(CultureInfo.InvariantCulture)] = text;
                 index++;
@@ -165,9 +262,7 @@ namespace TechEquipments
             return "xl/" + target.TrimStart('/');
         }
 
-        private static Dictionary<string, string> ReadCells(
-            XDocument sheetDoc,
-            Dictionary<string, string> sharedStrings)
+        private static Dictionary<string, string> ReadCells(XDocument sheetDoc, Dictionary<string, string> sharedStrings)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -224,20 +319,6 @@ namespace TechEquipments
             return int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var row)
                 ? row
                 : 0;
-        }
-
-        private static IEnumerable<string> SplitFileList(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-                yield break;
-
-            foreach (var part in text.Split(','))
-            {
-                var fileName = part.Trim().Trim('"', '\'');
-
-                if (!string.IsNullOrWhiteSpace(fileName))
-                    yield return fileName;
-            }
         }
     }
 }

@@ -9,9 +9,12 @@ namespace TechEquipments
         public InfoFileKind Kind { get; set; }
 
         public string SheetName { get; set; } = "";
-        public string BaseFolder { get; set; } = "";
 
         public int RowsScanned { get; set; }
+        public int StationRowsScanned { get; set; }
+        public int GroupRowsScanned { get; set; }
+        public int EquipmentRowsScanned { get; set; }
+
         public int FileReferencesScanned { get; set; }
 
         /// <summary>
@@ -20,28 +23,20 @@ namespace TechEquipments
         /// </summary>
         public int ImportJobs { get; set; }
 
-        /// <summary>
-        /// Сколько новых файлов добавлено в library.
-        /// Считается по уникальным файлам/type-group, не по equipment.
-        /// </summary>
         public int AddedToDb { get; set; }
-
-        /// <summary>
-        /// Сколько существующих library-файлов обновлено более новой версией с диска.
-        /// </summary>
         public int UpdatedInDb { get; set; }
 
         /// <summary>
-        /// Сколько новых links создано к уже существующим/добавленным/обновлённым файлам.
+        /// Количество созданных links.
         /// </summary>
         public int LinkedExisting { get; set; }
 
-        /// <summary>
-        /// Сколько links уже существовало.
-        /// </summary>
         public int AlreadyLinked { get; set; }
 
         public int MissingFiles { get; set; }
+        public int MissingGroups { get; set; }
+        public int MissingEquipments { get; set; }
+
         public int RowsWithoutEquipment { get; set; }
         public int EmptyRowsSkipped { get; set; }
         public int Errors { get; set; }
@@ -55,16 +50,20 @@ namespace TechEquipments
         {
             var msg =
                 $"{title} completed.\n\n" +
-                $"Sheet: {SheetName}\n" +
-                $"Base folder: {BaseFolder}\n\n" +
+                $"Sheet: {SheetName}\n\n" +
                 $"Rows scanned: {RowsScanned}\n" +
+                $"Station rows: {StationRowsScanned}\n" +
+                $"Group rows: {GroupRowsScanned}\n" +
+                $"Equipment rows: {EquipmentRowsScanned}\n" +
                 $"File references scanned: {FileReferencesScanned}\n" +
-                $"Import jobs: {ImportJobs}\n" +
+                $"Import jobs: {ImportJobs}\n\n" +
                 $"Added to DB: {AddedToDb}\n" +
                 $"Updated in DB: {UpdatedInDb}\n" +
                 $"Links created: {LinkedExisting}\n" +
-                $"Already linked: {AlreadyLinked}\n" +
+                $"Already linked: {AlreadyLinked}\n\n" +
                 $"Missing files: {MissingFiles}\n" +
+                $"Missing groups: {MissingGroups}\n" +
+                $"Missing equipments: {MissingEquipments}\n" +
                 $"Rows without equipment: {RowsWithoutEquipment}\n" +
                 $"Empty rows skipped: {EmptyRowsSkipped}\n" +
                 $"Errors: {Errors}";
@@ -93,10 +92,6 @@ namespace TechEquipments
         public InfoDocumentImportDbStatus Status { get; init; }
     }
 
-    /// <summary>
-    /// Результат оптимизированного bulk-import:
-    /// один PDF импортируется в library один раз и линкуется сразу к группе equipment.
-    /// </summary>
     public sealed class InfoDocumentBulkImportDbResult
     {
         public long DocumentId { get; init; }
