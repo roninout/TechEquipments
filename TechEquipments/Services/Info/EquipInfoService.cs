@@ -24,7 +24,6 @@ namespace TechEquipments
         private readonly IDbContextFactory<PgInfoDbContext> _dbFactory;
         private readonly IConfiguration _config;
         private readonly IAppRuntimeContext _appRuntime;
-        private readonly string _deviceName;
 
         private const string SchemaName = "public";
 
@@ -206,6 +205,18 @@ namespace TechEquipments
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_device
                    ON {_qualifiedFavoriteTable} (device_name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_photo_type_lower_file_name
+                   ON {_qualifiedPhotoTable} (equip_type_group, lower(file_name));", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_instruction_type_lower_file_name
+                   ON {_qualifiedInstructionTable} (equip_type_group, lower(file_name));", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_scheme_type_lower_file_name
+                   ON {_qualifiedSchemeTable} (equip_type_group, lower(file_name));", ct);
         }
 
         public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
@@ -1495,33 +1506,6 @@ VALUES
             };
         }
 
-        private async Task EnsureInfoRowAsync(DbConnection conn, DbTransaction tx, string equipName, CancellationToken ct)
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = $@"
-        INSERT INTO {_qualifiedInfoTable}
-        (
-            equip_name,
-            install_time,
-            revision_time,
-            updated_at
-        )
-        VALUES
-        (
-            @equip_name,
-            NULL,
-            NULL,
-            now()
-        )
-        ON CONFLICT (equip_name)
-        DO NOTHING;";
-
-            AddParameter(cmd, "@equip_name", equipName);
-
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-
         private async Task EnsureInfoRowsAsync(DbConnection conn, DbTransaction tx, IReadOnlyCollection<string> equipNames, CancellationToken ct)
         {
             var cleanEquipNames = (equipNames ?? Array.Empty<string>())
@@ -1656,48 +1640,6 @@ VALUES
             AddParameter(cmd, "@updated_at", updatedAt);
 
             await cmd.ExecuteNonQueryAsync(ct);
-        }
-
-        private static async Task<bool> EnsureDocumentLinkAsync(DbConnection conn, DbTransaction tx, string qualifiedLinkTable, string linkIdColumn, string equipName, long documentId, CancellationToken ct)
-        {
-            using var existsCmd = conn.CreateCommand();
-            existsCmd.Transaction = tx;
-            existsCmd.CommandText = $@"
-        SELECT 1
-        FROM {qualifiedLinkTable}
-        WHERE equip_name = @equip_name
-          AND {linkIdColumn} = @document_id
-        LIMIT 1;";
-
-            AddParameter(existsCmd, "@equip_name", equipName);
-            AddParameter(existsCmd, "@document_id", documentId);
-
-            var exists = await existsCmd.ExecuteScalarAsync(ct);
-            if (exists != null && exists != DBNull.Value)
-                return false;
-
-            using var insertCmd = conn.CreateCommand();
-            insertCmd.Transaction = tx;
-            insertCmd.CommandText = $@"
-        INSERT INTO {qualifiedLinkTable}
-        (
-            equip_name,
-            {linkIdColumn},
-            sort_order
-        )
-        SELECT
-            @equip_name,
-            @document_id,
-            COALESCE(MAX(sort_order), -1) + 1
-        FROM {qualifiedLinkTable}
-        WHERE equip_name = @equip_name
-        ON CONFLICT DO NOTHING;";
-
-            AddParameter(insertCmd, "@equip_name", equipName);
-            AddParameter(insertCmd, "@document_id", documentId);
-
-            var affected = await insertCmd.ExecuteNonQueryAsync(ct);
-            return affected > 0;
         }
 
         private sealed class BulkDocumentLinkResult

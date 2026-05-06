@@ -2110,12 +2110,6 @@ namespace TechEquipments
         /// - сразу папкой типа: Motor\*.jpg
         /// - общей папкой с подпапками типов: Images\Motor\*.jpg
         /// </summary>
-        /// <summary>
-        /// Умный импорт изображений из папки.
-        /// Папка может быть:
-        /// - сразу папкой типа: Motor\*.jpg
-        /// - общей папкой с подпапками типов: Images\Motor\*.jpg
-        /// </summary>
         public async Task Info_ImportImagesFromFolderAsync()
         {
             using var dialog = new System.Windows.Forms.FolderBrowserDialog
