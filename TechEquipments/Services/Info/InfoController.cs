@@ -193,7 +193,7 @@ namespace TechEquipments
             }
         }
 
-        public void BeginEdit()
+        public async Task BeginEditAsync()
         {
             var equipName = ResolveSelectedEquipForInfo();
             if (string.IsNullOrWhiteSpace(equipName))
@@ -201,6 +201,8 @@ namespace TechEquipments
 
             _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(equipName);
             _vm.CurrentEquipInfo.EquipName = equipName;
+
+            await LoadProductCodeOptionsForCurrentEquipmentAsync();
 
             SyncCheckedSelectionsFromCurrentModel();
             SyncPhotoLibraryFlagsFromCurrentModel();
@@ -216,6 +218,28 @@ namespace TechEquipments
             _notesAtEditStart = _vm.CurrentEquipInfo.Notes;
             _vm.IsInfoEditMode = true;
             _vm.InfoStatusText = $"Editing info: {equipName}";
+        }
+
+        private async Task LoadProductCodeOptionsForCurrentEquipmentAsync()
+        {
+            _vm.AvailableProductCodeOptions.Clear();
+
+            var typeGroupKey = ResolveSelectedEquipTypeGroupKey();
+
+            if (string.IsNullOrWhiteSpace(typeGroupKey))
+                return;
+
+            if (!_vm.IsInfoDbConnected)
+                return;
+
+            var options = await _equipInfoService.GetProductCodeOptionsAsync(typeGroupKey);
+
+            foreach (var option in options
+                .OrderBy(x => x.Type, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.ProductCode, StringComparer.OrdinalIgnoreCase))
+            {
+                _vm.AvailableProductCodeOptions.Add(option);
+            }
         }
 
         public async Task SaveAsync()
@@ -888,6 +912,7 @@ namespace TechEquipments
             _vm.InfoStatusText = "Photo removed from current card.";
         }
 
+
         private sealed class DocumentImportJob
         {
             public InfoFileKind Kind { get; init; }
@@ -904,6 +929,16 @@ namespace TechEquipments
             public string EquipName { get; init; } = "";
             public string TypeGroupKey { get; init; } = "";
         }
+
+        private sealed class PhotoImportJob
+        {
+            public string TypeGroupKey { get; init; } = "";
+            public string FilePath { get; init; } = "";
+
+            public HashSet<string> EquipNames { get; } =
+                new(StringComparer.OrdinalIgnoreCase);
+        }
+
 
         private async Task<InfoDocumentImportResult> ImportDocumentsFromExcelAsync(string excelPath, Action<int, int, string>? progress = null, CancellationToken cancellationToken = default)
         {
@@ -1371,16 +1406,25 @@ namespace TechEquipments
                 .ToList();
 
             // Если выбрали Excel — запускаем единый импорт.
-            // Сейчас внутри импортируется только лист SCHEME.
             if (excelFiles.Count > 0)
             {
-                _vm.InfoStatusText = "Importing scheme documents from Excel...";
+                if (kind == InfoFileKind.Scheme)
+                {
+                    _vm.InfoStatusText = "Importing scheme documents from Excel...";
 
-                // Финальное окно и progress-bar теперь обрабатывает MainWindow,
-                // потому что только MainWindow имеет доступ к Vm.Shell.
-                return await ImportDocumentsFromExcelAsync(
-                    excelFiles[0],
-                    progress);
+                    return await ImportDocumentsFromExcelAsync(
+                        excelFiles[0],
+                        progress);
+                }
+
+                if (kind == InfoFileKind.Instruction)
+                {
+                    _vm.InfoStatusText = "Importing instruction documents from Excel...";
+
+                    return await ImportInstructionDocumentsFromExcelAsync(
+                        excelFiles[0],
+                        progress);
+                }
             }
 
             // Обычный старый режим: ручное добавление PDF к текущему equipment.
@@ -2365,6 +2409,393 @@ namespace TechEquipments
             {
                 _vm.InfoStatusText = $"Image load error: {ex.Message}";
             }
+        }
+
+        private async Task<InfoDocumentImportResult> ImportInstructionDocumentsFromExcelAsync(string excelPath, Action<int, int, string>? progress = null, CancellationToken cancellationToken = default)
+        {
+            var result = new InfoDocumentImportResult
+            {
+                Kind = InfoFileKind.Instruction,
+                SheetName = "INSTRUCTION"
+            };
+
+            progress?.Invoke(0, 1, "Reading Excel instruction workbook...");
+
+            var plan = ExcelInfoDocumentImportReader.ReadInstructionWorkbook(excelPath);
+
+            result.InstructionEquipmentRowsScanned = plan.InstructionEquipmentRows.Count;
+            result.InstructionOrderRowsScanned = plan.InstructionOrderRows.Count;
+            result.InstructionSupplierRowsScanned = plan.InstructionSupplierRows.Count;
+
+            result.SuppliersUpserted = await _equipInfoService.UpsertSuppliersAsync(
+                plan.InstructionSupplierRows,
+                cancellationToken);
+
+            result.OrdersUpserted = await _equipInfoService.UpsertOrdersAsync(
+                plan.InstructionOrderRows,
+                cancellationToken);
+
+            var productCodes = plan.InstructionEquipmentRows
+                .Select(x => x.ProductCode)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var ordersByCode = await _equipInfoService.GetOrdersByProductCodesAsync(
+                productCodes,
+                cancellationToken);
+
+            var equipmentByName = _equipmentVm.Equipments
+                .Where(x => x != null)
+                .Where(x => !x.IsGroup)
+                .Where(x => !x.IsEquipmentChildNode)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Equipment))
+                .Where(x => x.TypeGroup != EquipTypeGroup.All)
+                .Where(x => x.TypeGroup != EquipTypeGroup.Favorites)
+                .GroupBy(x => x.Equipment.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g =>
+                    {
+                        var item = g.First();
+
+                        return new DocumentImportTarget
+                        {
+                            EquipName = item.Equipment.Trim(),
+                            TypeGroupKey = item.TypeGroup.ToString()
+                        };
+                    },
+                    StringComparer.OrdinalIgnoreCase);
+
+            var productLinks = new List<EquipmentProductCodeLinkDto>();
+            var pdfJobs = new Dictionary<string, DocumentImportJob>(StringComparer.OrdinalIgnoreCase);
+            var imageJobs = new Dictionary<string, PhotoImportJob>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in plan.InstructionEquipmentRows)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var equipName = (row.Equipment ?? "").Trim();
+                var productCode = (row.ProductCode ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(equipName))
+                {
+                    result.MissingEquipments++;
+                    AddImportMessage(result, $"Instruction row {row.RowNumber}: equipment is empty.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(productCode))
+                {
+                    result.ProductCodesEmpty++;
+                    continue;
+                }
+
+                if (!equipmentByName.TryGetValue(equipName, out var target))
+                {
+                    result.MissingEquipments++;
+                    AddImportMessage(result, $"Instruction row {row.RowNumber}: equipment '{equipName}' was not found.");
+                    continue;
+                }
+
+                if (!ordersByCode.TryGetValue(productCode, out var order))
+                {
+                    result.ProductCodesNotFound++;
+                    AddImportMessage(result, $"Instruction row {row.RowNumber}: product code '{productCode}' was not found in equip_order.");
+                    continue;
+                }
+
+                productLinks.Add(new EquipmentProductCodeLinkDto
+                {
+                    EquipName = target.EquipName,
+                    ProductCode = productCode
+                });
+
+                AddInstructionPdfJobsForTarget(
+                    row.RowNumber,
+                    plan.InstructionBaseFolder,
+                    order.Sources,
+                    target,
+                    result,
+                    pdfJobs);
+
+                AddInstructionImageJobsForTarget(
+                    row.RowNumber,
+                    plan.InstructionImagesFolder,
+                    order.Images,
+                    target,
+                    result,
+                    imageJobs);
+            }
+
+            result.EquipmentInfoUpdated = await _equipInfoService.ApplyProductCodesToEquipmentInfoAsync(
+                productLinks,
+                cancellationToken);
+
+            foreach (var link in productLinks)
+                result.UpdatedEquipmentInfoNames.Add(link.EquipName);
+
+            result.PdfImportJobs = pdfJobs.Count;
+            result.ImageImportJobs = imageJobs.Count;
+
+            var totalSteps = Math.Max(1, pdfJobs.Count + imageJobs.Count);
+            var done = 0;
+
+            progress?.Invoke(done, totalSteps, "Importing instruction PDFs and images...");
+
+            foreach (var job in pdfJobs.Values
+                .OrderBy(x => x.TypeGroupKey, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => Path.GetFileName(x.FilePath), StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var dbResult = await _equipInfoService.ImportDocumentForEquipmentsAsync(
+                        InfoFileKind.Instruction,
+                        job.TypeGroupKey,
+                        job.FilePath,
+                        job.EquipNames,
+                        cancellationToken);
+
+                    if (dbResult.AddedToDb)
+                        result.PdfAddedToDb++;
+
+                    if (dbResult.UpdatedInDb)
+                        result.PdfUpdatedInDb++;
+
+                    result.PdfLinksCreated += dbResult.LinksCreated;
+                    result.PdfAlreadyLinked += dbResult.AlreadyLinked;
+
+                    foreach (var affected in dbResult.AffectedEquipNames)
+                    {
+                        result.AffectedEquipNames.Add(affected);
+                        result.PdfAffectedEquipNames.Add(affected);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Errors++;
+                    AddImportMessage(result, $"{job.TypeGroupKey}, {Path.GetFileName(job.FilePath)}: {ex.Message}");
+                }
+
+                done++;
+                progress?.Invoke(done, totalSteps, $"Instruction PDF: {done}/{totalSteps} | {Path.GetFileName(job.FilePath)}");
+            }
+
+            foreach (var job in imageJobs.Values
+                .OrderBy(x => x.TypeGroupKey, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => Path.GetFileName(x.FilePath), StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var dbResult = await _equipInfoService.ImportPhotoForEquipmentsAsync(
+                        job.TypeGroupKey,
+                        job.FilePath,
+                        job.EquipNames,
+                        cancellationToken);
+
+                    if (dbResult.AddedToDb)
+                        result.ImageAddedToDb++;
+
+                    if (dbResult.UpdatedInDb)
+                        result.ImageUpdatedInDb++;
+
+                    result.ImageLinksCreated += dbResult.LinksCreated;
+                    result.ImageAlreadyLinked += dbResult.AlreadyLinked;
+
+                    foreach (var affected in dbResult.AffectedEquipNames)
+                    {
+                        result.AffectedEquipNames.Add(affected);
+                        result.ImageAffectedEquipNames.Add(affected);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Errors++;
+                    AddImportMessage(result, $"{job.TypeGroupKey}, {Path.GetFileName(job.FilePath)}: {ex.Message}");
+                }
+
+                done++;
+                progress?.Invoke(done, totalSteps, $"Instruction image: {done}/{totalSteps} | {Path.GetFileName(job.FilePath)}");
+            }
+
+            progress?.Invoke(totalSteps, totalSteps, "Refreshing Info libraries...");
+
+            await LoadLibrariesAsync();
+
+            var currentEquipName = ResolveSelectedEquipForInfo();
+
+            if (!string.IsNullOrWhiteSpace(currentEquipName) &&
+                (result.AffectedEquipNames.Contains(currentEquipName) ||
+                 result.UpdatedEquipmentInfoNames.Contains(currentEquipName)))
+            {
+                await RefreshCurrentInfoAfterInstructionImportAsync(currentEquipName);
+            }
+
+            _vm.InfoStatusText =
+                $"Instruction import finished. PDFs: {result.PdfLinksCreated}, images: {result.ImageLinksCreated}, info updated: {result.EquipmentInfoUpdated}, errors: {result.Errors}.";
+
+            progress?.Invoke(totalSteps, totalSteps, "Instruction import completed.");
+
+            return result;
+        }
+
+        private void AddInstructionPdfJobsForTarget(int rowNumber, string baseFolder, IReadOnlyCollection<string> sources, DocumentImportTarget target, InfoDocumentImportResult result, Dictionary<string, DocumentImportJob> jobs)
+        {
+            if (sources == null || sources.Count == 0)
+                return;
+
+            foreach (var source in sources)
+            {
+                result.PdfFileReferences++;
+
+                var pdfPath = ExcelInfoDocumentImportReader.ResolveSourcePath(baseFolder, source);
+
+                if (!File.Exists(pdfPath))
+                {
+                    result.MissingSourceFiles++;
+                    AddImportMessage(result, $"Instruction row {rowNumber}: PDF not found: {pdfPath}");
+                    continue;
+                }
+
+                var jobKey = BuildDocumentImportJobKey(
+                    InfoFileKind.Instruction,
+                    target.TypeGroupKey,
+                    pdfPath);
+
+                if (!jobs.TryGetValue(jobKey, out var job))
+                {
+                    job = new DocumentImportJob
+                    {
+                        Kind = InfoFileKind.Instruction,
+                        TypeGroupKey = target.TypeGroupKey,
+                        FilePath = Path.GetFullPath(pdfPath)
+                    };
+
+                    jobs[jobKey] = job;
+                }
+
+                job.SourceRows.Add(rowNumber);
+                job.EquipNames.Add(target.EquipName);
+            }
+        }
+
+        private void AddInstructionImageJobsForTarget(int rowNumber, string baseFolder, IReadOnlyCollection<string> images, DocumentImportTarget target, InfoDocumentImportResult result, Dictionary<string, PhotoImportJob> jobs)
+        {
+            if (images == null || images.Count == 0)
+                return;
+
+            foreach (var image in images)
+            {
+                result.ImageFileReferences++;
+
+                var imagePath = ExcelInfoDocumentImportReader.ResolveSourcePath(baseFolder, image);
+
+                if (!File.Exists(imagePath))
+                {
+                    result.MissingImageFiles++;
+                    AddImportMessage(result, $"Instruction row {rowNumber}: image not found: {imagePath}");
+                    continue;
+                }
+
+                var jobKey = $"{target.TypeGroupKey}|{Path.GetFullPath(imagePath)}"
+                    .ToLowerInvariant();
+
+                if (!jobs.TryGetValue(jobKey, out var job))
+                {
+                    job = new PhotoImportJob
+                    {
+                        TypeGroupKey = target.TypeGroupKey,
+                        FilePath = Path.GetFullPath(imagePath)
+                    };
+
+                    jobs[jobKey] = job;
+                }
+
+                job.EquipNames.Add(target.EquipName);
+            }
+        }
+
+        private async Task RefreshCurrentInfoAfterInstructionImportAsync(string currentEquipName)
+        {
+            currentEquipName = (currentEquipName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(currentEquipName))
+                return;
+
+            var fresh = await _equipInfoService.GetAsync(currentEquipName);
+
+            _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(currentEquipName);
+            _vm.CurrentEquipInfo.EquipName = currentEquipName;
+
+            _vm.CurrentEquipInfo.ProductCode = fresh.ProductCode;
+            _vm.CurrentEquipInfo.Supplier = fresh.Supplier;
+            _vm.CurrentEquipInfo.SupplierLogoCachePath = fresh.SupplierLogoCachePath;
+            _vm.CurrentEquipInfo.Description = fresh.Description;
+
+            ReplaceCollection(
+                _vm.CurrentEquipInfo.Photos,
+                fresh.Photos.Select(x => CloneFile(x, currentEquipName)));
+
+            ReplaceCollection(
+                _vm.CurrentEquipInfo.Instructions,
+                fresh.Instructions.Select(x => CloneFile(x, currentEquipName)));
+
+            _vm.SelectedInfoPhotoFile =
+                _vm.CurrentEquipInfo.Photos.FirstOrDefault();
+
+            _vm.SelectedInfoInstructionFile =
+                _vm.CurrentEquipInfo.Instructions.FirstOrDefault();
+
+            SyncCheckedSelectionsFromCurrentModel();
+            SyncPhotoLibraryFlagsFromCurrentModel();
+            WarmupLinkedPhotoLibraryThumbnails();
+
+            _vm.CurrentInfoDocumentPreviewPath = null;
+
+            if (_vm.CurrentInfoPage == InfoPageKind.Instruction)
+                await PrepareCurrentDocumentAsync();
+        }
+
+        public async Task ApplyProductCodeFromUiAsync(string? productCode)
+        {
+            productCode = (productCode ?? "").Trim();
+
+            if (!_vm.IsInfoEditMode)
+                return;
+
+            if (_vm.CurrentEquipInfo == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(productCode))
+            {
+                _vm.CurrentEquipInfo.ProductCode = null;
+                _vm.CurrentEquipInfo.Supplier = null;
+                _vm.CurrentEquipInfo.Description = null;
+                _vm.CurrentEquipInfo.SupplierLogoCachePath = null;
+                return;
+            }
+
+            if (_vm.AvailableProductCodeOptions.Count == 0)
+                await LoadProductCodeOptionsForCurrentEquipmentAsync();
+
+            var selected = _vm.AvailableProductCodeOptions
+                .FirstOrDefault(x => string.Equals(
+                    (x.ProductCode ?? "").Trim(),
+                    productCode,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (selected == null)
+                return;
+
+            _vm.CurrentEquipInfo.ProductCode = selected.ProductCode;
+            _vm.CurrentEquipInfo.Supplier = selected.Supplier;
+            _vm.CurrentEquipInfo.Description = selected.Description;
+            _vm.CurrentEquipInfo.SupplierLogoCachePath = selected.SupplierLogoCachePath;
+
+            _vm.InfoStatusText = $"Product code selected: {selected.ProductCode}";
         }
 
         #region Cache

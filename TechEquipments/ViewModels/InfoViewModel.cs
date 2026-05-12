@@ -91,6 +91,8 @@ namespace TechEquipments.ViewModels
         public ObservableCollection<EquipmentInfoFileDto> AvailableInfoPhotoLibrary { get; } = new();
         public ObservableCollection<EquipmentInfoFileDto> AvailableInfoInstructionLibrary { get; } = new();
         public ObservableCollection<EquipmentInfoFileDto> AvailableInfoSchemeLibrary { get; } = new();
+        /// <summary> Список Product code из equip_order для текущего типа оборудования. Используется на Info / Images в Edit mode. /// </summary>
+        public ObservableCollection<InfoProductCodeOptionDto> AvailableProductCodeOptions { get; } = new();
 
         private List<object>? _selectedInfoPhotoLibraryIds;
         public List<object>? SelectedInfoPhotoLibraryIds

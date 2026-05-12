@@ -36,6 +36,8 @@ namespace TechEquipments
         private readonly string _qualifiedInfoSchemeLinkTable;
         private readonly string _qualifiedInfoDocumentViewTable;
         private readonly string _qualifiedFavoriteTable;
+        private readonly string _qualifiedSupplierTable;
+        private readonly string _qualifiedOrderTable;
 
         public EquipInfoService(IDbContextFactory<PgInfoDbContext> dbFactory, IConfiguration config, IAppRuntimeContext appRuntime)
         {
@@ -54,6 +56,9 @@ namespace TechEquipments
 
             _qualifiedInfoDocumentViewTable = Qualify("equip_info_pdf_view");
             _qualifiedFavoriteTable = Qualify("equip_favorite");
+
+            _qualifiedSupplierTable = Qualify("equip_supplier");
+            _qualifiedOrderTable = Qualify("equip_order");
         }
 
         public async Task EnsureTableAsync(CancellationToken ct = default)
@@ -61,116 +66,141 @@ namespace TechEquipments
             await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
             var sqlInfo = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
-        (
-            equip_name        text PRIMARY KEY,
-            install_time      timestamp NULL,
-            revision_time     timestamp NULL,
-            notes             text NULL,
-            notes_updated_at  timestamp NULL,
-            updated_at        timestamp NOT NULL DEFAULT now()
-        );";
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
+(
+    equip_name        text PRIMARY KEY,
+    product_code      text NULL,
+    supplier          text NULL,
+    description       text NULL,
+    notes             text NULL,
+    notes_updated_at  timestamp NULL,
+    updated_at        timestamp NOT NULL DEFAULT now()
+);";
 
             var sqlPhoto = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
-        (
-            id                bigserial PRIMARY KEY,
-            equip_type_group  text NOT NULL,
-            file_name         text NOT NULL,
-            display_name      text NOT NULL,
-            file_hash         text NOT NULL,
-            file_data         bytea NOT NULL,
-            updated_at        timestamp NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
+(
+    id                bigserial PRIMARY KEY,
+    equip_type_group  text NOT NULL,
+    file_name         text NOT NULL,
+    display_name      text NOT NULL,
+    file_hash         text NOT NULL,
+    file_data         bytea NOT NULL,
+    updated_at        timestamp NOT NULL DEFAULT now(),
 
-            CONSTRAINT uq_equip_photo_type_hash
-                UNIQUE (equip_type_group, file_hash)
-        );";
+    CONSTRAINT uq_equip_photo_type_hash
+        UNIQUE (equip_type_group, file_hash)
+);";
 
             var sqlInstruction = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
-        (
-            id                bigserial PRIMARY KEY,
-            equip_type_group  text NOT NULL,
-            file_name         text NOT NULL,
-            display_name      text NOT NULL,
-            file_hash         text NOT NULL,
-            file_data         bytea NOT NULL,
-            updated_at        timestamp NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
+(
+    id                bigserial PRIMARY KEY,
+    equip_type_group  text NOT NULL,
+    file_name         text NOT NULL,
+    display_name      text NOT NULL,
+    file_hash         text NOT NULL,
+    file_data         bytea NOT NULL,
+    updated_at        timestamp NOT NULL DEFAULT now(),
 
-            CONSTRAINT uq_equip_instruction_type_hash
-                UNIQUE (equip_type_group, file_hash)
-        );";
+    CONSTRAINT uq_equip_instruction_type_hash
+        UNIQUE (equip_type_group, file_hash)
+);";
 
             var sqlScheme = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
-        (
-            id                bigserial PRIMARY KEY,
-            equip_type_group  text NOT NULL,
-            file_name         text NOT NULL,
-            display_name      text NOT NULL,
-            file_hash         text NOT NULL,
-            file_data         bytea NOT NULL,
-            updated_at        timestamp NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
+(
+    id                bigserial PRIMARY KEY,
+    equip_type_group  text NOT NULL,
+    file_name         text NOT NULL,
+    display_name      text NOT NULL,
+    file_hash         text NOT NULL,
+    file_data         bytea NOT NULL,
+    updated_at        timestamp NOT NULL DEFAULT now(),
 
-            CONSTRAINT uq_equip_scheme_type_hash
-                UNIQUE (equip_type_group, file_hash)
-        );";
+    CONSTRAINT uq_equip_scheme_type_hash
+        UNIQUE (equip_type_group, file_hash)
+);";
 
             var sqlInfoPhotoLink = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
-        (
-            equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-            photo_id     bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
-            sort_order   integer NOT NULL DEFAULT 0,
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
+(
+    equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    photo_id     bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
+    sort_order   integer NOT NULL DEFAULT 0,
 
-            PRIMARY KEY (equip_name, photo_id)
-        );";
+    PRIMARY KEY (equip_name, photo_id)
+);";
 
             var sqlInfoInstructionLink = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
-        (
-            equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-            instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
-            sort_order      integer NOT NULL DEFAULT 0,
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
+(
+    equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
+    sort_order      integer NOT NULL DEFAULT 0,
 
-            PRIMARY KEY (equip_name, instruction_id)
-        );";
+    PRIMARY KEY (equip_name, instruction_id)
+);";
 
             var sqlInfoSchemeLink = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
-        (
-            equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-            scheme_id    bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
-            sort_order   integer NOT NULL DEFAULT 0,
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
+(
+    equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    scheme_id    bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
+    sort_order   integer NOT NULL DEFAULT 0,
 
-            PRIMARY KEY (equip_name, scheme_id)
-        );";
+    PRIMARY KEY (equip_name, scheme_id)
+);";
 
             var sqlInfoPdfView = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
-        (
-            equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-            info_page_kind   text NOT NULL,
-            file_id          bigint NOT NULL,
-            file_name        text NOT NULL,
-            page_number      integer NOT NULL,
-            zoom_factor      double precision NOT NULL,
-            anchor_x         double precision NOT NULL,
-            anchor_y         double precision NOT NULL,
-            updated_at       timestamp NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
+(
+    equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+    info_page_kind   text NOT NULL,
+    file_id          bigint NOT NULL,
+    file_name        text NOT NULL,
+    page_number      integer NOT NULL,
+    zoom_factor      double precision NOT NULL,
+    anchor_x         double precision NOT NULL,
+    anchor_y         double precision NOT NULL,
+    updated_at       timestamp NOT NULL DEFAULT now(),
 
-            PRIMARY KEY (equip_name, info_page_kind, file_id)
-        );";
+    PRIMARY KEY (equip_name, info_page_kind, file_id)
+);";
 
             var sqlFavorite = $@"
-        CREATE TABLE IF NOT EXISTS {_qualifiedFavoriteTable}
-        (
-            device_name   text NOT NULL,
-            equip_name    text NOT NULL,
-            updated_at    timestamp NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS {_qualifiedFavoriteTable}
+(
+    device_name   text NOT NULL,
+    equip_name    text NOT NULL,
+    updated_at    timestamp NOT NULL DEFAULT now(),
 
-            PRIMARY KEY (device_name, equip_name)
-        );";
+    PRIMARY KEY (device_name, equip_name)
+);";
+
+            var sqlSupplier = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedSupplierTable}
+(
+    id              bigserial PRIMARY KEY,
+    name            text NOT NULL UNIQUE,
+    logo_file_name  text NULL,
+    logo_file_hash  text NULL,
+    logo_data       bytea NULL,
+    updated_at      timestamp NOT NULL DEFAULT now()
+);";
+
+            var sqlOrder = $@"
+CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
+(
+    id              bigserial PRIMARY KEY,
+    type            text NULL,
+    product_code    text NOT NULL UNIQUE,
+    supplier_id     bigint NULL REFERENCES {_qualifiedSupplierTable}(id) ON DELETE SET NULL,
+    description     text NULL,
+    source          text NULL,
+    image           text NULL,
+    updated_at      timestamp NOT NULL DEFAULT now()
+);";
 
             await db.Database.ExecuteSqlRawAsync(sqlInfo, ct);
             await db.Database.ExecuteSqlRawAsync(sqlPhoto, ct);
@@ -181,42 +211,56 @@ namespace TechEquipments
             await db.Database.ExecuteSqlRawAsync(sqlInfoSchemeLink, ct);
             await db.Database.ExecuteSqlRawAsync(sqlInfoPdfView, ct);
             await db.Database.ExecuteSqlRawAsync(sqlFavorite, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlSupplier, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlOrder, ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_photo_type
-                    ON {_qualifiedPhotoTable} (equip_type_group, display_name);", ct);
+            ON {_qualifiedPhotoTable} (equip_type_group, display_name);", ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_instruction_type
-                    ON {_qualifiedInstructionTable} (equip_type_group, display_name);", ct);
+            ON {_qualifiedInstructionTable} (equip_type_group, display_name);", ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_scheme_type
-                    ON {_qualifiedSchemeTable} (equip_type_group, display_name);", ct);
-
-            await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_equip_pdf_view_lookup
-                    ON {_qualifiedInfoDocumentViewTable} (equip_name, info_page_kind, file_id);", ct);
-
-            await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_equip
-                    ON {_qualifiedFavoriteTable} (equip_name);", ct);
-
-            await db.Database.ExecuteSqlRawAsync(
-                $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_device
-                   ON {_qualifiedFavoriteTable} (device_name);", ct);
+            ON {_qualifiedSchemeTable} (equip_type_group, display_name);", ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_photo_type_lower_file_name
-                   ON {_qualifiedPhotoTable} (equip_type_group, lower(file_name));", ct);
+            ON {_qualifiedPhotoTable} (equip_type_group, lower(file_name));", ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_instruction_type_lower_file_name
-                   ON {_qualifiedInstructionTable} (equip_type_group, lower(file_name));", ct);
+            ON {_qualifiedInstructionTable} (equip_type_group, lower(file_name));", ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_scheme_type_lower_file_name
-                   ON {_qualifiedSchemeTable} (equip_type_group, lower(file_name));", ct);
+            ON {_qualifiedSchemeTable} (equip_type_group, lower(file_name));", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_pdf_view_lookup
+            ON {_qualifiedInfoDocumentViewTable} (equip_name, info_page_kind, file_id);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_equip
+            ON {_qualifiedFavoriteTable} (equip_name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_favorite_device
+            ON {_qualifiedFavoriteTable} (device_name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_supplier_name
+            ON {_qualifiedSupplierTable} (name);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_order_product_code
+            ON {_qualifiedOrderTable} (product_code);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_order_supplier_id
+            ON {_qualifiedOrderTable} (supplier_id);", ct);
         }
 
         public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
@@ -234,34 +278,41 @@ namespace TechEquipments
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = $@"
-                                    SELECT
-                                        equip_name,
-                                        install_time,
-                                        revision_time,
-                                        notes,
-                                        notes_updated_at,
-                                        updated_at
-                                    FROM {_qualifiedInfoTable}
-                                    WHERE equip_name = @equip_name
-                                    LIMIT 1;";
+            SELECT
+                equip_name,
+                product_code,
+                supplier,
+                description,
+                notes,
+                notes_updated_at,
+                updated_at
+            FROM {_qualifiedInfoTable}
+            WHERE equip_name = @equip_name
+            LIMIT 1;";
 
                 AddParameter(cmd, "@equip_name", equipName);
 
                 using var reader = await cmd.ExecuteReaderAsync(ct);
+
                 if (await reader.ReadAsync(ct))
                 {
                     model.EquipName = reader.IsDBNull(0) ? equipName : reader.GetString(0);
-                    model.InstallTime = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTime>(1);
-                    model.RevisionTime = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTime>(2);
-                    model.Notes = reader.IsDBNull(3) ? null : reader.GetString(3);
-                    model.NotesUpdatedAt = reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTime>(4);
-                    model.UpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5);
+                    model.ProductCode = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    model.Supplier = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    model.Description = reader.IsDBNull(3) ? null : reader.GetString(3);
+                    model.Notes = reader.IsDBNull(4) ? null : reader.GetString(4);
+                    model.NotesUpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5);
+                    model.UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6);
 
-                    // Favorite теперь живёт в отдельной таблице equip_favorite.
-                    // Здесь не читаем его из equip_info.
                     model.IsFavorite = false;
                 }
             }
+
+            model.SupplierLogoCachePath = await ResolveSupplierLogoCachePathAsync(
+                conn,
+                model.ProductCode,
+                model.Supplier,
+                ct);
 
             await LoadLinkedFilesAsync(conn, _qualifiedInfoPhotoLinkTable, _qualifiedPhotoTable, "photo_id", model.Photos, equipName, ct);
             await LoadLinkedFilesAsync(conn, _qualifiedInfoInstructionLinkTable, _qualifiedInstructionTable, "instruction_id", model.Instructions, equipName, ct);
@@ -297,45 +348,49 @@ namespace TechEquipments
                 {
                     cmd.Transaction = tx;
                     cmd.CommandText = $@"
-                                        INSERT INTO {_qualifiedInfoTable}
-                                        (
-                                            equip_name,
-                                            install_time,
-                                            revision_time,
-                                            notes,
-                                            notes_updated_at,
-                                            updated_at
-                                        )
-                                        VALUES
-                                        (
-                                            @equip_name,
-                                            @install_time,
-                                            @revision_time,
-                                            @notes,
-                                            CASE
-                                                WHEN NULLIF(BTRIM(@notes), '') IS NULL THEN NULL
-                                                ELSE now()
-                                            END,
-                                            now()
-                                        )
-                                        ON CONFLICT (equip_name)
-                                        DO UPDATE SET
-                                            install_time = EXCLUDED.install_time,
-                                            revision_time = EXCLUDED.revision_time,
-                                            notes = EXCLUDED.notes,
-                                            notes_updated_at = CASE
-                                                WHEN COALESCE({_qualifiedInfoTable}.notes, '') IS DISTINCT FROM COALESCE(EXCLUDED.notes, '')
-                                                    THEN CASE
-                                                        WHEN NULLIF(BTRIM(EXCLUDED.notes), '') IS NULL THEN NULL
-                                                        ELSE now()
-                                                    END
-                                                ELSE {_qualifiedInfoTable}.notes_updated_at
-                                            END,
-                                            updated_at = now();";
+                        INSERT INTO {_qualifiedInfoTable}
+                        (
+                            equip_name,
+                            product_code,
+                            supplier,
+                            description,
+                            notes,
+                            notes_updated_at,
+                            updated_at
+                        )
+                        VALUES
+                        (
+                            @equip_name,
+                            @product_code,
+                            @supplier,
+                            @description,
+                            @notes,
+                            CASE
+                                WHEN NULLIF(BTRIM(@notes), '') IS NULL THEN NULL
+                                ELSE now()
+                            END,
+                            now()
+                        )
+                        ON CONFLICT (equip_name)
+                        DO UPDATE SET
+                            product_code = EXCLUDED.product_code,
+                            supplier = EXCLUDED.supplier,
+                            description = EXCLUDED.description,
+                            notes = EXCLUDED.notes,
+                            notes_updated_at = CASE
+                                WHEN COALESCE({_qualifiedInfoTable}.notes, '') IS DISTINCT FROM COALESCE(EXCLUDED.notes, '')
+                                    THEN CASE
+                                        WHEN NULLIF(BTRIM(EXCLUDED.notes), '') IS NULL THEN NULL
+                                        ELSE now()
+                                    END
+                                ELSE {_qualifiedInfoTable}.notes_updated_at
+                            END,
+                            updated_at = now();";
 
                     AddParameter(cmd, "@equip_name", equipName);
-                    AddParameter(cmd, "@install_time", model.InstallTime);
-                    AddParameter(cmd, "@revision_time", model.RevisionTime);
+                    AddParameter(cmd, "@product_code", model.ProductCode);
+                    AddParameter(cmd, "@supplier", model.Supplier);
+                    AddParameter(cmd, "@description", model.Description);
                     AddParameter(cmd, "@notes", notesForDb);
 
                     await cmd.ExecuteNonQueryAsync(ct);
@@ -874,22 +929,18 @@ VALUES
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                                INSERT INTO {_qualifiedInfoTable}
-                                (
-                                    equip_name,
-                                    install_time,
-                                    revision_time,
-                                    updated_at
-                                )
-                                VALUES
-                                (
-                                    @equip_name,
-                                    NULL,
-                                    NULL,
-                                    now()
-                                )
-                                ON CONFLICT (equip_name)
-                                DO NOTHING;";
+                    INSERT INTO {_qualifiedInfoTable}
+                    (
+                        equip_name,
+                        updated_at
+                    )
+                    VALUES
+                    (
+                        @equip_name,
+                        now()
+                    )
+                    ON CONFLICT (equip_name)
+                    DO NOTHING;";
 
             AddParameter(cmd, "@equip_name", equipName);
             await cmd.ExecuteNonQueryAsync(ct);
@@ -1120,195 +1171,23 @@ VALUES
 
         public async Task<InfoPhotoImportDbResult> ImportPhotoForEquipmentAsync(string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default)
         {
-            equipName = (equipName ?? "").Trim();
-            equipTypeGroup = (equipTypeGroup ?? "").Trim();
+            var bulk = await ImportPhotoForEquipmentsAsync(
+                equipTypeGroup,
+                filePath,
+                new[] { equipName },
+                cancellationToken);
 
-            if (string.IsNullOrWhiteSpace(equipName))
-                throw new InvalidOperationException("EquipName is empty.");
+            var status =
+                bulk.AddedToDb ? InfoPhotoImportDbStatus.AddedToDbAndLinked :
+                bulk.UpdatedInDb ? InfoPhotoImportDbStatus.LinkedExisting :
+                bulk.LinksCreated > 0 ? InfoPhotoImportDbStatus.LinkedExisting :
+                InfoPhotoImportDbStatus.AlreadyLinked;
 
-            if (string.IsNullOrWhiteSpace(equipTypeGroup))
-                throw new InvalidOperationException("Equipment type group is empty.");
-
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
-                throw new FileNotFoundException("Image file not found.", filePath);
-
-            var fileName = Path.GetFileName(filePath);
-            var displayName = Path.GetFileName(filePath);
-
-            var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
-            if (fileData.Length == 0)
-                throw new InvalidOperationException($"Image file is empty: {fileName}");
-
-            var fileHash = ComputeFileHash(fileData);
-
-            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-            var conn = db.Database.GetDbConnection();
-            await EnsureConnectionOpenAsync(conn, cancellationToken);
-
-            await using var tx = await conn.BeginTransactionAsync(cancellationToken);
-
-            try
+            return new InfoPhotoImportDbResult
             {
-                // 1. Гарантируем строку в equip_info, иначе link table по FK не примет equip_name.
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tx;
-                    cmd.CommandText = $@"
-                INSERT INTO {_qualifiedInfoTable}
-                (
-                    equip_name,
-                    install_time,
-                    revision_time,
-                    updated_at
-                )
-                VALUES
-                (
-                    @equip_name,
-                    NULL,
-                    NULL,
-                    now()
-                )
-                ON CONFLICT (equip_name)
-                DO NOTHING;";
-
-                    AddParameter(cmd, "@equip_name", equipName);
-
-                    await cmd.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                long photoId;
-                var photoAlreadyExisted = false;
-
-                // 2. Ищем дубль именно по file_data.
-                // file_hash используем как быстрый фильтр, file_data — как точную проверку.
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tx;
-                    cmd.CommandText = $@"
-                SELECT id
-                FROM {_qualifiedPhotoTable}
-                WHERE file_hash = @file_hash
-                  AND file_data = @file_data
-                LIMIT 1;";
-
-                    AddParameter(cmd, "@file_hash", fileHash);
-                    AddParameter(cmd, "@file_data", fileData);
-
-                    var existingId = await cmd.ExecuteScalarAsync(cancellationToken);
-
-                    if (existingId != null && existingId != DBNull.Value)
-                    {
-                        photoId = Convert.ToInt64(existingId);
-                        photoAlreadyExisted = true;
-                    }
-                    else
-                    {
-                        using var insertCmd = conn.CreateCommand();
-                        insertCmd.Transaction = tx;
-                        insertCmd.CommandText = $@"
-                    INSERT INTO {_qualifiedPhotoTable}
-                    (
-                        equip_type_group,
-                        file_name,
-                        display_name,
-                        file_hash,
-                        file_data,
-                        updated_at
-                    )
-                    VALUES
-                    (
-                        @equip_type_group,
-                        @file_name,
-                        @display_name,
-                        @file_hash,
-                        @file_data,
-                        now()
-                    )
-                    RETURNING id;";
-
-                        AddParameter(insertCmd, "@equip_type_group", equipTypeGroup);
-                        AddParameter(insertCmd, "@file_name", fileName);
-                        AddParameter(insertCmd, "@display_name", displayName);
-                        AddParameter(insertCmd, "@file_hash", fileHash);
-                        AddParameter(insertCmd, "@file_data", fileData);
-
-                        var newId = await insertCmd.ExecuteScalarAsync(cancellationToken);
-                        photoId = Convert.ToInt64(newId);
-                    }
-                }
-
-                // 3. Проверяем, привязано ли уже это фото к этому equipment.
-                var linkAlreadyExists = false;
-
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tx;
-                    cmd.CommandText = $@"
-                SELECT 1
-                FROM {_qualifiedInfoPhotoLinkTable}
-                WHERE equip_name = @equip_name
-                  AND photo_id = @photo_id
-                LIMIT 1;";
-
-                    AddParameter(cmd, "@equip_name", equipName);
-                    AddParameter(cmd, "@photo_id", photoId);
-
-                    var exists = await cmd.ExecuteScalarAsync(cancellationToken);
-                    linkAlreadyExists = exists != null && exists != DBNull.Value;
-                }
-
-                if (linkAlreadyExists)
-                {
-                    await tx.CommitAsync(cancellationToken);
-
-                    return new InfoPhotoImportDbResult
-                    {
-                        PhotoId = photoId,
-                        Status = InfoPhotoImportDbStatus.AlreadyLinked
-                    };
-                }
-
-                // 4. Добавляем link с sort_order в конец списка фото этого equipment.
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tx;
-                    cmd.CommandText = $@"
-                INSERT INTO {_qualifiedInfoPhotoLinkTable}
-                (
-                    equip_name,
-                    photo_id,
-                    sort_order
-                )
-                SELECT
-                    @equip_name,
-                    @photo_id,
-                    COALESCE(MAX(sort_order), -1) + 1
-                FROM {_qualifiedInfoPhotoLinkTable}
-                WHERE equip_name = @equip_name
-                ON CONFLICT (equip_name, photo_id)
-                DO NOTHING;";
-
-                    AddParameter(cmd, "@equip_name", equipName);
-                    AddParameter(cmd, "@photo_id", photoId);
-
-                    await cmd.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                await tx.CommitAsync(cancellationToken);
-
-                return new InfoPhotoImportDbResult
-                {
-                    PhotoId = photoId,
-                    Status = photoAlreadyExisted
-                        ? InfoPhotoImportDbStatus.LinkedExisting
-                        : InfoPhotoImportDbStatus.AddedToDbAndLinked
-                };
-            }
-            catch
-            {
-                await tx.RollbackAsync(cancellationToken);
-                throw;
-            }
+                PhotoId = bulk.PhotoId,
+                Status = status
+            };
         }
 
         public async Task<InfoDocumentImportDbResult> ImportDocumentForEquipmentAsync(InfoFileKind kind, string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default)
@@ -1348,162 +1227,15 @@ VALUES
 
         public async Task<InfoDocumentBulkImportDbResult> ImportDocumentForEquipmentsAsync(InfoFileKind kind, string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken = default)
         {
-            equipTypeGroup = (equipTypeGroup ?? "").Trim();
-
-            var cleanEquipNames = (equipNames ?? Enumerable.Empty<string>())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
             if (kind != InfoFileKind.Instruction && kind != InfoFileKind.Scheme)
                 throw new InvalidOperationException("Only Instruction and Scheme documents can be imported with this method.");
 
-            if (string.IsNullOrWhiteSpace(equipTypeGroup))
-                throw new InvalidOperationException("Equipment type group is empty.");
-
-            if (cleanEquipNames.Length == 0)
-                throw new InvalidOperationException("Equipment list is empty.");
-
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
-                throw new FileNotFoundException("PDF file not found.", filePath);
-
-            var fileName = Path.GetFileName(filePath);
-            var displayName = Path.GetFileName(filePath);
-            var sourceUpdatedAt = File.GetLastWriteTime(filePath);
-
-            // Главная оптимизация:
-            // читаем файл и считаем hash один раз на PDF + TypeGroup.
-            var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
-            if (fileData.Length == 0)
-                throw new InvalidOperationException($"PDF file is empty: {fileName}");
-
-            var fileHash = ComputeFileHash(fileData);
-
-            var table = GetLibraryTable(kind);
-            var linkInfo = GetDocumentLinkInfo(kind);
-
-            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-            var conn = db.Database.GetDbConnection();
-            await EnsureConnectionOpenAsync(conn, cancellationToken);
-
-            await using var tx = await conn.BeginTransactionAsync(cancellationToken);
-
-            try
-            {
-                await EnsureInfoRowsAsync(conn, tx, cleanEquipNames, cancellationToken);
-
-                long documentId;
-                var addedToDb = false;
-                var updatedInDb = false;
-
-                // 1. Сначала ищем по hash в рамках equip_type_group.
-                var existingByHash = await FindLibraryItemByTypeAndHashAsync(
-                    conn,
-                    tx,
-                    table,
-                    equipTypeGroup,
-                    fileHash,
-                    cancellationToken);
-
-                if (existingByHash != null)
-                {
-                    documentId = existingByHash.Id;
-                }
-                else
-                {
-                    // 2. Hash другой. Проверяем, есть ли файл с таким же именем.
-                    var existingByName = await FindLibraryItemByTypeAndFileNameAsync(
-                        conn,
-                        tx,
-                        table,
-                        equipTypeGroup,
-                        fileName,
-                        cancellationToken);
-
-                    if (existingByName != null)
-                    {
-                        documentId = existingByName.Id;
-
-                        var dbUpdatedAt = existingByName.UpdatedAt;
-
-                        // Если файл на диске новее версии в БД — заменяем данные в существующей строке.
-                        var shouldUpdate =
-                            !dbUpdatedAt.HasValue ||
-                            sourceUpdatedAt > dbUpdatedAt.Value;
-
-                        if (shouldUpdate)
-                        {
-                            await UpdateLibraryItemDataAsync(
-                                conn,
-                                tx,
-                                table,
-                                documentId,
-                                fileName,
-                                displayName,
-                                fileHash,
-                                fileData,
-                                sourceUpdatedAt,
-                                cancellationToken);
-
-                            updatedInDb = true;
-                        }
-                    }
-                    else
-                    {
-                        var inserted = await InsertLibraryItemWithUpdatedAtAsync(
-                            conn,
-                            tx,
-                            table,
-                            equipTypeGroup,
-                            fileName,
-                            displayName,
-                            fileHash,
-                            fileData,
-                            sourceUpdatedAt,
-                            cancellationToken);
-
-                        documentId = inserted.Id;
-                        addedToDb = true;
-                    }
-                }
-
-                var linkResult = await EnsureDocumentLinksAsync(
-                    conn,
-                    tx,
-                    linkInfo.LinkTable,
-                    linkInfo.LinkIdColumn,
-                    cleanEquipNames,
-                    documentId,
-                    cancellationToken);
-
-                await tx.CommitAsync(cancellationToken);
-
-                return new InfoDocumentBulkImportDbResult
-                {
-                    DocumentId = documentId,
-                    AddedToDb = addedToDb,
-                    UpdatedInDb = updatedInDb,
-                    LinksCreated = linkResult.CreatedEquipNames.Count,
-                    AlreadyLinked = Math.Max(0, cleanEquipNames.Length - linkResult.CreatedEquipNames.Count),
-                    AffectedEquipNames = cleanEquipNames
-                };
-            }
-            catch
-            {
-                await tx.RollbackAsync(cancellationToken);
-                throw;
-            }
-        }
-
-        private (string LinkTable, string LinkIdColumn) GetDocumentLinkInfo(InfoFileKind kind)
-        {
-            return kind switch
-            {
-                InfoFileKind.Instruction => (_qualifiedInfoInstructionLinkTable, "instruction_id"),
-                InfoFileKind.Scheme => (_qualifiedInfoSchemeLinkTable, "scheme_id"),
-                _ => throw new InvalidOperationException($"Unsupported document kind: {kind}")
-            };
+            return await ImportLibraryFileForEquipmentsAsync(
+                kind,
+                equipTypeGroup,
+                filePath,
+                equipNames,
+                cancellationToken);
         }
 
         private async Task EnsureInfoRowsAsync(DbConnection conn, DbTransaction tx, IReadOnlyCollection<string> equipNames, CancellationToken ct)
@@ -1520,21 +1252,17 @@ VALUES
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = $@"
-        INSERT INTO {_qualifiedInfoTable}
-        (
-            equip_name,
-            install_time,
-            revision_time,
-            updated_at
-        )
-        SELECT
-            e.equip_name,
-            NULL,
-            NULL,
-            now()
-        FROM unnest(@equip_names::text[]) AS e(equip_name)
-        ON CONFLICT (equip_name)
-        DO NOTHING;";
+                    INSERT INTO {_qualifiedInfoTable}
+                    (
+                        equip_name,
+                        updated_at
+                    )
+                    SELECT
+                        e.equip_name,
+                        now()
+                    FROM unnest(@equip_names::text[]) AS e(equip_name)
+                    ON CONFLICT (equip_name)
+                    DO NOTHING;";
 
             AddParameter(cmd, "@equip_names", cleanEquipNames);
 
@@ -1737,5 +1465,671 @@ VALUES
             };
         }
 
+        public async Task<int> UpsertSuppliersAsync(IEnumerable<InstructionSupplierRow> suppliers, CancellationToken ct = default)
+        {
+            var clean = (suppliers ?? Enumerable.Empty<InstructionSupplierRow>())
+                .Where(x => x != null)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Supplier))
+                .GroupBy(x => x.Supplier.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.Last())
+                .ToList();
+
+            if (clean.Count == 0)
+                return 0;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            await using var tx = await conn.BeginTransactionAsync(ct);
+
+            try
+            {
+                var count = 0;
+
+                foreach (var item in clean)
+                {
+                    var supplierName = item.Supplier.Trim();
+
+                    string? logoFileName = null;
+                    string? logoHash = null;
+                    byte[]? logoData = null;
+
+                    if (!string.IsNullOrWhiteSpace(item.SupplierLogoPath) &&
+                        File.Exists(item.SupplierLogoPath))
+                    {
+                        logoFileName = Path.GetFileName(item.SupplierLogoPath);
+                        logoData = await File.ReadAllBytesAsync(item.SupplierLogoPath, ct);
+                        logoHash = logoData.Length > 0 ? ComputeFileHash(logoData) : null;
+                    }
+
+                    using var cmd = conn.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+                INSERT INTO {_qualifiedSupplierTable}
+                (
+                    name,
+                    logo_file_name,
+                    logo_file_hash,
+                    logo_data,
+                    updated_at
+                )
+                VALUES
+                (
+                    @name,
+                    @logo_file_name,
+                    @logo_file_hash,
+                    @logo_data,
+                    now()
+                )
+                ON CONFLICT (name)
+                DO UPDATE SET
+                    logo_file_name = COALESCE(EXCLUDED.logo_file_name, {_qualifiedSupplierTable}.logo_file_name),
+                    logo_file_hash = COALESCE(EXCLUDED.logo_file_hash, {_qualifiedSupplierTable}.logo_file_hash),
+                    logo_data = COALESCE(EXCLUDED.logo_data, {_qualifiedSupplierTable}.logo_data),
+                    updated_at = CASE
+                        WHEN EXCLUDED.logo_file_hash IS NOT NULL
+                             AND COALESCE(EXCLUDED.logo_file_hash, '') IS DISTINCT FROM COALESCE({_qualifiedSupplierTable}.logo_file_hash, '')
+                            THEN now()
+                        ELSE {_qualifiedSupplierTable}.updated_at
+                    END;";
+
+                    AddParameter(cmd, "@name", supplierName);
+                    AddParameter(cmd, "@logo_file_name", logoFileName);
+                    AddParameter(cmd, "@logo_file_hash", logoHash);
+                    AddParameter(cmd, "@logo_data", logoData);
+
+                    await cmd.ExecuteNonQueryAsync(ct);
+                    count++;
+                }
+
+                await tx.CommitAsync(ct);
+                return count;
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        public async Task<int> UpsertOrdersAsync(IEnumerable<InstructionOrderRow> orders, CancellationToken ct = default)
+        {
+            var clean = (orders ?? Enumerable.Empty<InstructionOrderRow>())
+                .Where(x => x != null)
+                .Where(x => !string.IsNullOrWhiteSpace(x.ProductCode))
+                .GroupBy(x => x.ProductCode.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.Last())
+                .ToList();
+
+            if (clean.Count == 0)
+                return 0;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            await using var tx = await conn.BeginTransactionAsync(ct);
+
+            try
+            {
+                var count = 0;
+
+                foreach (var item in clean)
+                {
+                    long? supplierId = null;
+                    var supplierName = (item.Supplier ?? "").Trim();
+
+                    if (!string.IsNullOrWhiteSpace(supplierName))
+                    {
+                        using var supplierCmd = conn.CreateCommand();
+                        supplierCmd.Transaction = tx;
+                        supplierCmd.CommandText = $@"
+                    INSERT INTO {_qualifiedSupplierTable}
+                    (
+                        name,
+                        updated_at
+                    )
+                    VALUES
+                    (
+                        @name,
+                        now()
+                    )
+                    ON CONFLICT (name)
+                    DO UPDATE SET
+                        updated_at = {_qualifiedSupplierTable}.updated_at
+                    RETURNING id;";
+
+                        AddParameter(supplierCmd, "@name", supplierName);
+
+                        var id = await supplierCmd.ExecuteScalarAsync(ct);
+                        supplierId = id == null || id == DBNull.Value ? null : Convert.ToInt64(id);
+                    }
+
+                    using var cmd = conn.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = $@"
+                INSERT INTO {_qualifiedOrderTable}
+                (
+                    type,
+                    product_code,
+                    supplier_id,
+                    description,
+                    source,
+                    image,
+                    updated_at
+                )
+                VALUES
+                (
+                    @type,
+                    @product_code,
+                    @supplier_id,
+                    @description,
+                    @source,
+                    @image,
+                    now()
+                )
+                ON CONFLICT (product_code)
+                DO UPDATE SET
+                    type = EXCLUDED.type,
+                    supplier_id = EXCLUDED.supplier_id,
+                    description = EXCLUDED.description,
+                    source = EXCLUDED.source,
+                    image = EXCLUDED.image,
+                    updated_at = now();";
+
+                    AddParameter(cmd, "@type", item.Type);
+                    AddParameter(cmd, "@product_code", item.ProductCode.Trim());
+                    AddParameter(cmd, "@supplier_id", supplierId);
+                    AddParameter(cmd, "@description", item.Description);
+                    AddParameter(cmd, "@source", item.Source);
+                    AddParameter(cmd, "@image", item.Image);
+
+                    await cmd.ExecuteNonQueryAsync(ct);
+                    count++;
+                }
+
+                await tx.CommitAsync(ct);
+                return count;
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        public async Task<IReadOnlyDictionary<string, InfoOrderCatalogDto>> GetOrdersByProductCodesAsync(IEnumerable<string> productCodes, CancellationToken ct = default)
+        {
+            var codes = (productCodes ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var result = new Dictionary<string, InfoOrderCatalogDto>(StringComparer.OrdinalIgnoreCase);
+
+            if (codes.Length == 0)
+                return result;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+        SELECT
+            o.type,
+            o.product_code,
+            COALESCE(s.name, '') AS supplier,
+            COALESCE(o.description, '') AS description,
+            COALESCE(o.source, '') AS source,
+            COALESCE(o.image, '') AS image
+        FROM {_qualifiedOrderTable} o
+        LEFT JOIN {_qualifiedSupplierTable} s
+            ON s.id = o.supplier_id
+        WHERE o.product_code = ANY(@product_codes);";
+
+            AddParameter(cmd, "@product_codes", codes);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var dto = new InfoOrderCatalogDto
+                {
+                    Type = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                    ProductCode = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    Supplier = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    Description = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    Source = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    Image = reader.IsDBNull(5) ? "" : reader.GetString(5)
+                };
+
+                foreach (var item in SplitCsv(dto.Source))
+                    dto.Sources.Add(item);
+
+                foreach (var item in SplitCsv(dto.Image))
+                    dto.Images.Add(item);
+
+                if (!string.IsNullOrWhiteSpace(dto.ProductCode))
+                    result[dto.ProductCode] = dto;
+            }
+
+            return result;
+        }
+
+        public async Task<IReadOnlyList<InfoProductCodeOptionDto>> GetProductCodeOptionsAsync(
+            string equipTypeGroupKey,
+            CancellationToken ct = default)
+        {
+            equipTypeGroupKey = (equipTypeGroupKey ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equipTypeGroupKey))
+                return Array.Empty<InfoProductCodeOptionDto>();
+
+            var result = new List<InfoProductCodeOptionDto>();
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $@"
+                    SELECT
+                        COALESCE(o.type, '') AS type,
+                        COALESCE(o.product_code, '') AS product_code,
+                        COALESCE(s.name, '') AS supplier,
+                        COALESCE(o.description, '') AS description
+                    FROM {_qualifiedOrderTable} o
+                    LEFT JOIN {_qualifiedSupplierTable} s
+                        ON s.id = o.supplier_id
+                    WHERE lower(COALESCE(o.type, '')) = lower(@type)
+                    ORDER BY
+                        lower(COALESCE(o.type, '')),
+                        lower(COALESCE(o.product_code, ''));";
+
+                AddParameter(cmd, "@type", equipTypeGroupKey);
+
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                while (await reader.ReadAsync(ct))
+                {
+                    var option = new InfoProductCodeOptionDto
+                    {
+                        Type = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                        ProductCode = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        Supplier = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        Description = reader.IsDBNull(3) ? "" : reader.GetString(3)
+                    };
+
+                    if (!string.IsNullOrWhiteSpace(option.ProductCode))
+                        result.Add(option);
+                }
+            }
+
+            // ВАЖНО:
+            // reader выше уже закрыт, поэтому теперь можно выполнять новые SQL-команды
+            // на этом же connection внутри ResolveSupplierLogoCachePathAsync().
+            foreach (var option in result)
+            {
+                option.SupplierLogoCachePath = await ResolveSupplierLogoCachePathAsync(
+                    conn,
+                    option.ProductCode,
+                    option.Supplier,
+                    ct);
+            }
+
+            return result;
+        }
+
+        public async Task<int> ApplyProductCodesToEquipmentInfoAsync(IEnumerable<EquipmentProductCodeLinkDto> links, CancellationToken ct = default)
+        {
+            var clean = (links ?? Enumerable.Empty<EquipmentProductCodeLinkDto>())
+                .Where(x => x != null)
+                .Where(x => !string.IsNullOrWhiteSpace(x.EquipName))
+                .Where(x => !string.IsNullOrWhiteSpace(x.ProductCode))
+                .GroupBy(x => x.EquipName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.Last())
+                .ToArray();
+
+            if (clean.Length == 0)
+                return 0;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+        WITH input AS
+        (
+            SELECT
+                btrim(x.equip_name) AS equip_name,
+                btrim(x.product_code) AS product_code
+            FROM unnest(
+                @equip_names::text[],
+                @product_codes::text[]
+            ) AS x(equip_name, product_code)
+            WHERE btrim(x.equip_name) <> ''
+              AND btrim(x.product_code) <> ''
+        ),
+        resolved AS
+        (
+            SELECT
+                input.equip_name,
+                input.product_code,
+                COALESCE(s.name, '') AS supplier,
+                COALESCE(o.description, '') AS description
+            FROM input
+            INNER JOIN {_qualifiedOrderTable} o
+                ON o.product_code = input.product_code
+            LEFT JOIN {_qualifiedSupplierTable} s
+                ON s.id = o.supplier_id
+        )
+        INSERT INTO {_qualifiedInfoTable}
+        (
+            equip_name,
+            product_code,
+            supplier,
+            description,
+            updated_at
+        )
+        SELECT
+            equip_name,
+            product_code,
+            NULLIF(supplier, ''),
+            NULLIF(description, ''),
+            now()
+        FROM resolved
+        ON CONFLICT (equip_name)
+        DO UPDATE SET
+            product_code = EXCLUDED.product_code,
+            supplier = EXCLUDED.supplier,
+            description = EXCLUDED.description,
+            updated_at = now()
+        RETURNING equip_name;";
+
+            AddParameter(cmd, "@equip_names", clean.Select(x => x.EquipName.Trim()).ToArray());
+            AddParameter(cmd, "@product_codes", clean.Select(x => x.ProductCode.Trim()).ToArray());
+
+            var updated = 0;
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+                updated++;
+
+            return updated;
+        }
+
+        public async Task<InfoPhotoBulkImportDbResult> ImportPhotoForEquipmentsAsync(string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken = default)
+        {
+            var bulk = await ImportLibraryFileForEquipmentsAsync(
+                InfoFileKind.Photo,
+                equipTypeGroup,
+                filePath,
+                equipNames,
+                cancellationToken);
+
+            return new InfoPhotoBulkImportDbResult
+            {
+                PhotoId = bulk.DocumentId,
+                AddedToDb = bulk.AddedToDb,
+                UpdatedInDb = bulk.UpdatedInDb,
+                LinksCreated = bulk.LinksCreated,
+                AlreadyLinked = bulk.AlreadyLinked,
+                AffectedEquipNames = bulk.AffectedEquipNames
+            };
+        }
+
+        private async Task<InfoDocumentBulkImportDbResult> ImportLibraryFileForEquipmentsAsync(InfoFileKind kind, string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken)
+        {
+            equipTypeGroup = (equipTypeGroup ?? "").Trim();
+
+            var cleanEquipNames = (equipNames ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (kind != InfoFileKind.Photo &&
+                kind != InfoFileKind.Instruction &&
+                kind != InfoFileKind.Scheme)
+                throw new InvalidOperationException($"Unsupported file kind: {kind}");
+
+            if (string.IsNullOrWhiteSpace(equipTypeGroup))
+                throw new InvalidOperationException("Equipment type group is empty.");
+
+            if (cleanEquipNames.Length == 0)
+                throw new InvalidOperationException("Equipment list is empty.");
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                throw new FileNotFoundException("File not found.", filePath);
+
+            var fileName = Path.GetFileName(filePath);
+            var displayName = Path.GetFileName(filePath);
+            var sourceUpdatedAt = File.GetLastWriteTime(filePath);
+
+            var fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
+            if (fileData.Length == 0)
+                throw new InvalidOperationException($"File is empty: {fileName}");
+
+            var fileHash = ComputeFileHash(fileData);
+
+            var table = GetLibraryTable(kind);
+            var linkInfo = GetLibraryLinkInfo(kind);
+
+            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, cancellationToken);
+
+            await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                await EnsureInfoRowsAsync(conn, tx, cleanEquipNames, cancellationToken);
+
+                long fileId;
+                var addedToDb = false;
+                var updatedInDb = false;
+
+                var existingByHash = await FindLibraryItemByTypeAndHashAsync(
+                    conn,
+                    tx,
+                    table,
+                    equipTypeGroup,
+                    fileHash,
+                    cancellationToken);
+
+                if (existingByHash != null)
+                {
+                    fileId = existingByHash.Id;
+                }
+                else
+                {
+                    var existingByName = await FindLibraryItemByTypeAndFileNameAsync(
+                        conn,
+                        tx,
+                        table,
+                        equipTypeGroup,
+                        fileName,
+                        cancellationToken);
+
+                    if (existingByName != null)
+                    {
+                        fileId = existingByName.Id;
+
+                        var shouldUpdate =
+                            !existingByName.UpdatedAt.HasValue ||
+                            sourceUpdatedAt > existingByName.UpdatedAt.Value;
+
+                        if (shouldUpdate)
+                        {
+                            await UpdateLibraryItemDataAsync(
+                                conn,
+                                tx,
+                                table,
+                                fileId,
+                                fileName,
+                                displayName,
+                                fileHash,
+                                fileData,
+                                sourceUpdatedAt,
+                                cancellationToken);
+
+                            updatedInDb = true;
+                        }
+                    }
+                    else
+                    {
+                        var inserted = await InsertLibraryItemWithUpdatedAtAsync(
+                            conn,
+                            tx,
+                            table,
+                            equipTypeGroup,
+                            fileName,
+                            displayName,
+                            fileHash,
+                            fileData,
+                            sourceUpdatedAt,
+                            cancellationToken);
+
+                        fileId = inserted.Id;
+                        addedToDb = true;
+                    }
+                }
+
+                var linkResult = await EnsureDocumentLinksAsync(
+                    conn,
+                    tx,
+                    linkInfo.LinkTable,
+                    linkInfo.LinkIdColumn,
+                    cleanEquipNames,
+                    fileId,
+                    cancellationToken);
+
+                await tx.CommitAsync(cancellationToken);
+
+                return new InfoDocumentBulkImportDbResult
+                {
+                    DocumentId = fileId,
+                    AddedToDb = addedToDb,
+                    UpdatedInDb = updatedInDb,
+                    LinksCreated = linkResult.CreatedEquipNames.Count,
+                    AlreadyLinked = Math.Max(0, cleanEquipNames.Length - linkResult.CreatedEquipNames.Count),
+                    AffectedEquipNames = cleanEquipNames
+                };
+            }
+            catch
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        private (string LinkTable, string LinkIdColumn) GetLibraryLinkInfo(InfoFileKind kind)
+        {
+            return kind switch
+            {
+                InfoFileKind.Photo => (_qualifiedInfoPhotoLinkTable, "photo_id"),
+                InfoFileKind.Instruction => (_qualifiedInfoInstructionLinkTable, "instruction_id"),
+                InfoFileKind.Scheme => (_qualifiedInfoSchemeLinkTable, "scheme_id"),
+                _ => throw new InvalidOperationException($"Unsupported file kind: {kind}")
+            };
+        }
+
+        private async Task<string?> ResolveSupplierLogoCachePathAsync(DbConnection conn, string? productCode, string? supplierName, CancellationToken ct)
+        {
+            productCode = (productCode ?? "").Trim();
+            supplierName = (supplierName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(productCode) &&
+                string.IsNullOrWhiteSpace(supplierName))
+                return null;
+
+            using var cmd = conn.CreateCommand();
+
+            cmd.CommandText = $@"
+                SELECT
+                    s.logo_file_name,
+                    s.logo_file_hash,
+                    s.logo_data
+                FROM {_qualifiedSupplierTable} s
+                LEFT JOIN {_qualifiedOrderTable} o
+                    ON o.supplier_id = s.id
+                WHERE
+                    (
+                        @product_code <> ''
+                        AND o.product_code = @product_code
+                    )
+                    OR
+                    (
+                        @supplier_name <> ''
+                        AND lower(s.name) = lower(@supplier_name)
+                    )
+                ORDER BY
+                    CASE WHEN o.product_code = @product_code THEN 0 ELSE 1 END,
+                    s.id
+                LIMIT 1;";
+
+            AddParameter(cmd, "@product_code", productCode);
+            AddParameter(cmd, "@supplier_name", supplierName);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            var fileName = reader.IsDBNull(0) ? "" : reader.GetString(0);
+            var hash = reader.IsDBNull(1) ? "" : reader.GetString(1);
+            var data = reader.IsDBNull(2) ? null : (byte[])reader.GetValue(2);
+
+            if (data == null || data.Length == 0 || string.IsNullOrWhiteSpace(hash))
+                return null;
+
+            var cacheFolder = GetSupplierLogoCacheFolder();
+            Directory.CreateDirectory(cacheFolder);
+
+            var safeName = MakeSafeFileName(string.IsNullOrWhiteSpace(fileName) ? "supplier_logo.png" : fileName);
+            var cachePath = Path.Combine(cacheFolder, $"{hash}_{safeName}");
+
+            if (!File.Exists(cachePath))
+                await File.WriteAllBytesAsync(cachePath, data, ct);
+
+            return cachePath;
+        }
+
+        private static string GetSupplierLogoCacheFolder()
+        {
+            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(root, "TechEquipments", "SupplierLogo");
+        }
+
+        private static string MakeSafeFileName(string fileName)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+
+            var chars = fileName
+                .Select(ch => invalid.Contains(ch) ? '_' : ch)
+                .ToArray();
+
+            return new string(chars);
+        }
+
+        private static IEnumerable<string> SplitCsv(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                yield break;
+
+            foreach (var part in text.Split(','))
+            {
+                var value = part.Trim().Trim('"', '\'');
+
+                if (!string.IsNullOrWhiteSpace(value))
+                    yield return value;
+            }
+        }
     }
 }

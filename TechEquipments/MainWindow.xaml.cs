@@ -1907,8 +1907,7 @@ namespace TechEquipments
         /// <summary>
         /// Тонкий прокси для InfoTabHost.xaml.cs
         /// </summary>
-        public void Info_BeginEdit()
-            => _infoController.BeginEdit();
+        public async Task Info_BeginEditAsync() => await _infoController.BeginEditAsync();
 
         /// <summary>
         /// Тонкий прокси для InfoTabHost.xaml.cs
@@ -1945,6 +1944,7 @@ namespace TechEquipments
 
         /// <summary>
         /// Добавить PDF-файлы для текущей документной страницы.
+        /// Также здесь обрабатывается Excel import для Scheme/Instruction.
         /// </summary>
         public async Task Info_LoadCurrentDocumentFilesAsync()
         {
@@ -1973,25 +1973,38 @@ namespace TechEquipments
 
                 if (importResult != null)
                 {
-                    foreach (var equipName in importResult.AffectedEquipNames)
+                    if (importResult.Kind == InfoFileKind.Scheme)
                     {
-                        if (importResult.Kind == InfoFileKind.Scheme)
+                        foreach (var equipName in importResult.AffectedEquipNames)
                         {
                             SetInfoIndicatorFlagsInLoadedEquipments(
                                 equipName,
                                 hasLinkedScheme: true);
                         }
-                        else if (importResult.Kind == InfoFileKind.Instruction)
+
+                        Vm.Shell.BottomText =
+                            $"Scheme import finished. Jobs: {importResult.ImportJobs}, added: {importResult.AddedToDb}, updated: {importResult.UpdatedInDb}, links: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
+                    }
+                    else if (importResult.Kind == InfoFileKind.Instruction)
+                    {
+                        foreach (var equipName in importResult.PdfAffectedEquipNames)
                         {
                             SetInfoIndicatorFlagsInLoadedEquipments(
                                 equipName,
                                 hasLinkedInstruction: true);
                         }
+
+                        foreach (var equipName in importResult.ImageAffectedEquipNames)
+                        {
+                            SetInfoIndicatorFlagsInLoadedEquipments(
+                                equipName,
+                                hasLinkedImage: true);
+                        }
+
+                        Vm.Shell.BottomText =
+                            $"Instruction import finished. Info updated: {importResult.EquipmentInfoUpdated}, PDF links: {importResult.PdfLinksCreated}, image links: {importResult.ImageLinksCreated}, errors: {importResult.Errors}.";
                     }
 
-                    Vm.Shell.BottomText = $"Scheme import finished. Jobs: {importResult.ImportJobs}, added: {importResult.AddedToDb}, updated: {importResult.UpdatedInDb}, links: {importResult.LinkedExisting}, errors: {importResult.Errors}.";
-
-                    // Как с импортом фото: после bulk import выходим из edit mode.
                     Vm.Info.IsInfoEditMode = false;
                 }
             }
@@ -2015,12 +2028,16 @@ namespace TechEquipments
             if (progressWasStarted)
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
 
+            var messageTitle = importResult?.Kind == InfoFileKind.Instruction
+                ? "Instruction import"
+                : "Scheme import";
+
             if (importError != null)
             {
                 DXMessageBox.Show(
                     this,
-                    $"Scheme import failed.\n\n{importError.Message}",
-                    "Scheme import",
+                    $"{messageTitle} failed.\n\n{importError.Message}",
+                    messageTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
 
@@ -2031,8 +2048,8 @@ namespace TechEquipments
             {
                 DXMessageBox.Show(
                     this,
-                    importResult.ToMessage("Scheme import"),
-                    "Scheme import",
+                    importResult.ToMessage(messageTitle),
+                    messageTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -2211,6 +2228,8 @@ namespace TechEquipments
                     MessageBoxImage.Information);
             }
         }
+
+        public async Task Info_ApplyProductCodeFromUiAsync(string? productCode) => await _infoController.ApplyProductCodeFromUiAsync(productCode);
 
         #endregion
     }

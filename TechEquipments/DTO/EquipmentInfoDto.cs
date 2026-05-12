@@ -8,8 +8,10 @@ namespace TechEquipments
     public sealed class EquipmentInfoDto : INotifyPropertyChanged
     {
         private string _equipName = "";
-        private DateTime? _installTime;
-        private DateTime? _revisionTime;
+        private string? _productCode;
+        private string? _supplier;
+        private string? _supplierLogoCachePath;
+        private string? _description;
         private DateTime? _updatedAt;
         private string? _notes;                 // RTF
         private DateTime? _notesUpdatedAt;
@@ -20,16 +22,31 @@ namespace TechEquipments
             set => SetField(ref _equipName, value);
         }
 
-        public DateTime? InstallTime
+        public string? ProductCode
         {
-            get => _installTime;
-            set => SetField(ref _installTime, value);
+            get => _productCode;
+            set => SetField(ref _productCode, value);
         }
 
-        public DateTime? RevisionTime
+        public string? Supplier
         {
-            get => _revisionTime;
-            set => SetField(ref _revisionTime, value);
+            get => _supplier;
+            set => SetField(ref _supplier, value);
+        }
+
+        /// <summary>
+        /// Локальный cache-файл логотипа supplier.
+        /// </summary>
+        public string? SupplierLogoCachePath
+        {
+            get => _supplierLogoCachePath;
+            set => SetField(ref _supplierLogoCachePath, value);
+        }
+
+        public string? Description
+        {
+            get => _description;
+            set => SetField(ref _description, value);
         }
 
         public DateTime? UpdatedAt
@@ -38,7 +55,7 @@ namespace TechEquipments
             set => SetField(ref _updatedAt, value);
         }
 
-        /// <summary> Notes в формате RTF для RichEditControl.</summary>
+        /// <summary>Notes в формате RTF для RichEditControl.</summary>
         public string? Notes
         {
             get => _notes;

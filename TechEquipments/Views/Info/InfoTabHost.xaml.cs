@@ -27,9 +27,10 @@ namespace TechEquipments.Views.Info
             }
         }
 
-        private void Edit_Click(object sender, RoutedEventArgs e)
+        private async void Edit_Click(object sender, RoutedEventArgs e)
         {
-            Host?.Info_BeginEdit();
+            if (Host != null)
+                await Host.Info_BeginEditAsync();
         }
 
         private async void Save_Click(object sender, RoutedEventArgs e)
@@ -167,6 +168,14 @@ namespace TechEquipments.Views.Info
         {
             if (Host != null)
                 await Host.Info_ImportImagesFromFolderAsync();
+        }
+
+        private async void ProductCode_EditValueChanged(object sender, EditValueChangedEventArgs e)
+        {
+            if (Host == null)
+                return;
+
+            await Host.Info_ApplyProductCodeFromUiAsync(e.NewValue?.ToString());
         }
     }
 }

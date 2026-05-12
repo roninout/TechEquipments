@@ -6,11 +6,13 @@
              xmlns:dxre="http://schemas.devexpress.com/winfx/2008/xaml/richedit"
              xmlns:dxpdf="http://schemas.devexpress.com/winfx/2008/xaml/pdf"
              xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
+             xmlns:conv="clr-namespace:TechEquipments.Converts"
              xmlns:local="clr-namespace:TechEquipments">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <dxre:RtfToContentConverter x:Key="RtfToContentConverter"/>
+        <conv:FilePathToImageSourceConverter x:Key="FilePathToImageSourceConverter"/>
     </UserControl.Resources>
 
     <dxlc:LayoutControl Margin="0">
@@ -35,48 +37,148 @@
                                 </Grid.RowDefinitions>
 
                                 <!-- Верхние поля -->
-                                <Grid Margin="6,0,0,0" Grid.Row="0">
+                                <Grid Margin="6,0,0,8" Grid.Row="0">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="80"/>
+                                        <!-- Left info block -->
+                                        <ColumnDefinition Width="105"/>
+                                        <ColumnDefinition Width="400"/>
+                                        <!-- Spacer -->
+                                        <ColumnDefinition Width="20"/>
+                                        <!-- Description block -->
+                                        <ColumnDefinition Width="0"/>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="200"/>
                                     </Grid.ColumnDefinitions>
 
                                     <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="50"/>
+                                        <RowDefinition Height="50"/>
+                                        <RowDefinition Height="50"/>
                                     </Grid.RowDefinitions>
 
-                                    <!--Equipment:-->
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Equipment:" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentEquipInfo.EquipName}" VerticalAlignment="Center"/>
+                                    <!-- Equipment -->
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="0"
+                                               Text="Equipment:"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
 
-                                    <!--Installation time:-->
-                                    <TextBlock Grid.Row="0" Grid.Column="3" Text="Installation time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="1"
+                                               Text="{Binding CurrentEquipInfo.EquipName}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
 
-                                    <dxlc:LayoutItem Grid.Row="0" Grid.Column="4">
-                                        <dxe:DateEdit Style="{StaticResource AppBaseEditStyle}"
-                                                      EditValue="{Binding CurrentEquipInfo.InstallTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                      IsReadOnly="{Binding IsInfoReadOnly}"
-                                                      NullText="Not set"
-                                                      Mask="g"
-                                                      MaskUseAsDisplayFormat="True"/>
-                                    </dxlc:LayoutItem>
+                                    <!-- Product code -->
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="0"
+                                               Margin="0,6,0,0"
+                                               Text="Product code:"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
 
-                                    <!--Revision time:-->
-                                    <TextBlock Grid.Row="1" Grid.Column="3" Padding="0,4" Text="Revision time:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <!-- Product code: view mode -->
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="1"
+                                               Margin="0,6,0,0"
+                                               Text="{Binding CurrentEquipInfo.ProductCode, TargetNullValue=Not set, FallbackValue=Not set}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis">
+                                        
+                                        <TextBlock.Style>
+                                            <Style TargetType="{x:Type TextBlock}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                        
+                                    </TextBlock>
 
-                                    <dxlc:LayoutItem Grid.Row="1" Grid.Column="4" Padding="0,6">
-                                        <dxe:DateEdit Style="{StaticResource AppBaseEditStyle}"
-                                                      EditValue="{Binding CurrentEquipInfo.RevisionTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                      IsReadOnly="{Binding IsInfoReadOnly}"
-                                                      NullText="Not set"
-                                                      Mask="g"
-                                                      MaskUseAsDisplayFormat="True"/>
-                                    </dxlc:LayoutItem>
+                                    <!-- Product code: edit mode -->
+                                    <dxe:ComboBoxEdit Grid.Row="1"
+                                                      Grid.Column="1"
+                                                      Margin="0,6,0,0"
+                                                      ItemsSource="{Binding AvailableProductCodeOptions}"
+                                                      DisplayMember="ProductCode"
+                                                      ValueMember="ProductCode"
+                                                      IsTextEditable="False"
+                                                      NullText="Select product code"
+                                                      ImmediatePopup="True"
+                                                      AutoComplete="True"
+                                                      IncrementalFiltering="True"
+                                                      HorizontalContentAlignment="Left"
+                                                      EditValue="{Binding CurrentEquipInfo.ProductCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      EditValueChanged="ProductCode_EditValueChanged">
+
+                                        <dxe:ComboBoxEdit.Style>
+                                            <Style TargetType="{x:Type dxe:ComboBoxEdit}" BasedOn="{StaticResource AppBaseEditStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dxe:ComboBoxEdit.Style>
+                                        
+                                    </dxe:ComboBoxEdit>
+
+                                    <!-- Supplier -->
+                                    <TextBlock Grid.Row="2"
+                                               Grid.Column="0"
+                                               Margin="0,6,0,0"
+                                               Text="Supplier:"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+
+                                    <Grid Grid.Row="2"
+                                          Grid.Column="1"
+                                          Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="120"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Supplier always read-only -->
+                                        <TextBlock Grid.Column="0"
+                                                   HorizontalAlignment="Left"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding CurrentEquipInfo.Supplier}"/>
+
+                                        <Border Grid.Column="1">
+                                            <Image Source="{Binding CurrentEquipInfo.SupplierLogoCachePath, Converter={StaticResource FilePathToImageSourceConverter}}"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Description -->
+                                    <!--<TextBlock Grid.Row="0"
+                                               Grid.Column="3"
+                                               Text="Description:"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Top"
+                                               Margin="0,4,0,0"/>-->
+
+                                    <!-- Description always read-only. MemoEdit removed. -->
+                                    <Border Grid.Row="0"
+                                            Grid.Column="4"
+                                            Grid.RowSpan="3"
+                                            MinHeight="86"
+                                            MaxHeight="200"
+                                            BorderBrush="#33000000"
+                                            BorderThickness="1"                                            
+                                            Background="#08FFFFFF"
+                                            Padding="6,4">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <TextBlock Text="{Binding CurrentEquipInfo.Description}"
+                                                       TextWrapping="Wrap"
+                                                       VerticalAlignment="Top"/>
+                                        </ScrollViewer>
+                                    </Border>
                                 </Grid>
 
                                 <!-- ===== PHOTO ===== -->

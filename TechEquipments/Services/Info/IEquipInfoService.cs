@@ -21,73 +21,43 @@ namespace TechEquipments
 
         Task<EquipmentInfoFileDto?> GetLibraryFileByIdAsync(InfoFileKind kind, long id, CancellationToken ct = default);
 
-        /// <summary>
-        /// Получить сохранённую позицию просмотра PDF.
-        /// </summary>
         Task<EquipmentInfoDocumentViewStateDto?> GetDocumentViewStateAsync(string equipName, InfoPageKind pageKind, long fileId, CancellationToken ct = default);
 
-        /// <summary>
-        /// Сохранить/обновить позицию просмотра PDF.
-        /// </summary>
         Task SaveDocumentViewStateAsync(EquipmentInfoDocumentViewStateDto model, CancellationToken ct = default);
 
-        /// <summary>
-        /// Полностью удалить файл из shared library.
-        /// ВАЖНО: из-за ON DELETE CASCADE файл автоматически отвяжется от всех equipment.
-        /// </summary>
         Task<bool> DeleteLibraryFileAsync(InfoFileKind kind, long id, CancellationToken ct = default);
 
-        /// <summary>
-        /// Получить список equipment, отмеченных как favorite для текущего устройства.
-        /// </summary>
         Task<IReadOnlyCollection<string>> GetFavoriteEquipNamesAsync(CancellationToken ct = default);
 
-        /// <summary>
-        /// Получить список equipment, у которых есть хотя бы одно залинкованное фото.
-        /// </summary>
         Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedPhotosAsync(CancellationToken ct = default);
 
-        /// <summary>
-        /// Получить список equipment, у которых есть хотя бы одна залинкованная инструкция.
-        /// </summary>
         Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedInstructionsAsync(CancellationToken ct = default);
 
-        /// <summary>
-        /// Получить список equipment, у которых есть хотя бы одна залинкованная схема.
-        /// </summary>
         Task<IReadOnlyCollection<string>> GetEquipNamesWithLinkedSchemesAsync(CancellationToken ct = default);
 
-        /// <summary>
-        /// Получить список equipment, у которых есть непустые Notes.
-        /// </summary>
         Task<IReadOnlyCollection<string>> GetEquipNamesWithNotesAsync(CancellationToken ct = default);
 
-        /// <summary>
-        /// Установить/снять favorite для текущего устройства.
-        /// </summary>
         Task SetFavoriteAsync(string equipName, bool isFavorite, CancellationToken ct = default);
 
         Task EnsureDatabaseAndTablesAsync(CancellationToken ct = default);
 
-        /// <summary>
-        /// Импортирует одно фото в библиотеку equip_photo и привязывает его к equipment.
-        /// Если такой file_data/file_hash уже есть в БД, новую запись не создаёт,
-        /// а только добавляет link к equipment.
-        /// </summary>
+        Task<int> UpsertSuppliersAsync(IEnumerable<InstructionSupplierRow> suppliers, CancellationToken ct = default);
+
+        Task<int> UpsertOrdersAsync(IEnumerable<InstructionOrderRow> orders, CancellationToken ct = default);
+
+        Task<IReadOnlyDictionary<string, InfoOrderCatalogDto>> GetOrdersByProductCodesAsync(IEnumerable<string> productCodes, CancellationToken ct = default);
+
+        Task<int> ApplyProductCodesToEquipmentInfoAsync(IEnumerable<EquipmentProductCodeLinkDto> links, CancellationToken ct = default);
+
         Task<InfoPhotoImportDbResult> ImportPhotoForEquipmentAsync(string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Импортирует PDF-документ в библиотеку instruction/scheme и сразу линкует к equipment.
-        /// Если такой hash уже есть — новую запись не создаёт.
-        /// Если найден файл с тем же именем, но другим hash — более новый файл заменяет старый.
-        /// </summary>
+        Task<InfoPhotoBulkImportDbResult> ImportPhotoForEquipmentsAsync(string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken = default);
+
         Task<InfoDocumentImportDbResult> ImportDocumentForEquipmentAsync(InfoFileKind kind, string equipName, string equipTypeGroup, string filePath, CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Оптимизированный импорт PDF-документа:
-        /// 1 раз читает файл, 1 раз считает hash, 1 раз добавляет/обновляет library,
-        /// затем bulk-линкует документ сразу к нескольким equipment.
-        /// </summary>
         Task<InfoDocumentBulkImportDbResult> ImportDocumentForEquipmentsAsync(InfoFileKind kind, string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken = default);
+
+        /// <summary> Получить список Product code из equip_order для указанного типа оборудования. </summary>
+        Task<IReadOnlyList<InfoProductCodeOptionDto>> GetProductCodeOptionsAsync(string equipTypeGroupKey, CancellationToken ct = default);
     }
 }
