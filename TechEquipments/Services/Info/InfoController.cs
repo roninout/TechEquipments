@@ -38,7 +38,6 @@ namespace TechEquipments
 
         private int _loadCurrentRequestId;
         private bool _suppressLibrarySelectionSync;
-        private string? _notesAtEditStart;
 
         public InfoController(IEquipInfoService equipInfoService, InfoViewModel vm, EquipmentListViewModel equipmentVm, Window ownerWindow, IQrScannerService qrScannerService)
         {
@@ -97,8 +96,6 @@ namespace TechEquipments
                 _vm.InfoDocumentMessage = "";
                 _vm.IsInfoDocumentExportVisible = false;
                 _vm.IsInfoEditMode = false;
-
-                _notesAtEditStart = null;
             }
 
             if (string.IsNullOrWhiteSpace(equipName))
@@ -135,7 +132,6 @@ namespace TechEquipments
                     return;
 
                 _vm.CurrentEquipInfo = info;
-                _notesAtEditStart = info.Notes;
 
                 var selectedEquip = _equipmentVm.SelectedListBoxEquipment;
                 if (selectedEquip != null && string.Equals((selectedEquip.Equipment ?? "").Trim(), (info.EquipName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
@@ -215,7 +211,12 @@ namespace TechEquipments
 
             SelectPhotoLibraryFileById(preferredPhotoId);
 
-            _notesAtEditStart = _vm.CurrentEquipInfo.Notes;
+            if (_vm.CurrentInfoPage == InfoPageKind.Notes &&
+                _vm.SelectedInfoNote == null)
+            {
+                _vm.SelectedInfoNote = _vm.CurrentEquipInfo.Notes.FirstOrDefault();
+            }
+
             _vm.IsInfoEditMode = true;
             _vm.InfoStatusText = $"Editing info: {equipName}";
         }
@@ -242,15 +243,10 @@ namespace TechEquipments
             }
         }
 
-        public async Task SaveAsync()
+        public async Task SaveAsync(string userName)
         {
             if (_vm.CurrentEquipInfo == null)
                 return;
-
-            var notesChanged = !string.Equals(
-                _notesAtEditStart ?? "",
-                _vm.CurrentEquipInfo.Notes ?? "",
-                StringComparison.Ordinal);
 
             var equipName = ResolveSelectedEquipForInfo();
             if (string.IsNullOrWhiteSpace(equipName))
@@ -272,13 +268,17 @@ namespace TechEquipments
 
                 await _equipInfoService.SaveAsync(_vm.CurrentEquipInfo);
 
-                var now = DateTime.Now;
-                _vm.CurrentEquipInfo.UpdatedAt = now;
+                var savedNotes = await _equipInfoService.SaveNotesAsync(
+                    equipName,
+                    _vm.CurrentEquipInfo.Notes,
+                    userName);
 
-                if (notesChanged)
-                    _vm.CurrentEquipInfo.NotesUpdatedAt = now;
+                ReplaceNoteCollection(_vm.CurrentEquipInfo.Notes, savedNotes);
 
-                _notesAtEditStart = _vm.CurrentEquipInfo.Notes;
+                _vm.SelectedInfoNote =
+                    _vm.CurrentEquipInfo.Notes.FirstOrDefault();
+
+                _vm.CurrentEquipInfo.UpdatedAt = DateTime.Now;
 
                 _vm.IsInfoEditMode = false;
                 _vm.InfoStatusText = $"Info saved: {equipName}";
@@ -1981,6 +1981,14 @@ namespace TechEquipments
                 target.Add(item);
         }
 
+        private static void ReplaceNoteCollection(ObservableCollection<EquipmentInfoNoteDto> target, IEnumerable<EquipmentInfoNoteDto> source)
+        {
+            target.Clear();
+
+            foreach (var item in source ?? Enumerable.Empty<EquipmentInfoNoteDto>())
+                target.Add(item);
+        }
+
         private async Task LoadLibrariesAsync()
         {
             var equipTypeGroupKey = ResolveSelectedEquipTypeGroupKey();
@@ -2796,6 +2804,70 @@ namespace TechEquipments
             _vm.CurrentEquipInfo.SupplierLogoCachePath = selected.SupplierLogoCachePath;
 
             _vm.InfoStatusText = $"Product code selected: {selected.ProductCode}";
+        }
+
+        public void AddNewNote(string userName)
+        {
+            if (!_vm.IsInfoEditMode)
+                return;
+
+            var equipName = ResolveSelectedEquipForInfo();
+            if (string.IsNullOrWhiteSpace(equipName))
+                return;
+
+            _vm.CurrentEquipInfo ??= EquipmentInfoDto.CreateEmpty(equipName);
+            _vm.CurrentEquipInfo.EquipName = equipName;
+
+            var note = EquipmentInfoNoteDto.CreateNew(equipName, userName);
+
+            // Новые сверху.
+            _vm.CurrentEquipInfo.Notes.Insert(0, note);
+            _vm.SelectedInfoNote = note;
+
+            _vm.InfoStatusText = "New note created.";
+        }
+
+        public async Task DeleteSelectedNoteAsync()
+        {
+            if (!_vm.IsInfoEditMode)
+                return;
+
+            var note = _vm.SelectedInfoNote;
+            if (note == null)
+                return;
+
+            var result = DXMessageBox.Show(
+                _ownerWindow,
+                "Delete selected note?",
+                "Delete note",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                _vm.IsInfoLoading = true;
+
+                if (note.Id > 0)
+                    await _equipInfoService.DeleteNoteAsync(note.Id);
+
+                _vm.CurrentEquipInfo?.Notes.Remove(note);
+                _vm.SelectedInfoNote = _vm.CurrentEquipInfo?.Notes.FirstOrDefault();
+
+                _vm.InfoStatusText = "Note deleted.";
+            }
+            catch (Exception ex)
+            {
+                _vm.InfoStatusText = $"Delete note error: {ex.Message}";
+                DXMessageBox.Show(_ownerWindow, ex.Message, "Delete note",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _vm.IsInfoLoading = false;
+            }
         }
 
         #region Cache

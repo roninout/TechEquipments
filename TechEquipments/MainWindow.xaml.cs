@@ -1914,7 +1914,7 @@ namespace TechEquipments
         /// </summary>
         public async Task Info_SaveAsync()
         {
-            await _infoController.SaveAsync();
+            await _infoController.SaveAsync(Vm.Shell.CurrentCtUserName);
 
             var equipName = (Vm.Info.CurrentEquipInfo?.EquipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
@@ -1927,7 +1927,7 @@ namespace TechEquipments
                 hasLinkedImage: info?.Photos?.Count > 0,
                 hasLinkedInstruction: info?.Instructions?.Count > 0,
                 hasLinkedScheme: info?.Schemes?.Count > 0,
-                hasNotes: !string.IsNullOrWhiteSpace(info?.Notes));
+                hasNotes: info?.Notes?.Any(x => !string.IsNullOrWhiteSpace(x.NoteText)) == true);
         }
 
         /// <summary>
@@ -2230,6 +2230,10 @@ namespace TechEquipments
         }
 
         public async Task Info_ApplyProductCodeFromUiAsync(string? productCode) => await _infoController.ApplyProductCodeFromUiAsync(productCode);
+
+        public void Info_AddNewNote() => _infoController.AddNewNote(Vm.Shell.CurrentCtUserName);
+
+        public async Task Info_DeleteSelectedNoteAsync() => await _infoController.DeleteSelectedNoteAsync();
 
         #endregion
     }

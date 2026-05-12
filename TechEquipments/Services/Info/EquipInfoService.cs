@@ -38,6 +38,7 @@ namespace TechEquipments
         private readonly string _qualifiedFavoriteTable;
         private readonly string _qualifiedSupplierTable;
         private readonly string _qualifiedOrderTable;
+        private readonly string _qualifiedNoteTable;
 
         public EquipInfoService(IDbContextFactory<PgInfoDbContext> dbFactory, IConfiguration config, IAppRuntimeContext appRuntime)
         {
@@ -59,6 +60,8 @@ namespace TechEquipments
 
             _qualifiedSupplierTable = Qualify("equip_supplier");
             _qualifiedOrderTable = Qualify("equip_order");
+
+            _qualifiedNoteTable = Qualify("equip_note");
         }
 
         public async Task EnsureTableAsync(CancellationToken ct = default)
@@ -66,141 +69,151 @@ namespace TechEquipments
             await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
             var sqlInfo = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
-(
-    equip_name        text PRIMARY KEY,
-    product_code      text NULL,
-    supplier          text NULL,
-    description       text NULL,
-    notes             text NULL,
-    notes_updated_at  timestamp NULL,
-    updated_at        timestamp NOT NULL DEFAULT now()
-);";
+                CREATE TABLE IF NOT EXISTS {_qualifiedInfoTable}
+                (
+                    equip_name        text PRIMARY KEY,
+                    product_code      text NULL,
+                    supplier          text NULL,
+                    description       text NULL,
+                    updated_at        timestamp NOT NULL DEFAULT now()
+                );";
 
             var sqlPhoto = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
-(
-    id                bigserial PRIMARY KEY,
-    equip_type_group  text NOT NULL,
-    file_name         text NOT NULL,
-    display_name      text NOT NULL,
-    file_hash         text NOT NULL,
-    file_data         bytea NOT NULL,
-    updated_at        timestamp NOT NULL DEFAULT now(),
+                CREATE TABLE IF NOT EXISTS {_qualifiedPhotoTable}
+                (
+                    id                bigserial PRIMARY KEY,
+                    equip_type_group  text NOT NULL,
+                    file_name         text NOT NULL,
+                    display_name      text NOT NULL,
+                    file_hash         text NOT NULL,
+                    file_data         bytea NOT NULL,
+                    updated_at        timestamp NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_equip_photo_type_hash
-        UNIQUE (equip_type_group, file_hash)
-);";
+                    CONSTRAINT uq_equip_photo_type_hash
+                        UNIQUE (equip_type_group, file_hash)
+                );";
 
             var sqlInstruction = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
-(
-    id                bigserial PRIMARY KEY,
-    equip_type_group  text NOT NULL,
-    file_name         text NOT NULL,
-    display_name      text NOT NULL,
-    file_hash         text NOT NULL,
-    file_data         bytea NOT NULL,
-    updated_at        timestamp NOT NULL DEFAULT now(),
+                CREATE TABLE IF NOT EXISTS {_qualifiedInstructionTable}
+                (
+                    id                bigserial PRIMARY KEY,
+                    equip_type_group  text NOT NULL,
+                    file_name         text NOT NULL,
+                    display_name      text NOT NULL,
+                    file_hash         text NOT NULL,
+                    file_data         bytea NOT NULL,
+                    updated_at        timestamp NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_equip_instruction_type_hash
-        UNIQUE (equip_type_group, file_hash)
-);";
+                    CONSTRAINT uq_equip_instruction_type_hash
+                        UNIQUE (equip_type_group, file_hash)
+                );";
 
             var sqlScheme = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
-(
-    id                bigserial PRIMARY KEY,
-    equip_type_group  text NOT NULL,
-    file_name         text NOT NULL,
-    display_name      text NOT NULL,
-    file_hash         text NOT NULL,
-    file_data         bytea NOT NULL,
-    updated_at        timestamp NOT NULL DEFAULT now(),
+                CREATE TABLE IF NOT EXISTS {_qualifiedSchemeTable}
+                (
+                    id                bigserial PRIMARY KEY,
+                    equip_type_group  text NOT NULL,
+                    file_name         text NOT NULL,
+                    display_name      text NOT NULL,
+                    file_hash         text NOT NULL,
+                    file_data         bytea NOT NULL,
+                    updated_at        timestamp NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_equip_scheme_type_hash
-        UNIQUE (equip_type_group, file_hash)
-);";
+                    CONSTRAINT uq_equip_scheme_type_hash
+                        UNIQUE (equip_type_group, file_hash)
+                );";
 
             var sqlInfoPhotoLink = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
-(
-    equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-    photo_id     bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
-    sort_order   integer NOT NULL DEFAULT 0,
+                CREATE TABLE IF NOT EXISTS {_qualifiedInfoPhotoLinkTable}
+                (
+                    equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+                    photo_id     bigint NOT NULL REFERENCES {_qualifiedPhotoTable}(id) ON DELETE CASCADE,
+                    sort_order   integer NOT NULL DEFAULT 0,
 
-    PRIMARY KEY (equip_name, photo_id)
-);";
+                    PRIMARY KEY (equip_name, photo_id)
+                );";
 
             var sqlInfoInstructionLink = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
-(
-    equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-    instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
-    sort_order      integer NOT NULL DEFAULT 0,
+                CREATE TABLE IF NOT EXISTS {_qualifiedInfoInstructionLinkTable}
+                (
+                    equip_name      text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+                    instruction_id  bigint NOT NULL REFERENCES {_qualifiedInstructionTable}(id) ON DELETE CASCADE,
+                    sort_order      integer NOT NULL DEFAULT 0,
 
-    PRIMARY KEY (equip_name, instruction_id)
-);";
+                    PRIMARY KEY (equip_name, instruction_id)
+                );";
 
             var sqlInfoSchemeLink = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
-(
-    equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-    scheme_id    bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
-    sort_order   integer NOT NULL DEFAULT 0,
+                CREATE TABLE IF NOT EXISTS {_qualifiedInfoSchemeLinkTable}
+                (
+                    equip_name   text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+                    scheme_id    bigint NOT NULL REFERENCES {_qualifiedSchemeTable}(id) ON DELETE CASCADE,
+                    sort_order   integer NOT NULL DEFAULT 0,
 
-    PRIMARY KEY (equip_name, scheme_id)
-);";
+                    PRIMARY KEY (equip_name, scheme_id)
+                );";
 
             var sqlInfoPdfView = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
-(
-    equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
-    info_page_kind   text NOT NULL,
-    file_id          bigint NOT NULL,
-    file_name        text NOT NULL,
-    page_number      integer NOT NULL,
-    zoom_factor      double precision NOT NULL,
-    anchor_x         double precision NOT NULL,
-    anchor_y         double precision NOT NULL,
-    updated_at       timestamp NOT NULL DEFAULT now(),
+                CREATE TABLE IF NOT EXISTS {_qualifiedInfoDocumentViewTable}
+                (
+                    equip_name       text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+                    info_page_kind   text NOT NULL,
+                    file_id          bigint NOT NULL,
+                    file_name        text NOT NULL,
+                    page_number      integer NOT NULL,
+                    zoom_factor      double precision NOT NULL,
+                    anchor_x         double precision NOT NULL,
+                    anchor_y         double precision NOT NULL,
+                    updated_at       timestamp NOT NULL DEFAULT now(),
 
-    PRIMARY KEY (equip_name, info_page_kind, file_id)
-);";
+                    PRIMARY KEY (equip_name, info_page_kind, file_id)
+                );";
 
             var sqlFavorite = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedFavoriteTable}
-(
-    device_name   text NOT NULL,
-    equip_name    text NOT NULL,
-    updated_at    timestamp NOT NULL DEFAULT now(),
+                CREATE TABLE IF NOT EXISTS {_qualifiedFavoriteTable}
+                (
+                    device_name   text NOT NULL,
+                    equip_name    text NOT NULL,
+                    updated_at    timestamp NOT NULL DEFAULT now(),
 
-    PRIMARY KEY (device_name, equip_name)
-);";
+                    PRIMARY KEY (device_name, equip_name)
+                );";
 
             var sqlSupplier = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedSupplierTable}
-(
-    id              bigserial PRIMARY KEY,
-    name            text NOT NULL UNIQUE,
-    logo_file_name  text NULL,
-    logo_file_hash  text NULL,
-    logo_data       bytea NULL,
-    updated_at      timestamp NOT NULL DEFAULT now()
-);";
+                CREATE TABLE IF NOT EXISTS {_qualifiedSupplierTable}
+                (
+                    id              bigserial PRIMARY KEY,
+                    name            text NOT NULL UNIQUE,
+                    logo_file_name  text NULL,
+                    logo_file_hash  text NULL,
+                    logo_data       bytea NULL,
+                    updated_at      timestamp NOT NULL DEFAULT now()
+                );";
 
             var sqlOrder = $@"
-CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
-(
-    id              bigserial PRIMARY KEY,
-    type            text NULL,
-    product_code    text NOT NULL UNIQUE,
-    supplier_id     bigint NULL REFERENCES {_qualifiedSupplierTable}(id) ON DELETE SET NULL,
-    description     text NULL,
-    source          text NULL,
-    image           text NULL,
-    updated_at      timestamp NOT NULL DEFAULT now()
-);";
+                CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
+                (
+                    id              bigserial PRIMARY KEY,
+                    type            text NULL,
+                    product_code    text NOT NULL UNIQUE,
+                    supplier_id     bigint NULL REFERENCES {_qualifiedSupplierTable}(id) ON DELETE SET NULL,
+                    description     text NULL,
+                    source          text NULL,
+                    image           text NULL,
+                    updated_at      timestamp NOT NULL DEFAULT now()
+                );";
+
+            var sqlNote = $@"
+                CREATE TABLE IF NOT EXISTS {_qualifiedNoteTable}
+                (
+                    id          bigserial PRIMARY KEY,
+                    equip_name  text NOT NULL REFERENCES {_qualifiedInfoTable}(equip_name) ON DELETE CASCADE,
+                    note_text   text NOT NULL,
+                    created_by  text NOT NULL,
+                    created_at  timestamp NOT NULL DEFAULT now(),
+                    updated_by  text NULL,
+                    updated_at  timestamp NULL
+                );";
 
             await db.Database.ExecuteSqlRawAsync(sqlInfo, ct);
             await db.Database.ExecuteSqlRawAsync(sqlPhoto, ct);
@@ -213,6 +226,7 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
             await db.Database.ExecuteSqlRawAsync(sqlFavorite, ct);
             await db.Database.ExecuteSqlRawAsync(sqlSupplier, ct);
             await db.Database.ExecuteSqlRawAsync(sqlOrder, ct);
+            await db.Database.ExecuteSqlRawAsync(sqlNote, ct);
 
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_photo_type
@@ -261,6 +275,10 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
             await db.Database.ExecuteSqlRawAsync(
                 $@"CREATE INDEX IF NOT EXISTS ix_equip_order_supplier_id
             ON {_qualifiedOrderTable} (supplier_id);", ct);
+
+            await db.Database.ExecuteSqlRawAsync(
+                $@"CREATE INDEX IF NOT EXISTS ix_equip_note_equip_created
+            ON {_qualifiedNoteTable} (equip_name, created_at DESC, id DESC);", ct);
         }
 
         public async Task<EquipmentInfoDto> GetAsync(string equipName, CancellationToken ct = default)
@@ -278,17 +296,15 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = $@"
-            SELECT
-                equip_name,
-                product_code,
-                supplier,
-                description,
-                notes,
-                notes_updated_at,
-                updated_at
-            FROM {_qualifiedInfoTable}
-            WHERE equip_name = @equip_name
-            LIMIT 1;";
+                    SELECT
+                        equip_name,
+                        product_code,
+                        supplier,
+                        description,
+                        updated_at
+                    FROM {_qualifiedInfoTable}
+                    WHERE equip_name = @equip_name
+                    LIMIT 1;";
 
                 AddParameter(cmd, "@equip_name", equipName);
 
@@ -300,9 +316,7 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
                     model.ProductCode = reader.IsDBNull(1) ? null : reader.GetString(1);
                     model.Supplier = reader.IsDBNull(2) ? null : reader.GetString(2);
                     model.Description = reader.IsDBNull(3) ? null : reader.GetString(3);
-                    model.Notes = reader.IsDBNull(4) ? null : reader.GetString(4);
-                    model.NotesUpdatedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTime>(5);
-                    model.UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6);
+                    model.UpdatedAt = reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTime>(4);
 
                     model.IsFavorite = false;
                 }
@@ -318,6 +332,10 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
             await LoadLinkedFilesAsync(conn, _qualifiedInfoInstructionLinkTable, _qualifiedInstructionTable, "instruction_id", model.Instructions, equipName, ct);
             await LoadLinkedFilesAsync(conn, _qualifiedInfoSchemeLinkTable, _qualifiedSchemeTable, "scheme_id", model.Schemes, equipName, ct);
 
+            var notes = await GetNotesAsync(equipName, ct);
+            foreach (var note in notes)
+                model.Notes.Add(note);
+
             return model;
         }
 
@@ -329,8 +347,6 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
             var equipName = (model.EquipName ?? "").Trim();
             if (string.IsNullOrWhiteSpace(equipName))
                 throw new InvalidOperationException("EquipName is empty.");
-
-            var notesForDb = model.Notes;
 
             NormalizeSortOrders(model.Photos, equipName);
             NormalizeSortOrders(model.Instructions, equipName);
@@ -348,50 +364,33 @@ CREATE TABLE IF NOT EXISTS {_qualifiedOrderTable}
                 {
                     cmd.Transaction = tx;
                     cmd.CommandText = $@"
-                        INSERT INTO {_qualifiedInfoTable}
-                        (
-                            equip_name,
-                            product_code,
-                            supplier,
-                            description,
-                            notes,
-                            notes_updated_at,
-                            updated_at
-                        )
-                        VALUES
-                        (
-                            @equip_name,
-                            @product_code,
-                            @supplier,
-                            @description,
-                            @notes,
-                            CASE
-                                WHEN NULLIF(BTRIM(@notes), '') IS NULL THEN NULL
-                                ELSE now()
-                            END,
-                            now()
-                        )
-                        ON CONFLICT (equip_name)
-                        DO UPDATE SET
-                            product_code = EXCLUDED.product_code,
-                            supplier = EXCLUDED.supplier,
-                            description = EXCLUDED.description,
-                            notes = EXCLUDED.notes,
-                            notes_updated_at = CASE
-                                WHEN COALESCE({_qualifiedInfoTable}.notes, '') IS DISTINCT FROM COALESCE(EXCLUDED.notes, '')
-                                    THEN CASE
-                                        WHEN NULLIF(BTRIM(EXCLUDED.notes), '') IS NULL THEN NULL
-                                        ELSE now()
-                                    END
-                                ELSE {_qualifiedInfoTable}.notes_updated_at
-                            END,
-                            updated_at = now();";
+                INSERT INTO {_qualifiedInfoTable}
+                (
+                    equip_name,
+                    product_code,
+                    supplier,
+                    description,
+                    updated_at
+                )
+                VALUES
+                (
+                    @equip_name,
+                    @product_code,
+                    @supplier,
+                    @description,
+                    now()
+                )
+                ON CONFLICT (equip_name)
+                DO UPDATE SET
+                    product_code = EXCLUDED.product_code,
+                    supplier = EXCLUDED.supplier,
+                    description = EXCLUDED.description,
+                    updated_at = now();";
 
                     AddParameter(cmd, "@equip_name", equipName);
                     AddParameter(cmd, "@product_code", model.ProductCode);
                     AddParameter(cmd, "@supplier", model.Supplier);
                     AddParameter(cmd, "@description", model.Description);
-                    AddParameter(cmd, "@notes", notesForDb);
 
                     await cmd.ExecuteNonQueryAsync(ct);
                 }
@@ -1023,10 +1022,10 @@ VALUES
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-        SELECT equip_name
-        FROM {_qualifiedInfoTable}
-        WHERE notes IS NOT NULL
-          AND btrim(notes) <> '';";
+                SELECT DISTINCT equip_name
+                FROM {_qualifiedNoteTable}
+                WHERE note_text IS NOT NULL
+                  AND btrim(note_text) <> '';";
 
             using var reader = await cmd.ExecuteReaderAsync(ct);
 
@@ -1265,6 +1264,30 @@ VALUES
                     DO NOTHING;";
 
             AddParameter(cmd, "@equip_names", cleanEquipNames);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        private async Task EnsureInfoRowExistsAsync(DbConnection conn, DbTransaction tx, string equipName, CancellationToken ct)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+
+            cmd.CommandText = $@"
+                INSERT INTO {_qualifiedInfoTable}
+                (
+                    equip_name,
+                    updated_at
+                )
+                VALUES
+                (
+                    @equip_name,
+                    now()
+                )
+                ON CONFLICT (equip_name)
+                DO NOTHING;";
+
+            AddParameter(cmd, "@equip_name", equipName);
 
             await cmd.ExecuteNonQueryAsync(ct);
         }
@@ -1719,9 +1742,7 @@ VALUES
             return result;
         }
 
-        public async Task<IReadOnlyList<InfoProductCodeOptionDto>> GetProductCodeOptionsAsync(
-            string equipTypeGroupKey,
-            CancellationToken ct = default)
+        public async Task<IReadOnlyList<InfoProductCodeOptionDto>> GetProductCodeOptionsAsync(string equipTypeGroupKey, CancellationToken ct = default)
         {
             equipTypeGroupKey = (equipTypeGroupKey ?? "").Trim();
 
@@ -1882,6 +1903,157 @@ VALUES
                 AlreadyLinked = bulk.AlreadyLinked,
                 AffectedEquipNames = bulk.AffectedEquipNames
             };
+        }
+
+        public async Task<IReadOnlyList<EquipmentInfoNoteDto>> GetNotesAsync(string equipName, CancellationToken ct = default)
+        {
+            equipName = (equipName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equipName))
+                return Array.Empty<EquipmentInfoNoteDto>();
+
+            var result = new List<EquipmentInfoNoteDto>();
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+        SELECT
+            id,
+            equip_name,
+            note_text,
+            created_by,
+            created_at,
+            updated_by,
+            updated_at
+        FROM {_qualifiedNoteTable}
+        WHERE equip_name = @equip_name
+        ORDER BY created_at DESC, id DESC;";
+
+            AddParameter(cmd, "@equip_name", equipName);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var note = ReadNote(reader);
+                note.AcceptChanges();
+                result.Add(note);
+            }
+
+            return result;
+        }
+
+        public async Task<IReadOnlyList<EquipmentInfoNoteDto>> SaveNotesAsync(string equipName, IEnumerable<EquipmentInfoNoteDto> notes, string userName, CancellationToken ct = default)
+        {
+            equipName = (equipName ?? "").Trim();
+            userName = (userName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(equipName))
+                return Array.Empty<EquipmentInfoNoteDto>();
+
+            if (string.IsNullOrWhiteSpace(userName))
+                userName = "Unknown";
+
+            var dirtyNotes = (notes ?? Enumerable.Empty<EquipmentInfoNoteDto>())
+                .Where(x => x != null)
+                .Where(x => x.IsNew || x.IsDirty)
+                .Where(x => !string.IsNullOrWhiteSpace(x.NoteText))
+                .ToList();
+
+            if (dirtyNotes.Count == 0)
+                return await GetNotesAsync(equipName, ct);
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            await using var tx = await conn.BeginTransactionAsync(ct);
+
+            try
+            {
+                await EnsureInfoRowExistsAsync(conn, equipName, ct);
+
+                foreach (var note in dirtyNotes)
+                {
+                    if (note.Id <= 0)
+                    {
+                        using var cmd = conn.CreateCommand();
+                        cmd.Transaction = tx;
+                        cmd.CommandText = $@"
+                    INSERT INTO {_qualifiedNoteTable}
+                    (
+                        equip_name,
+                        note_text,
+                        created_by,
+                        created_at
+                    )
+                    VALUES
+                    (
+                        @equip_name,
+                        @note_text,
+                        @created_by,
+                        now()
+                    );";
+
+                        AddParameter(cmd, "@equip_name", equipName);
+                        AddParameter(cmd, "@note_text", note.NoteText);
+                        AddParameter(cmd, "@created_by", userName);
+
+                        await cmd.ExecuteNonQueryAsync(ct);
+                    }
+                    else
+                    {
+                        using var cmd = conn.CreateCommand();
+                        cmd.Transaction = tx;
+                        cmd.CommandText = $@"
+                    UPDATE {_qualifiedNoteTable}
+                    SET
+                        note_text = @note_text,
+                        updated_by = @updated_by,
+                        updated_at = now()
+                    WHERE id = @id
+                      AND equip_name = @equip_name;";
+
+                        AddParameter(cmd, "@id", note.Id);
+                        AddParameter(cmd, "@equip_name", equipName);
+                        AddParameter(cmd, "@note_text", note.NoteText);
+                        AddParameter(cmd, "@updated_by", userName);
+
+                        await cmd.ExecuteNonQueryAsync(ct);
+                    }
+                }
+
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+
+            return await GetNotesAsync(equipName, ct);
+        }
+
+        public async Task DeleteNoteAsync(long noteId, CancellationToken ct = default)
+        {
+            if (noteId <= 0)
+                return;
+
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var conn = db.Database.GetDbConnection();
+            await EnsureConnectionOpenAsync(conn, ct);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                DELETE FROM {_qualifiedNoteTable}
+                WHERE id = @id;";
+
+            AddParameter(cmd, "@id", noteId);
+
+            await cmd.ExecuteNonQueryAsync(ct);
         }
 
         private async Task<InfoDocumentBulkImportDbResult> ImportLibraryFileForEquipmentsAsync(InfoFileKind kind, string equipTypeGroup, string filePath, IEnumerable<string> equipNames, CancellationToken cancellationToken)
@@ -2130,6 +2302,20 @@ VALUES
                 if (!string.IsNullOrWhiteSpace(value))
                     yield return value;
             }
+        }
+
+        private static EquipmentInfoNoteDto ReadNote(DbDataReader reader)
+        {
+            return new EquipmentInfoNoteDto
+            {
+                Id = reader.IsDBNull(0) ? 0 : reader.GetInt64(0),
+                EquipName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                NoteText = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                CreatedBy = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                CreatedAt = reader.IsDBNull(4) ? DateTime.MinValue : reader.GetFieldValue<DateTime>(4),
+                UpdatedBy = reader.IsDBNull(5) ? null : reader.GetString(5),
+                UpdatedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTime>(6)
+            };
         }
     }
 }

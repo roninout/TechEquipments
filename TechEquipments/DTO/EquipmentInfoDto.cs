@@ -13,8 +13,6 @@ namespace TechEquipments
         private string? _supplierLogoCachePath;
         private string? _description;
         private DateTime? _updatedAt;
-        private string? _notes;                 // RTF
-        private DateTime? _notesUpdatedAt;
 
         public string EquipName
         {
@@ -34,9 +32,6 @@ namespace TechEquipments
             set => SetField(ref _supplier, value);
         }
 
-        /// <summary>
-        /// Локальный cache-файл логотипа supplier.
-        /// </summary>
         public string? SupplierLogoCachePath
         {
             get => _supplierLogoCachePath;
@@ -55,13 +50,6 @@ namespace TechEquipments
             set => SetField(ref _updatedAt, value);
         }
 
-        /// <summary>Notes в формате RTF для RichEditControl.</summary>
-        public string? Notes
-        {
-            get => _notes;
-            set => SetField(ref _notes, value);
-        }
-
         private bool _isFavorite;
 
         public bool IsFavorite
@@ -70,26 +58,14 @@ namespace TechEquipments
             set => SetField(ref _isFavorite, value);
         }
 
-        public DateTime? NotesUpdatedAt
-        {
-            get => _notesUpdatedAt;
-            set
-            {
-                if (Equals(_notesUpdatedAt, value))
-                    return;
-
-                _notesUpdatedAt = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(NotesUpdatedAtText));
-            }
-        }
-
-        public string NotesUpdatedAtText =>
-            NotesUpdatedAt?.ToString("dd.MM.yyyy HH:mm") ?? "—";
-
         public ObservableCollection<EquipmentInfoFileDto> Photos { get; } = new();
         public ObservableCollection<EquipmentInfoFileDto> Instructions { get; } = new();
         public ObservableCollection<EquipmentInfoFileDto> Schemes { get; } = new();
+
+        /// <summary>
+        /// Notes теперь отдельная коллекция, а не одно RTF-поле в equip_info.
+        /// </summary>
+        public ObservableCollection<EquipmentInfoNoteDto> Notes { get; } = new();
 
         public static EquipmentInfoDto CreateEmpty(string equipName)
         {

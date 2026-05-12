@@ -59,5 +59,11 @@ namespace TechEquipments
 
         /// <summary> Получить список Product code из equip_order для указанного типа оборудования. </summary>
         Task<IReadOnlyList<InfoProductCodeOptionDto>> GetProductCodeOptionsAsync(string equipTypeGroupKey, CancellationToken ct = default);
+
+        Task<IReadOnlyList<EquipmentInfoNoteDto>> GetNotesAsync(string equipName, CancellationToken ct = default);
+
+        Task<IReadOnlyList<EquipmentInfoNoteDto>> SaveNotesAsync(string equipName, IEnumerable<EquipmentInfoNoteDto> notes, string userName, CancellationToken ct = default);
+
+        Task DeleteNoteAsync(long noteId, CancellationToken ct = default);
     }
 }

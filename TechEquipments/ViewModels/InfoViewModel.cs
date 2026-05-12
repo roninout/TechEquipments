@@ -19,6 +19,8 @@ namespace TechEquipments.ViewModels
                 if (!SetProperty(ref _currentEquipInfo, value))
                     return;
 
+                SelectedInfoNote = value?.Notes.FirstOrDefault();
+
                 Raise(
                     nameof(CurrentInfoDocumentItems),
                     nameof(CurrentInfoSelectedDocumentFile),
@@ -86,6 +88,13 @@ namespace TechEquipments.ViewModels
                           nameof(CurrentInfoDocumentFileName));
                 }
             }
+        }
+
+        private EquipmentInfoNoteDto? _selectedInfoNote;
+        public EquipmentInfoNoteDto? SelectedInfoNote
+        {
+            get => _selectedInfoNote;
+            set => SetProperty(ref _selectedInfoNote, value);
         }
 
         public ObservableCollection<EquipmentInfoFileDto> AvailableInfoPhotoLibrary { get; } = new();

@@ -3,7 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
              xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
-             xmlns:dxre="http://schemas.devexpress.com/winfx/2008/xaml/richedit"
              xmlns:dxpdf="http://schemas.devexpress.com/winfx/2008/xaml/pdf"
              xmlns:dxlc="http://schemas.devexpress.com/winfx/2008/xaml/layoutcontrol"
              xmlns:conv="clr-namespace:TechEquipments.Converts"
@@ -11,7 +10,6 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <dxre:RtfToContentConverter x:Key="RtfToContentConverter"/>
         <conv:FilePathToImageSourceConverter x:Key="FilePathToImageSourceConverter"/>
     </UserControl.Resources>
 
@@ -164,7 +162,7 @@
                                                Margin="0,4,0,0"/>-->
 
                                     <!-- Description always read-only. MemoEdit removed. -->
-                                    <Border Grid.Row="0"
+                                    <!--<Border Grid.Row="0"
                                             Grid.Column="4"
                                             Grid.RowSpan="3"
                                             MinHeight="86"
@@ -178,7 +176,27 @@
                                                        TextWrapping="Wrap"
                                                        VerticalAlignment="Top"/>
                                         </ScrollViewer>
-                                    </Border>
+                                    </Border>-->
+
+                                    <!-- Description always read-only -->
+                                    <TextBox Grid.Row="0"
+                                             Grid.Column="4"
+                                             Grid.RowSpan="3"
+                                             Text="{Binding CurrentEquipInfo.Description, Mode=OneWay}"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Disabled"
+                                             VerticalContentAlignment="Top"
+                                             MinHeight="86"
+                                             MaxHeight="200"
+                                             Padding="6,4"
+                                             BorderBrush="#33000000"
+                                             BorderThickness="1"
+                                             Background="#08FFFFFF"
+                                             Foreground="#222222"
+                                             FontSize="13"/>
                                 </Grid>
 
                                 <!-- ===== PHOTO ===== -->
@@ -518,7 +536,7 @@
                         </dxlc:LayoutGroup>
                     </dxlc:LayoutGroup>
 
-                     <!--===== NOTES =====--> 
+                    <!--===== NOTES =====-->
                     <dxlc:LayoutGroup View="GroupBox"
                                       GroupBoxDisplayMode="Light"
                                       Visibility="{Binding IsInfoNotesPage, Converter={StaticResource BoolToVis}}"
@@ -528,25 +546,124 @@
                         <dxlc:LayoutGroup Orientation="Vertical">
 
                             <Grid Margin="6,0,0,0">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="265"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
 
-                                <dxre:RichEditControl Grid.Row="0"
-                                                      CommandBarStyle="Empty"                                                     
-                                                      ReadOnly="{Binding IsInfoReadOnly}"
-                                                      Content="{Binding CurrentEquipInfo.Notes, Mode=TwoWay, Converter={StaticResource RtfToContentConverter}}"/>
+                                <!-- Left: notes list -->
+                                <ListBox Grid.Column="0"
+                                         ItemsSource="{Binding CurrentEquipInfo.Notes}"
+                                         SelectedItem="{Binding SelectedInfoNote, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         BorderThickness="0"
+                                         Background="Transparent"                                         
+                                         HorizontalContentAlignment="Stretch"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto">
 
-                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0" HorizontalAlignment="Right">
-                                    <TextBlock Text="Last change:"
-                                               FontWeight="SemiBold"
-                                               VerticalAlignment="Bottom"/>
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="{x:Type ListBoxItem}">
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="Margin" Value="0,0,0,8"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
 
-                                    <TextBlock Margin="8,0,0,0"
-                                               VerticalAlignment="Bottom"
-                                               Text="{Binding CurrentEquipInfo.NotesUpdatedAtText}"/>
-                                </StackPanel>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#33000000"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Padding="8"
+                                                    Background="White">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+
+                                                    <TextBlock Grid.Row="0"
+                                                               Text="{Binding CreatedBy}"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis"/>
+
+                                                    <TextBlock Grid.Row="1"
+                                                               Margin="0,2,0,0"
+                                                               Text="{Binding CreatedAtText}"
+                                                               FontSize="11"
+                                                               Foreground="Gray"/>
+
+                                                    <TextBlock Grid.Row="2"
+                                                               Margin="0,6,0,0"
+                                                               Text="{Binding PreviewText}"
+                                                               TextWrapping="Wrap"
+                                                               MaxHeight="44"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <!-- Right: note editor/viewer -->
+                                <Grid Grid.Column="2">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBox Grid.Row="0"
+                                             Text="{Binding SelectedInfoNote.NoteText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             IsReadOnly="{Binding IsInfoReadOnly}"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             AcceptsTab="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Disabled"
+                                             VerticalContentAlignment="Top"
+                                             MinHeight="260"
+                                             Padding="8"
+                                             BorderBrush="#33000000"
+                                             BorderThickness="1"
+                                             FontSize="13">
+                                        <TextBox.Style>
+                                            <Style TargetType="{x:Type TextBox}">
+                                                <!-- View mode -->
+                                                <Setter Property="Background" Value="#08FFFFFF"/>
+
+                                                <!-- Edit mode -->
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
+                                                        <Setter Property="Background" Value="White"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+
+                                    <StackPanel Grid.Row="1"
+                                                Orientation="Horizontal"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,8,0,0">
+
+                                        <TextBlock Text="Created:"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"/>
+
+                                        <TextBlock Margin="8,0,0,0"
+                                                   Text="{Binding SelectedInfoNote.CreatedAtText}"
+                                                   VerticalAlignment="Center"/>
+
+                                        <TextBlock Margin="16,0,0,0"
+                                                   Text="By:"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"/>
+
+                                        <TextBlock Margin="8,0,0,0"
+                                                   Text="{Binding SelectedInfoNote.CreatedBy}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
 
                         </dxlc:LayoutGroup>
@@ -923,6 +1040,64 @@
                                                     <DataTrigger Binding="{Binding IsInfoEditMode}" Value="True">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                     </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Add note: только Notes и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,40,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Add.svg'}"
+                                                     Click="AddNote_Click"
+                                                     ToolTip="Add note"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoNotesPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </dx:SimpleButton.Style>
+                                    </dx:SimpleButton>
+                                </dxlc:LayoutItem>
+
+                                <!-- Delete note: только Notes и только в Edit mode -->
+                                <dxlc:LayoutItem Label="">
+                                    <dx:SimpleButton Width="60"
+                                                     Height="60"
+                                                     Padding="0"
+                                                     Margin="0,8,0,0"
+                                                     GlyphWidth="40"
+                                                     GlyphHeight="40"
+                                                     Glyph="{dx:DXImage 'SvgImages/Icon Builder/Actions_Trash.svg'}"
+                                                     Click="DeleteNote_Click"
+                                                     ToolTip="Delete note"
+                                                     IsEnabled="{Binding IsInfoEditMode}">
+                                        <dx:SimpleButton.Style>
+                                            <Style TargetType="{x:Type dx:SimpleButton}" BasedOn="{StaticResource AppButtonStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInfoEditMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsInfoNotesPage}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </dx:SimpleButton.Style>

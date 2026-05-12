@@ -177,5 +177,16 @@ namespace TechEquipments.Views.Info
 
             await Host.Info_ApplyProductCodeFromUiAsync(e.NewValue?.ToString());
         }
+
+        private void AddNote_Click(object sender, RoutedEventArgs e)
+        {
+            Host?.Info_AddNewNote();
+        }
+
+        private async void DeleteNote_Click(object sender, RoutedEventArgs e)
+        {
+            if (Host != null)
+                await Host.Info_DeleteSelectedNoteAsync();
+        }
     }
 }
