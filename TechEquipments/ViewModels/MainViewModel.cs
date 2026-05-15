@@ -14,6 +14,7 @@ namespace TechEquipments.ViewModels
         public EquipmentListViewModel EquipmentList { get; } = new();
         public ParamViewModel Param { get; } = new();
         public InfoViewModel Info { get; } = new();
+        public MessageViewModel Message { get; } = new();
         public DatabaseViewModel Database { get; } = new();
 
         public MainViewModel()
@@ -76,6 +77,16 @@ namespace TechEquipments.ViewModels
                         break;
                 }
             };
+
+            Message.PropertyChanged += (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(MessageViewModel.ActiveMessageCount):
+                        Raise(nameof(MessageViewModel.TabHeader));
+                        break;
+                }
+            };
         }
 
         private MainTabKind _selectedMainTab = MainTabKind.Param;
@@ -116,6 +127,7 @@ namespace TechEquipments.ViewModels
             MainTabKind.OperationActions => "Search",
             MainTabKind.AlarmHistory => "Search",
             MainTabKind.Info => "",
+            MainTabKind.Message => "",
             _ => "Run",
         };
 
@@ -123,13 +135,17 @@ namespace TechEquipments.ViewModels
         {
             MainTabKind.SOE => !Shell.IsLoading,
             MainTabKind.Info => false,
+            MainTabKind.Message => false,
             MainTabKind.Param => false,
             _ => Database.IsDbConnected && !Database.IsDbLoading,
         };
 
         public bool ShowToolbarScanQrButton => SelectedMainTab == MainTabKind.Param;
 
-        public bool ShowMainActionButton => SelectedMainTab != MainTabKind.Param && SelectedMainTab != MainTabKind.Info;
+        public bool ShowMainActionButton =>
+            SelectedMainTab != MainTabKind.Param &&
+            SelectedMainTab != MainTabKind.Info &&
+            SelectedMainTab != MainTabKind.Message;
 
         // ===== bottom bar =====
 

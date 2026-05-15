@@ -7,6 +7,7 @@
     xmlns:local="clr-namespace:TechEquipments"
     xmlns:views="clr-namespace:TechEquipments.Views.Param"
     xmlns:infoviews="clr-namespace:TechEquipments.Views.Info"
+    xmlns:msgviews="clr-namespace:TechEquipments.Views.Message"
     x:Class="TechEquipments.MainWindow"
     Icon="/TechEquipments;component/Resources/Icons/app.ico"
     Title="{Binding Vm.Shell.WindowTitle}"
@@ -433,6 +434,21 @@
                                                ColumnHeaderStyle="{StaticResource AppGridColumnHeaderStyle}"/>
                             </dxg:GridControl.View>
                         </dxg:GridControl>
+                    </dx:DXTabItem>
+
+                    <!-- ============ MESSAGE TAB ============ -->
+                    <dx:DXTabItem>
+                        <dx:DXTabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{dx:DXImage 'SvgImages/Icon Builder/Actions_Comment.svg'}"
+                                       Width="16"
+                                       Height="16"
+                                       Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding Vm.Message.TabHeader}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </dx:DXTabItem.Header>
+
+                        <msgviews:MessageTabHost DataContext="{Binding Vm.Message}"/>
                     </dx:DXTabItem>
 
                 </dx:DXTabControl>

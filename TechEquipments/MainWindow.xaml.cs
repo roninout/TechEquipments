@@ -46,6 +46,7 @@ namespace TechEquipments
         private readonly UiStateController _uiStateController;
         private readonly InfoController _infoController;
         private readonly EquipmentListController _equipmentListController;
+        private readonly MessageController _messageController;
 
         public MainViewModel Vm { get; }
         public ParamTrendVm Trend { get; }
@@ -163,7 +164,7 @@ namespace TechEquipments
 
         #endregion
 
-        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService, MainViewModel vm, IAppRuntimeContext appRuntime)
+        public MainWindow(IEquipmentService equipmentService, IDbService dbService, IEquipInfoService equipInfoService, IMessageService messageService, IUserStateService stateService, ICtApiService ctApiService, IConfiguration config, IQrCodeService qrCodeService, IQrScannerService qrScannerService, MainViewModel vm, IAppRuntimeContext appRuntime)
         {
             InitializeComponent();
 
@@ -184,6 +185,14 @@ namespace TechEquipments
             Vm.Shell.UseParamAreaOverlay = _configService.GetValue("Global:Overlay", true);
             Vm.Shell.CurrentCtUserName = _appRuntime.DeviceName;
 
+            Vm.Message.ShowDeleteButton = _configService.GetValue("Messages:ShowDeleteButton", false);
+            Vm.Message.RefreshEnabled = _configService.GetValue("Messages:RefreshEnabled", true);
+            Vm.Message.RefreshPeriodSeconds = _configService.GetValue("Messages:RefreshPeriodSeconds", 30);
+            Vm.Message.MarkAsViewedDelaySeconds = _configService.GetValue("Messages:MarkAsViewedDelaySeconds", 3);
+
+            var showOnlyActiveByDefault = _configService.GetValue("Messages:ShowOnlyActiveByDefault", true);
+            Vm.Message.ShowAllMessages = !showOnlyActiveByDefault;
+
             // ===== controllers =====
             _equipmentListController = new EquipmentListController(Vm, Dispatcher, () => EquipmentsTree);
 
@@ -195,6 +204,13 @@ namespace TechEquipments
                 Vm.EquipmentList,
                 this,
                 qrScannerService);
+
+            _messageController = new MessageController(
+                messageService,
+                Vm.Message,
+                Dispatcher,
+                this,
+                () => Vm.Shell.CurrentCtUserName);
 
             _qrController = new QrController(
                 _equipmentService,
@@ -477,14 +493,10 @@ namespace TechEquipments
         {
             _ctApiService.ConnectionStateChanged += OnCtApiConnectionStateChanged;
 
-            //Closing += (_, __) =>
-            //{
-            //    StopBackgroundWorkForShutdown();
-            //};
-
             Closed += (_, __) =>
             {
                 _ctApiService.ConnectionStateChanged -= OnCtApiConnectionStateChanged;
+                _messageController.StopBackgroundRefresh();
                 StopBackgroundWorkForShutdown();
             };
         }
@@ -523,6 +535,9 @@ namespace TechEquipments
                 // Сначала проверяем DB и готовим storage для Info/Favorites.
                 await _dbController.CheckDbAsync();
                 await EnsureInfoStorageReadyAsync();
+
+                await _messageController.InitializeAsync();
+                _messageController.StartBackgroundRefresh();
 
                 // Потом грузим equipment list, чтобы favorites уже могли подтянуться из БД.
                 await LoadEquipmentsListAsync();
@@ -769,6 +784,10 @@ namespace TechEquipments
                     await LoadSoeFromUiAsync();
                     break;
 
+                case MainTabKind.Message:
+                    await _messageController.LoadAsync(silent: true);
+                    break;
+
                 default:
                     break;
             }
@@ -987,6 +1006,10 @@ namespace TechEquipments
                 case MainTabKind.OperationActions:
                 case MainTabKind.AlarmHistory:
                     await _dbController.LoadCurrentTabAsync(force: true);
+                    break;
+
+                case MainTabKind.Message:
+                    await _messageController.LoadAsync(silent: false);
                     break;
 
                 default:
@@ -2234,6 +2257,34 @@ namespace TechEquipments
         public void Info_AddNewNote() => _infoController.AddNewNote(Vm.Shell.CurrentCtUserName);
 
         public async Task Info_DeleteSelectedNoteAsync() => await _infoController.DeleteSelectedNoteAsync();
+
+        #endregion
+
+        #region Message
+
+        public Task Message_LoadAsync()
+            => _messageController.LoadAsync(silent: false);
+
+        public void Message_AddNew()
+            => _messageController.AddNew();
+
+        public void Message_BeginEditSelected()
+            => _messageController.BeginEditSelected();
+
+        public Task Message_SaveSelectedAsync()
+            => _messageController.SaveSelectedAsync();
+
+        public Task Message_DeleteSelectedAsync()
+            => _messageController.DeleteSelectedAsync();
+
+        public Task Message_ToggleActivitySelectedAsync()
+            => _messageController.ToggleActivitySelectedAsync();
+
+        public Task Message_ToggleShowAllAsync()
+            => _messageController.ToggleShowAllAsync();
+
+        public void Message_SelectedMessageChanged()
+            => _messageController.OnSelectedMessageChanged();
 
         #endregion
     }

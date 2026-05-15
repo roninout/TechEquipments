@@ -16,6 +16,7 @@ namespace TechEquipments
         Info = 1,
         OperationActions = 2,
         AlarmHistory = 3,
-        SOE = 4
+        SOE = 4,
+        Message = 5
     }
 }

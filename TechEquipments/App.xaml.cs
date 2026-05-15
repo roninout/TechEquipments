@@ -55,6 +55,7 @@ namespace TechEquipments
 
                     services.AddSingleton<IDbService, PgDbService>();
                     services.AddSingleton<IEquipInfoService, EquipInfoService>();
+                    services.AddSingleton<IMessageService, MessageService>();
 
                     services.AddSingleton<CtApiService>();
                     services.AddSingleton<ICtApiService>(sp => sp.GetRequiredService<CtApiService>());
